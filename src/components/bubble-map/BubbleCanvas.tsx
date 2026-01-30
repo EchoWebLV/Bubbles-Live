@@ -2,12 +2,15 @@
 
 import { useRef, useEffect, useCallback } from "react";
 import type { Holder } from "./types";
+import type { EffectsState } from "./effects";
+import { drawEffects, getBubbleEffectModifiers } from "./effects";
 
 interface BubbleCanvasProps {
   holders: Holder[];
   width: number;
   height: number;
   hoveredHolder: Holder | null;
+  effectsState: EffectsState;
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -17,6 +20,7 @@ export function BubbleCanvas({
   width,
   height,
   hoveredHolder,
+  effectsState,
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -40,7 +44,7 @@ export function BubbleCanvas({
     canvas.style.height = `${height}px`;
   }, [width, height]);
 
-  // Draw whenever holders change (they update every frame from simulation)
+  // Draw whenever holders or effects change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !width || !height || !holders.length) return;
@@ -55,6 +59,9 @@ export function BubbleCanvas({
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(dpr, dpr);
 
+    // Draw effects background (ripples, global effects)
+    drawEffects(ctx, effectsState, width, height);
+
     // Draw each bubble
     holders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) return;
@@ -62,7 +69,28 @@ export function BubbleCanvas({
       const isHovered = hoveredHolder?.address === holder.address;
       const x = holder.x;
       const y = holder.y;
-      const radius = isHovered ? holder.radius * 1.15 : holder.radius;
+      
+      // Get effect modifiers
+      const { scale, glowColor, glowIntensity } = getBubbleEffectModifiers(
+        holder.address,
+        effectsState
+      );
+      
+      let radius = holder.radius * scale;
+      if (isHovered) radius *= 1.15;
+
+      // Draw effect glow if present
+      if (glowColor && glowIntensity > 0) {
+        const glowRadius = radius + 15 + glowIntensity * 10;
+        const glowGradient = ctx.createRadialGradient(x, y, radius, x, y, glowRadius);
+        glowGradient.addColorStop(0, `${glowColor}${Math.floor(glowIntensity * 80).toString(16).padStart(2, '0')}`);
+        glowGradient.addColorStop(1, `${glowColor}00`);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = glowGradient;
+        ctx.fill();
+      }
 
       // Create gradient for 3D bubble effect
       const gradient = ctx.createRadialGradient(
@@ -74,7 +102,11 @@ export function BubbleCanvas({
         radius
       );
 
-      const baseColor = holder.color;
+      // Use glow color if in effect, otherwise use holder color
+      const baseColor = (glowColor && glowIntensity > 0.5) 
+        ? blendColors(holder.color, glowColor, glowIntensity * 0.5)
+        : holder.color;
+        
       gradient.addColorStop(0, adjustBrightness(baseColor, 50));
       gradient.addColorStop(0.5, baseColor);
       gradient.addColorStop(1, adjustBrightness(baseColor, -40));
@@ -83,10 +115,10 @@ export function BubbleCanvas({
       if (isHovered) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
-        const glowGradient = ctx.createRadialGradient(x, y, radius, x, y, radius + 20);
-        glowGradient.addColorStop(0, `${baseColor}60`);
-        glowGradient.addColorStop(1, `${baseColor}00`);
-        ctx.fillStyle = glowGradient;
+        const hoverGlow = ctx.createRadialGradient(x, y, radius, x, y, radius + 20);
+        hoverGlow.addColorStop(0, `${holder.color}60`);
+        hoverGlow.addColorStop(1, `${holder.color}00`);
+        ctx.fillStyle = hoverGlow;
         ctx.fill();
       }
 
@@ -130,7 +162,28 @@ export function BubbleCanvas({
         }
       }
     });
-  }, [holders, width, height, hoveredHolder]);
+
+    // Draw explosion particles on top
+    effectsState.explosions.forEach(explosion => {
+      explosion.particles.forEach(particle => {
+        ctx.beginPath();
+        ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+        
+        const gradient = ctx.createRadialGradient(
+          particle.x, particle.y, 0,
+          particle.x, particle.y, particle.radius
+        );
+        gradient.addColorStop(0, particle.color);
+        gradient.addColorStop(1, `${particle.color}00`);
+        
+        ctx.fillStyle = gradient;
+        ctx.globalAlpha = particle.alpha;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+    });
+    
+  }, [holders, width, height, hoveredHolder, effectsState]);
 
   // Handle mouse interactions
   const findHolderAtPosition = useCallback(
@@ -217,4 +270,24 @@ function adjustBrightness(hex: string, percent: number): string {
   return `#${Math.round(r).toString(16).padStart(2, "0")}${Math.round(g)
     .toString(16)
     .padStart(2, "0")}${Math.round(b).toString(16).padStart(2, "0")}`;
+}
+
+// Blend two hex colors
+function blendColors(color1: string, color2: string, ratio: number): string {
+  const hex1 = color1.replace(/^#/, "");
+  const hex2 = color2.replace(/^#/, "");
+  
+  const r1 = parseInt(hex1.substring(0, 2), 16);
+  const g1 = parseInt(hex1.substring(2, 4), 16);
+  const b1 = parseInt(hex1.substring(4, 6), 16);
+  
+  const r2 = parseInt(hex2.substring(0, 2), 16);
+  const g2 = parseInt(hex2.substring(2, 4), 16);
+  const b2 = parseInt(hex2.substring(4, 6), 16);
+  
+  const r = Math.round(r1 * (1 - ratio) + r2 * ratio);
+  const g = Math.round(g1 * (1 - ratio) + g2 * ratio);
+  const b = Math.round(b1 * (1 - ratio) + b2 * ratio);
+  
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }

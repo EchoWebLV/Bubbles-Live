@@ -93,7 +93,7 @@ async function getTokenHolders(mintAddress: string, limit: number = MAX_HOLDERS)
     
     // Fetch multiple pages to get more holders
     while (allHolders.length < limit * 2) { // Fetch extra to sort properly
-      const response = await fetch(
+      const fetchResponse: Response = await fetch(
         `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`,
         {
           method: "POST",
@@ -114,7 +114,7 @@ async function getTokenHolders(mintAddress: string, limit: number = MAX_HOLDERS)
         }
       );
 
-      const data = await response.json();
+      const data: { error?: string; result?: { token_accounts?: HeliusTokenAccount[]; cursor?: string } } = await fetchResponse.json();
       
       if (data.error) {
         console.error("Helius API error:", data.error);

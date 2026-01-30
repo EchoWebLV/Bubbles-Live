@@ -17,22 +17,43 @@ export function useBubbleSimulation({
   const [nodes, setNodes] = useState<Holder[]>([]);
   const nodesRef = useRef<Holder[]>([]);
   const animationRef = useRef<number>(0);
+  const positionsRef = useRef<Map<string, { x: number; y: number; vx: number; vy: number }>>(new Map());
 
-  // Initialize nodes when holders change
+  // Update nodes when holders change - PRESERVE POSITIONS
   useEffect(() => {
     if (!holders.length || !width || !height) return;
 
-    const padding = 100;
-    const initialized = holders.map((h) => ({
-      ...h,
-      x: padding + Math.random() * (width - padding * 2),
-      y: padding + Math.random() * (height - padding * 2),
-      vx: (Math.random() - 0.5) * 0.6,
-      vy: (Math.random() - 0.5) * 0.6,
-    }));
+    const padding = 80;
+    
+    // Merge new holder data with existing positions
+    const updated = holders.map((h) => {
+      const existingPos = positionsRef.current.get(h.address);
+      
+      if (existingPos) {
+        // Keep existing position and velocity
+        return {
+          ...h,
+          x: existingPos.x,
+          y: existingPos.y,
+          vx: existingPos.vx,
+          vy: existingPos.vy,
+        };
+      } else {
+        // New holder - spawn at random position
+        const x = padding + Math.random() * (width - padding * 2);
+        const y = padding + Math.random() * (height - padding * 2);
+        return {
+          ...h,
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: (Math.random() - 0.5) * 0.4,
+        };
+      }
+    });
 
-    nodesRef.current = initialized;
-    setNodes([...initialized]);
+    nodesRef.current = updated;
+    setNodes([...updated]);
   }, [holders, width, height]);
 
   // Animation loop
@@ -125,16 +146,24 @@ export function useBubbleSimulation({
         // Keep bubbles moving slowly
         const speed = Math.sqrt((node.vx || 0) ** 2 + (node.vy || 0) ** 2);
         
-        if (speed < 0.2) {
+        if (speed < 0.15) {
           // Too slow - give a gentle push
           const angle = Math.random() * Math.PI * 2;
-          node.vx = Math.cos(angle) * 0.3;
-          node.vy = Math.sin(angle) * 0.3;
-        } else if (speed > 1.0) {
+          node.vx = Math.cos(angle) * 0.2;
+          node.vy = Math.sin(angle) * 0.2;
+        } else if (speed > 0.8) {
           // Too fast - slow down
-          node.vx = ((node.vx || 0) / speed) * 1.0;
-          node.vy = ((node.vy || 0) / speed) * 1.0;
+          node.vx = ((node.vx || 0) / speed) * 0.8;
+          node.vy = ((node.vy || 0) / speed) * 0.8;
         }
+        
+        // Save position for persistence across refreshes
+        positionsRef.current.set(node.address, {
+          x: node.x || 0,
+          y: node.y || 0,
+          vx: node.vx || 0,
+          vy: node.vy || 0,
+        });
       });
 
       // Update state to trigger re-render
