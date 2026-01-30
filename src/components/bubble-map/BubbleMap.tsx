@@ -257,26 +257,22 @@ export function BubbleMap({ tokenAddress }: BubbleMapProps) {
         transition={{ delay: 0.5 }}
         className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-slate-700/50 z-10"
       >
-        <div className="text-xs text-slate-400 mb-2 font-medium">Holder Size</div>
-        <div className="space-y-1.5">
-          <LegendItem color="#9333ea" label="Whale (>5%)" />
-          <LegendItem color="#3b82f6" label="Large (1-5%)" />
-          <LegendItem color="#10b981" label="Medium (0.1-1%)" />
-          <LegendItem color="#f59e0b" label="Small (<0.1%)" />
+        <div className="text-xs text-slate-400 mb-2 font-medium">Bubble Size = % Held</div>
+        <div className="space-y-1.5 text-xs text-slate-300">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-purple-400 to-blue-500" />
+            <span>Larger = More tokens</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-gradient-to-br from-green-400 to-cyan-500" />
+            <span>Smaller = Fewer tokens</span>
+          </div>
+          <div className="text-slate-500 text-[10px] mt-1">
+            Each wallet has a unique color
+          </div>
         </div>
       </motion.div>
     </div>
   );
 }
 
-function LegendItem({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <div
-        className="w-3 h-3 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      <span className="text-slate-300">{label}</span>
-    </div>
-  );
-}

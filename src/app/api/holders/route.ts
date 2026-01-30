@@ -219,7 +219,7 @@ export async function GET(request: NextRequest) {
         balance: h.amount,
         percentage,
         radius: calculateRadius(percentage),
-        color: getHolderColor(percentage),
+        color: getHolderColor(percentage, h.owner),
       };
     });
 

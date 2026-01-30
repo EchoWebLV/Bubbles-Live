@@ -51,25 +51,73 @@ export const DEFAULT_CONFIG: BubbleMapConfig = {
   centerStrength: 0.003,
 };
 
-// Color palette for bubbles based on percentage
-export const BUBBLE_COLORS = {
-  whale: ["#9333ea", "#7c3aed", "#6366f1"], // Purple for top holders (>5%)
-  large: ["#3b82f6", "#0ea5e9", "#06b6d4"], // Blue for large holders (1-5%)
-  medium: ["#10b981", "#14b8a6", "#22d3d8"], // Teal for medium holders (0.1-1%)
-  small: ["#f59e0b", "#f97316", "#ef4444"], // Orange/Red for small holders (<0.1%)
-};
-
-export function getHolderColor(percentage: number): string {
+/**
+ * Generate a unique color based on wallet address
+ * Uses a hash of the address to create a deterministic HSL color
+ */
+export function getHolderColor(percentage: number, address: string): string {
+  // Simple hash function for the address
+  let hash = 0;
+  for (let i = 0; i < address.length; i++) {
+    const char = address.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Use hash to generate HSL values
+  // Hue: full range (0-360) for variety
+  const hue = Math.abs(hash % 360);
+  
+  // Saturation: 65-90% for vibrant colors
+  const saturation = 65 + Math.abs((hash >> 8) % 25);
+  
+  // Lightness: adjust based on holder size for visibility
+  // Bigger holders (whales) are slightly brighter
+  let lightness = 50;
   if (percentage >= 5) {
-    return BUBBLE_COLORS.whale[Math.floor(Math.random() * BUBBLE_COLORS.whale.length)];
+    lightness = 55 + Math.abs((hash >> 16) % 10); // 55-65%
+  } else if (percentage >= 1) {
+    lightness = 50 + Math.abs((hash >> 16) % 10); // 50-60%
+  } else {
+    lightness = 45 + Math.abs((hash >> 16) % 15); // 45-60%
   }
-  if (percentage >= 1) {
-    return BUBBLE_COLORS.large[Math.floor(Math.random() * BUBBLE_COLORS.large.length)];
+  
+  return hslToHex(hue, saturation, lightness);
+}
+
+/**
+ * Convert HSL to Hex color
+ */
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  
+  let r = 0, g = 0, b = 0;
+  
+  if (0 <= h && h < 60) {
+    r = c; g = x; b = 0;
+  } else if (60 <= h && h < 120) {
+    r = x; g = c; b = 0;
+  } else if (120 <= h && h < 180) {
+    r = 0; g = c; b = x;
+  } else if (180 <= h && h < 240) {
+    r = 0; g = x; b = c;
+  } else if (240 <= h && h < 300) {
+    r = x; g = 0; b = c;
+  } else if (300 <= h && h < 360) {
+    r = c; g = 0; b = x;
   }
-  if (percentage >= 0.1) {
-    return BUBBLE_COLORS.medium[Math.floor(Math.random() * BUBBLE_COLORS.medium.length)];
-  }
-  return BUBBLE_COLORS.small[Math.floor(Math.random() * BUBBLE_COLORS.small.length)];
+  
+  const toHex = (n: number) => {
+    const hex = Math.round((n + m) * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 export function calculateRadius(
