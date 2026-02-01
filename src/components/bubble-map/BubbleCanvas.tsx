@@ -3,7 +3,9 @@
 import { useRef, useEffect, useCallback } from "react";
 import type { Holder } from "./types";
 import type { EffectsState } from "./effects";
+import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
+import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
 
 interface BubbleCanvasProps {
   holders: Holder[];
@@ -11,6 +13,7 @@ interface BubbleCanvasProps {
   height: number;
   hoveredHolder: Holder | null;
   effectsState: EffectsState;
+  battleState: BattleState;
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -21,6 +24,7 @@ export function BubbleCanvas({
   height,
   hoveredHolder,
   effectsState,
+  battleState,
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -44,7 +48,7 @@ export function BubbleCanvas({
     canvas.style.height = `${height}px`;
   }, [width, height]);
 
-  // Draw whenever holders or effects change
+  // Draw whenever holders, effects, or battle state change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !width || !height || !holders.length) return;
@@ -53,6 +57,7 @@ export function BubbleCanvas({
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
+    const now = Date.now();
     
     // Reset transform and clear
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -62,9 +67,28 @@ export function BubbleCanvas({
     // Draw effects background (ripples, global effects)
     drawEffects(ctx, effectsState, width, height);
 
+    // Build a map of holder positions for targeting lines
+    const holderPositions = new Map<string, { x: number; y: number; color: string }>();
+    holders.forEach(h => {
+      if (h.x !== undefined && h.y !== undefined) {
+        holderPositions.set(h.address, { x: h.x, y: h.y, color: h.color });
+      }
+    });
+
+    // Draw targeting lines (behind everything)
+    drawTargetingLines(ctx, holders, battleState, holderPositions);
+
+    // Draw curved bullet trails and bullets
+    drawBullets(ctx, battleState.bullets, holderPositions);
+
     // Draw each bubble
     holders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) return;
+
+      const battleBubble = battleState.bubbles.get(holder.address);
+      const isGhost = battleBubble?.isGhost || false;
+      const health = battleBubble?.health ?? BATTLE_CONFIG.maxHealth;
+      const maxHealth = battleBubble?.maxHealth ?? BATTLE_CONFIG.maxHealth;
 
       const isHovered = hoveredHolder?.address === holder.address;
       const x = holder.x;
@@ -79,8 +103,12 @@ export function BubbleCanvas({
       let radius = holder.radius * scale;
       if (isHovered) radius *= 1.15;
 
-      // Draw effect glow if present
-      if (glowColor && glowIntensity > 0) {
+      // Ghost mode - semi-transparent and gray
+      const ghostAlpha = isGhost ? 0.4 : 1;
+      ctx.globalAlpha = ghostAlpha;
+
+      // Draw effect glow if present (and not ghost)
+      if (glowColor && glowIntensity > 0 && !isGhost) {
         const glowRadius = radius + 15 + glowIntensity * 10;
         const glowGradient = ctx.createRadialGradient(x, y, radius, x, y, glowRadius);
         glowGradient.addColorStop(0, `${glowColor}${Math.floor(glowIntensity * 80).toString(16).padStart(2, '0')}`);
@@ -102,17 +130,20 @@ export function BubbleCanvas({
         radius
       );
 
-      // Use glow color if in effect, otherwise use holder color
-      const baseColor = (glowColor && glowIntensity > 0.5) 
-        ? blendColors(holder.color, glowColor, glowIntensity * 0.5)
-        : holder.color;
+      // Ghost bubbles are gray
+      let baseColor = holder.color;
+      if (isGhost) {
+        baseColor = "#6b7280"; // Gray
+      } else if (glowColor && glowIntensity > 0.5) {
+        baseColor = blendColors(holder.color, glowColor, glowIntensity * 0.5);
+      }
         
       gradient.addColorStop(0, adjustBrightness(baseColor, 50));
       gradient.addColorStop(0.5, baseColor);
       gradient.addColorStop(1, adjustBrightness(baseColor, -40));
 
       // Draw outer glow for hovered bubble
-      if (isHovered) {
+      if (isHovered && !isGhost) {
         ctx.beginPath();
         ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
         const hoverGlow = ctx.createRadialGradient(x, y, radius, x, y, radius + 20);
@@ -144,8 +175,23 @@ export function BubbleCanvas({
       ctx.fillStyle = highlightGradient;
       ctx.fill();
 
+      ctx.globalAlpha = 1;
+
+      // Draw health bar (above bubble)
+      if (!isGhost) {
+        drawHealthBar(ctx, x, y - radius - 12, radius * 1.5, 6, health, maxHealth);
+      } else {
+        // Draw ghost timer
+        const remainingTime = getGhostRemainingTime(battleBubble!, now);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+        ctx.font = "bold 12px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${remainingTime}s`, x, y - radius - 10);
+      }
+
       // Draw percentage text for larger bubbles
-      if (radius > 18) {
+      if (radius > 18 && !isGhost) {
         ctx.fillStyle = "white";
         ctx.font = `bold ${Math.max(10, radius / 3)}px system-ui, sans-serif`;
         ctx.textAlign = "center";
@@ -161,7 +207,18 @@ export function BubbleCanvas({
           ctx.fillText(pctText, x, y);
         }
       }
+
+      // Draw kill count if any
+      if (battleBubble && battleBubble.kills > 0 && !isGhost) {
+        ctx.fillStyle = "#fbbf24";
+        ctx.font = "bold 10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(`☠${battleBubble.kills}`, x, y + radius + 12);
+      }
     });
+
+    // Draw damage numbers on top
+    drawDamageNumbers(ctx, battleState.damageNumbers);
 
     // Draw explosion particles on top
     effectsState.explosions.forEach(explosion => {
@@ -183,7 +240,7 @@ export function BubbleCanvas({
       });
     });
     
-  }, [holders, width, height, hoveredHolder, effectsState]);
+  }, [holders, width, height, hoveredHolder, effectsState, battleState]);
 
   // Handle mouse interactions
   const findHolderAtPosition = useCallback(
@@ -253,6 +310,191 @@ export function BubbleCanvas({
       onMouseLeave={handleMouseLeave}
     />
   );
+}
+
+// Draw health bar
+function drawHealthBar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  health: number,
+  maxHealth: number
+) {
+  const healthPercent = health / maxHealth;
+  const barX = x - width / 2;
+  
+  // Background
+  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+  ctx.fillRect(barX, y, width, height);
+  
+  // Health fill - color based on health level
+  let healthColor = "#22c55e"; // Green
+  if (healthPercent < 0.3) {
+    healthColor = "#ef4444"; // Red
+  } else if (healthPercent < 0.6) {
+    healthColor = "#f59e0b"; // Yellow
+  }
+  
+  ctx.fillStyle = healthColor;
+  ctx.fillRect(barX, y, width * healthPercent, height);
+  
+  // Border
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, y, width, height);
+}
+
+// Draw targeting lines from shooter to target
+function drawTargetingLines(
+  ctx: CanvasRenderingContext2D,
+  holders: Holder[],
+  battleState: BattleState,
+  holderPositions: Map<string, { x: number; y: number; color: string }>
+) {
+  // Group bullets by shooter to find current targets
+  const shooterTargets = new Map<string, string>();
+  
+  // Get the most recent bullet for each shooter to determine their target
+  for (const bullet of battleState.bullets) {
+    shooterTargets.set(bullet.shooterAddress, bullet.targetAddress);
+  }
+
+  // Draw curved targeting lines
+  shooterTargets.forEach((targetAddress, shooterAddress) => {
+    const shooter = holderPositions.get(shooterAddress);
+    const target = holderPositions.get(targetAddress);
+    const battleBubble = battleState.bubbles.get(shooterAddress);
+    
+    if (!shooter || !target || battleBubble?.isGhost) return;
+
+    // Calculate curve control point
+    const dx = target.x - shooter.x;
+    const dy = target.y - shooter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    
+    // Perpendicular vector
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+    
+    // Alternate curve direction based on shooter address hash
+    const curveDir = shooterAddress.charCodeAt(0) % 2 === 0 ? 1 : -1;
+    const curveStrength = 30;
+    
+    const midX = (shooter.x + target.x) / 2;
+    const midY = (shooter.y + target.y) / 2;
+    const controlX = midX + perpX * curveStrength * curveDir;
+    const controlY = midY + perpY * curveStrength * curveDir;
+
+    // Draw curved line with gradient
+    ctx.beginPath();
+    ctx.moveTo(shooter.x, shooter.y);
+    ctx.quadraticCurveTo(controlX, controlY, target.x, target.y);
+    
+    // Create gradient along the line
+    const gradient = ctx.createLinearGradient(shooter.x, shooter.y, target.x, target.y);
+    gradient.addColorStop(0, `${shooter.color}60`);
+    gradient.addColorStop(0.5, `${shooter.color}30`);
+    gradient.addColorStop(1, `${shooter.color}10`);
+    
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+}
+
+// Draw bullets with curved trails
+function drawBullets(
+  ctx: CanvasRenderingContext2D, 
+  bullets: Bullet[],
+  holderPositions: Map<string, { x: number; y: number; color: string }>
+) {
+  bullets.forEach(bullet => {
+    const shooterColor = bullet.shooterColor || "#ffff00";
+    
+    // Draw bullet trail (curved path behind the bullet)
+    const trailPoints: { x: number; y: number; alpha: number }[] = [];
+    const numTrailPoints = 8;
+    
+    for (let i = 0; i < numTrailPoints; i++) {
+      const trailProgress = Math.max(0, bullet.progress - (i * 0.03));
+      if (trailProgress <= 0) break;
+      
+      // Calculate trail point position on the curve
+      const t = trailProgress;
+      const dx = bullet.targetX - bullet.startX;
+      const dy = bullet.targetY - bullet.startY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const perpX = -dy / dist;
+      const perpY = dx / dist;
+      const midX = (bullet.startX + bullet.targetX) / 2;
+      const midY = (bullet.startY + bullet.targetY) / 2;
+      const controlX = midX + perpX * bullet.curveStrength * bullet.curveDirection;
+      const controlY = midY + perpY * bullet.curveStrength * bullet.curveDirection;
+      
+      const oneMinusT = 1 - t;
+      const x = oneMinusT * oneMinusT * bullet.startX + 
+                2 * oneMinusT * t * controlX + 
+                t * t * bullet.targetX;
+      const y = oneMinusT * oneMinusT * bullet.startY + 
+                2 * oneMinusT * t * controlY + 
+                t * t * bullet.targetY;
+      
+      trailPoints.push({ x, y, alpha: 1 - (i / numTrailPoints) });
+    }
+    
+    // Draw trail
+    for (let i = trailPoints.length - 1; i >= 0; i--) {
+      const point = trailPoints[i];
+      const trailSize = 2 + (trailPoints.length - i) * 0.3;
+      
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, trailSize, 0, Math.PI * 2);
+      ctx.fillStyle = `${shooterColor}${Math.floor(point.alpha * 100).toString(16).padStart(2, '0')}`;
+      ctx.fill();
+    }
+    
+    // Bullet glow with shooter's color
+    const glowGradient = ctx.createRadialGradient(
+      bullet.x, bullet.y, 0,
+      bullet.x, bullet.y, 10
+    );
+    glowGradient.addColorStop(0, `${shooterColor}cc`);
+    glowGradient.addColorStop(0.5, `${shooterColor}60`);
+    glowGradient.addColorStop(1, `${shooterColor}00`);
+    
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = glowGradient;
+    ctx.fill();
+    
+    // Bullet core (white center)
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    
+    // Inner color ring
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = shooterColor;
+    ctx.fill();
+  });
+}
+
+// Draw damage numbers
+function drawDamageNumbers(ctx: CanvasRenderingContext2D, damageNumbers: DamageNumber[]) {
+  damageNumbers.forEach(dn => {
+    ctx.globalAlpha = dn.alpha;
+    ctx.fillStyle = "#ff4444";
+    ctx.font = "bold 11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`-${dn.damage.toFixed(1)}`, dn.x, dn.y);
+    ctx.globalAlpha = 1;
+  });
 }
 
 // Helper function to adjust color brightness
