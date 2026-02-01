@@ -692,21 +692,31 @@ export function BubbleMap({ tokenAddress }: BubbleMapProps) {
         onClose={() => setSelectedHolder(null)}
       />
 
-      {/* Battle Legend */}
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.5 }}
-        className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-slate-700/50 z-10"
-      >
-        <div className="text-xs text-slate-400 mb-2 font-medium">⚔️ Battle Rules</div>
-        <div className="space-y-1.5 text-xs text-slate-300">
-          <div>❤️ 100 HP per bubble</div>
-          <div>🔫 0.1 dmg / 0.2s</div>
-          <div>👻 60s ghost on death</div>
-          <div>☠️ Kill count tracked</div>
-        </div>
-      </motion.div>
+      {/* Transaction Log */}
+      <AnimatePresence>
+        {eventLog.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-slate-700/50 z-10 w-64"
+          >
+            <div className="text-xs text-slate-400 mb-2 font-medium">📊 Live Transactions</div>
+            <div className="space-y-1">
+              {eventLog.map((event, i) => (
+                <motion.div
+                  key={`${event}-${i}`}
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1 - i * 0.15, x: 0 }}
+                  className="text-xs text-slate-300 font-mono"
+                >
+                  {event}
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
