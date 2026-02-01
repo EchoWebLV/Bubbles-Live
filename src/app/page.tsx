@@ -1,10 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BubbleMap } from "@/components/bubble-map";
-
-// Hardcoded BABEL token address
-const TOKEN_ADDRESS = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "HkrchFiWgRuPTdmNvqrPRLANDdeuuCTQERaB2dJSpump";
+import { BubbleMapClient } from "@/components/bubble-map/BubbleMapClient";
 
 export default function Home() {
   return (
@@ -52,9 +49,9 @@ export default function Home() {
         />
       </div>
 
-      {/* Content - Direct to Bubble Map */}
+      {/* Content - Synchronized Battle Map */}
       <div className="relative z-10 h-screen">
-        <BubbleMap tokenAddress={TOKEN_ADDRESS} />
+        <BubbleMapClient />
       </div>
     </main>
   );
