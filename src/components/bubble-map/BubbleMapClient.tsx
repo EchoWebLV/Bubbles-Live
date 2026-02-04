@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
 import { useGameSocket, GameState, GameHolder, GameBattleBubble } from "@/hooks/useGameSocket";
@@ -16,12 +16,26 @@ import {
 } from "./effects";
 import { Button } from "@/components/ui/button";
 
+// Camera/viewport state
+interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+const CAMERA_SPEED = 20;
+const ZOOM_SPEED = 0.1;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2;
+
 export function BubbleMapClient() {
   const [selectedHolder, setSelectedHolder] = useState<Holder | null>(null);
   const [hoveredHolder, setHoveredHolder] = useState<Holder | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [effectsState, setEffectsState] = useState<EffectsState>(createInitialEffectsState());
+  const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const keysPressed = useRef<Set<string>>(new Set());
 
   // Connect to game server
   const { connected, gameState, setDimensions: sendDimensions, sendTransaction } = useGameSocket();
@@ -65,18 +79,84 @@ export function BubbleMapClient() {
     }
   }, [connected, dimensions, sendDimensions]);
 
-  // Effects animation loop (local only for smooth rendering)
+  // Camera movement functions
+  const moveCamera = useCallback((dx: number, dy: number) => {
+    setCamera(prev => ({
+      ...prev,
+      x: prev.x + dx,
+      y: prev.y + dy,
+    }));
+  }, []);
+
+  const zoomCamera = useCallback((delta: number) => {
+    setCamera(prev => ({
+      ...prev,
+      zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + delta)),
+    }));
+  }, []);
+
+  const resetCamera = useCallback(() => {
+    setCamera({ x: 0, y: 0, zoom: 1 });
+  }, []);
+
+  // Keyboard controls
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysPressed.current.add(e.key);
+      
+      // Prevent scrolling with arrow keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysPressed.current.delete(e.key);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Effects animation loop + camera movement
   useEffect(() => {
     let animationId: number;
     
     const animate = () => {
       setEffectsState(prev => updateEffects(prev));
+      
+      // Handle continuous key presses for smooth camera movement
+      const keys = keysPressed.current;
+      if (keys.has('ArrowUp') || keys.has('w') || keys.has('W')) {
+        moveCamera(0, CAMERA_SPEED);
+      }
+      if (keys.has('ArrowDown') || keys.has('s') || keys.has('S')) {
+        moveCamera(0, -CAMERA_SPEED);
+      }
+      if (keys.has('ArrowLeft') || keys.has('a') || keys.has('A')) {
+        moveCamera(CAMERA_SPEED, 0);
+      }
+      if (keys.has('ArrowRight') || keys.has('d') || keys.has('D')) {
+        moveCamera(-CAMERA_SPEED, 0);
+      }
+      if (keys.has('+') || keys.has('=')) {
+        zoomCamera(0.02);
+      }
+      if (keys.has('-') || keys.has('_')) {
+        zoomCamera(-0.02);
+      }
+      
       animationId = requestAnimationFrame(animate);
     };
     
     animationId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationId);
-  }, []);
+  }, [moveCamera, zoomCamera]);
 
   // Convert game state to component formats
   const holders: Holder[] = gameState?.holders.map(h => ({
@@ -308,10 +388,105 @@ export function BubbleMapClient() {
           hoveredHolder={hoveredHolder}
           effectsState={effectsState}
           battleState={battleState}
+          camera={camera}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />
       )}
+
+      {/* Compact Bottom Control Bar */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20">
+        <div className="flex items-center gap-1 bg-slate-900/70 backdrop-blur-md rounded-full px-2 py-1.5 border border-slate-700/50">
+          {/* Zoom Out */}
+          <button
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+            onTouchStart={() => keysPressed.current.add('-')}
+            onTouchEnd={() => keysPressed.current.delete('-')}
+            onMouseDown={() => keysPressed.current.add('-')}
+            onMouseUp={() => keysPressed.current.delete('-')}
+            onMouseLeave={() => keysPressed.current.delete('-')}
+          >
+            <ZoomOut className="w-4 h-4" />
+          </button>
+
+          {/* Zoom Display */}
+          <div className="w-12 text-center text-xs text-slate-400 font-mono">
+            {Math.round(camera.zoom * 100)}%
+          </div>
+
+          {/* Zoom In */}
+          <button
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+            onTouchStart={() => keysPressed.current.add('+')}
+            onTouchEnd={() => keysPressed.current.delete('+')}
+            onMouseDown={() => keysPressed.current.add('+')}
+            onMouseUp={() => keysPressed.current.delete('+')}
+            onMouseLeave={() => keysPressed.current.delete('+')}
+          >
+            <ZoomIn className="w-4 h-4" />
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-5 bg-slate-600/50 mx-1" />
+
+          {/* Direction Controls */}
+          <button
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+            onTouchStart={() => keysPressed.current.add('ArrowLeft')}
+            onTouchEnd={() => keysPressed.current.delete('ArrowLeft')}
+            onMouseDown={() => keysPressed.current.add('ArrowLeft')}
+            onMouseUp={() => keysPressed.current.delete('ArrowLeft')}
+            onMouseLeave={() => keysPressed.current.delete('ArrowLeft')}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex flex-col gap-0.5">
+            <button
+              className="w-8 h-4 rounded-t flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+              onTouchStart={() => keysPressed.current.add('ArrowUp')}
+              onTouchEnd={() => keysPressed.current.delete('ArrowUp')}
+              onMouseDown={() => keysPressed.current.add('ArrowUp')}
+              onMouseUp={() => keysPressed.current.delete('ArrowUp')}
+              onMouseLeave={() => keysPressed.current.delete('ArrowUp')}
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <button
+              className="w-8 h-4 rounded-b flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+              onTouchStart={() => keysPressed.current.add('ArrowDown')}
+              onTouchEnd={() => keysPressed.current.delete('ArrowDown')}
+              onMouseDown={() => keysPressed.current.add('ArrowDown')}
+              onMouseUp={() => keysPressed.current.delete('ArrowDown')}
+              onMouseLeave={() => keysPressed.current.delete('ArrowDown')}
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+
+          <button
+            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors touch-manipulation"
+            onTouchStart={() => keysPressed.current.add('ArrowRight')}
+            onTouchEnd={() => keysPressed.current.delete('ArrowRight')}
+            onMouseDown={() => keysPressed.current.add('ArrowRight')}
+            onMouseUp={() => keysPressed.current.delete('ArrowRight')}
+            onMouseLeave={() => keysPressed.current.delete('ArrowRight')}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-5 bg-slate-600/50 mx-1" />
+
+          {/* Reset */}
+          <button
+            className="px-3 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700/50 active:bg-slate-600/50 transition-colors text-xs font-medium touch-manipulation"
+            onClick={resetCamera}
+          >
+            Reset
+          </button>
+        </div>
+      </div>
 
       {/* Hover Tooltip */}
       <AnimatePresence>

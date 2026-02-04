@@ -47,6 +47,8 @@ class GameState {
   async fetchHolders() {
     try {
       const apiKey = process.env.HELIUS_API_KEY;
+      console.log('Fetching holders... API Key:', apiKey ? 'present' : 'MISSING', 'Token:', this.tokenAddress);
+      
       if (!apiKey || !this.tokenAddress) {
         console.log('Missing API key or token address, using mock data');
         return this.generateMockHolders();
@@ -67,14 +69,16 @@ class GameState {
       });
 
       const data = await response.json();
+      console.log('Helius response - total accounts:', data.result?.total || 0);
       
       if (data.error || !data.result?.token_accounts) {
-        console.error('Helius API error:', data.error);
+        console.error('Helius API error:', data.error || 'No token_accounts in response');
         return this.generateMockHolders();
       }
 
       const accounts = data.result.token_accounts;
       const totalSupply = accounts.reduce((sum, acc) => sum + acc.amount, 0);
+      console.log('Processing', accounts.length, 'real holder accounts');
 
       const holders = accounts
         .sort((a, b) => b.amount - a.amount)

@@ -7,6 +7,14 @@ import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
 import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
 
+interface Camera {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+const DEFAULT_CAMERA: Camera = { x: 0, y: 0, zoom: 1 };
+
 interface BubbleCanvasProps {
   holders: Holder[];
   width: number;
@@ -14,6 +22,7 @@ interface BubbleCanvasProps {
   hoveredHolder: Holder | null;
   effectsState: EffectsState;
   battleState: BattleState;
+  camera?: Camera;
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -25,6 +34,7 @@ export function BubbleCanvas({
   hoveredHolder,
   effectsState,
   battleState,
+  camera = DEFAULT_CAMERA,
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -63,6 +73,13 @@ export function BubbleCanvas({
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(dpr, dpr);
+    
+    // Apply camera transform (pan and zoom)
+    const centerX = width / 2;
+    const centerY = height / 2;
+    ctx.translate(centerX, centerY);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.translate(-centerX + camera.x, -centerY + camera.y);
 
     // Draw effects background (ripples, global effects)
     drawEffects(ctx, effectsState, width, height);
@@ -240,7 +257,13 @@ export function BubbleCanvas({
       });
     });
     
-  }, [holders, width, height, hoveredHolder, effectsState, battleState]);
+  }, [holders, width, height, hoveredHolder, effectsState, battleState, camera]);
+
+  // Store camera ref for click detection
+  const cameraRef = useRef(camera);
+  useEffect(() => {
+    cameraRef.current = camera;
+  }, [camera]);
 
   // Handle mouse interactions
   const findHolderAtPosition = useCallback(
@@ -249,8 +272,17 @@ export function BubbleCanvas({
       if (!canvas) return null;
 
       const rect = canvas.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
+      let x = clientX - rect.left;
+      let y = clientY - rect.top;
+
+      // Reverse the camera transform to get world coordinates
+      const cam = cameraRef.current;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      
+      // Reverse: translate, then scale, then translate back
+      x = (x - centerX) / cam.zoom + centerX - cam.x;
+      y = (y - centerY) / cam.zoom + centerY - cam.y;
 
       // Check holders from largest to smallest (for overlapping bubbles)
       const sortedHolders = [...holdersRef.current].sort(

@@ -126,3 +126,16 @@ app.prepare().then(() => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
+// Handle unhandled rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+// Keep the process alive
+setInterval(() => {}, 1000 * 60 * 60);
