@@ -212,8 +212,8 @@ class GameState {
       console.log('Fetching holders... API Key:', apiKey ? 'present' : 'MISSING', 'Token:', this.tokenAddress);
       
       if (!apiKey || !this.tokenAddress) {
-        console.log('Missing API key or token address, using mock data');
-        return this.generateMockHolders();
+        console.error('ERROR: Missing HELIUS_API_KEY or TOKEN_ADDRESS - cannot fetch real holders');
+        return [];
       }
 
       const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
@@ -235,17 +235,20 @@ class GameState {
       
       if (data.error || !data.result?.token_accounts) {
         console.error('Helius API error:', data.error || 'No token_accounts in response');
-        return this.generateMockHolders();
+        return [];
       }
 
       const accounts = data.result.token_accounts;
       const totalSupply = accounts.reduce((sum, acc) => sum + acc.amount, 0);
       console.log('Processing', accounts.length, 'real holder accounts');
 
+      // Show all holders above minimum percentage threshold
+      const maxHolders = parseInt(process.env.MAX_HOLDERS_DISPLAY) || 500;
+      const minPercentage = 0.01; // Filter out holders with 0.01% or less
+      
       const holders = accounts
         .sort((a, b) => b.amount - a.amount)
-        .slice(0, 100)
-        .map((account, index) => {
+        .map((account) => {
           const percentage = totalSupply > 0 ? (account.amount / totalSupply) * 100 : 0;
           return {
             address: account.owner,
@@ -258,42 +261,15 @@ class GameState {
             vx: (Math.random() - 0.5) * 2,
             vy: (Math.random() - 0.5) * 2,
           };
-        });
+        })
+        .filter(h => h.percentage > minPercentage) // Only show holders above 0.01%
+        .slice(0, maxHolders);
 
       return holders;
     } catch (error) {
       console.error('Error fetching holders:', error);
-      return this.generateMockHolders();
+      return [];
     }
-  }
-
-  generateMockHolders() {
-    const holders = [];
-    const count = 50;
-    let remaining = 100;
-
-    for (let i = 0; i < count; i++) {
-      const isLast = i === count - 1;
-      const maxPct = Math.min(remaining, isLast ? remaining : remaining * 0.4);
-      const percentage = isLast ? remaining : Math.random() * maxPct * 0.8 + maxPct * 0.1;
-      remaining -= percentage;
-
-      const address = `mock${i.toString().padStart(4, '0')}${Math.random().toString(36).slice(2, 10)}`;
-      
-      holders.push({
-        address,
-        balance: Math.floor(percentage * 1000000),
-        percentage,
-        color: this.getHolderColor(percentage, address),
-        radius: this.calculateRadius(percentage),
-        x: undefined,
-        y: undefined,
-        vx: (Math.random() - 0.5) * 2,
-        vy: (Math.random() - 0.5) * 2,
-      });
-    }
-
-    return holders.sort((a, b) => b.percentage - a.percentage);
   }
 
   getHolderColor(percentage, address) {
