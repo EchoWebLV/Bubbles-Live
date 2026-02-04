@@ -27,7 +27,7 @@ class GameState {
     this.killFeed = [];
     this.eventLog = [];
     this.topKillers = [];
-    this.dimensions = { width: 1920, height: 1080 }; // Default dimensions
+    this.dimensions = { width: 3840, height: 2160 }; // Default dimensions (2x larger)
     this.lastUpdateTime = Date.now();
     this.bulletIdCounter = 0;
     this.isRunning = false;
@@ -170,8 +170,8 @@ class GameState {
   }
 
   calculateRadius(percentage) {
-    const minRadius = 12;
-    const maxRadius = 80;
+    const minRadius = 8;
+    const maxRadius = 45;
     const logMin = Math.log(0.001);
     const logMax = Math.log(100);
     const logPct = Math.log(Math.max(0.001, percentage));
@@ -184,11 +184,11 @@ class GameState {
     const { width, height } = this.dimensions;
     const centerX = width / 2;
     const centerY = height / 2;
-    const margin = 100;
+    const margin = 150;
 
     this.holders.forEach((holder, i) => {
       if (holder.x === undefined || holder.y === undefined) {
-        // Random position within bounds
+        // Random position within bounds - spread across the larger canvas
         holder.x = margin + Math.random() * (width - margin * 2);
         holder.y = margin + Math.random() * (height - margin * 2);
         holder.vx = (Math.random() - 0.5) * 2;
