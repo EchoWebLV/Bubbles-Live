@@ -293,6 +293,60 @@ export function BubbleMapClient() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-1/3 bg-indigo-500/5 rounded-full blur-3xl" />
       </div>
 
+      {/* Centered Logo Header - Flipped Trapezoid Shape */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        <div 
+          className="relative flex flex-col items-center justify-center px-6 pt-1 pb-2"
+          style={{
+            background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.85) 100%)',
+            clipPath: 'polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          <div 
+            className="absolute inset-0 opacity-50"
+            style={{
+              clipPath: 'polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%)',
+              background: 'linear-gradient(180deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.15) 100%)',
+            }}
+          />
+          {/* Border glow */}
+          <div 
+            className="absolute inset-0 opacity-30"
+            style={{
+              clipPath: 'polygon(0% 0%, 100% 0%, 85% 100%, 15% 100%)',
+              boxShadow: 'inset 0 0 20px rgba(139, 92, 246, 0.3)',
+            }}
+          />
+          <div 
+            className="relative z-10 text-xs font-bold tracking-[0.15em] uppercase"
+            style={{
+              background: 'linear-gradient(90deg, #a78bfa, #60a5fa, #a78bfa)',
+              backgroundSize: '200% auto',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              textShadow: '0 0 30px rgba(139, 92, 246, 0.5)',
+              animation: 'shimmer 3s linear infinite',
+            }}
+          >
+            Holderz Warz
+          </div>
+          <img 
+            src="/logo.png" 
+            alt="Bubbles Live" 
+            className="h-12 w-auto relative z-10 -mt-0.5"
+          />
+        </div>
+        {/* Bottom glow effect */}
+        <div 
+          className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-32 h-6 blur-xl opacity-50"
+          style={{
+            background: 'linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.6), rgba(59, 130, 246, 0.6), transparent)',
+          }}
+        />
+      </div>
+
       {/* Header Stats */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
