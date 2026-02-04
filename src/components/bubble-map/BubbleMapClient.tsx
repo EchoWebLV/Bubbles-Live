@@ -49,8 +49,10 @@ export function BubbleMapClient() {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [effectsState, setEffectsState] = useState<EffectsState>(createInitialEffectsState());
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
+  const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const keysPressed = useRef<Set<string>>(new Set());
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
 
   // Connect to game server
   const { connected, gameState, setDimensions: sendDimensions, sendTransaction } = useGameSocket();
@@ -112,6 +114,52 @@ export function BubbleMapClient() {
 
   const resetCamera = useCallback(() => {
     setCamera({ x: 0, y: 0, zoom: 1 });
+  }, []);
+
+  // Mouse drag handlers for camera panning
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only start drag on left click and not on UI elements
+    if (e.button === 0 && e.target === containerRef.current?.querySelector('canvas')) {
+      setIsDragging(true);
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      e.preventDefault();
+    }
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (isDragging && lastMousePos.current) {
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      
+      // Move camera (divide by zoom to keep consistent speed)
+      setCamera(prev => ({
+        ...prev,
+        x: prev.x + dx / prev.zoom,
+        y: prev.y + dy / prev.zoom,
+      }));
+      
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    }
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    lastMousePos.current = null;
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsDragging(false);
+    lastMousePos.current = null;
+  }, []);
+
+  // Scroll wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
+    setCamera(prev => ({
+      ...prev,
+      zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + zoomDelta)),
+    }));
   }, []);
 
   // Keyboard controls
@@ -229,7 +277,15 @@ export function BubbleMapClient() {
   const isLoading = !connected || !gameState;
 
   return (
-    <div className="relative w-full h-full" ref={containerRef}>
+    <div 
+      className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      ref={containerRef}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseLeave}
+      onWheel={handleWheel}
+    >
       {/* Background gradient effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 bg-purple-500/10 rounded-full blur-3xl" />
