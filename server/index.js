@@ -57,15 +57,9 @@ app.prepare().then(() => {
       }
     });
 
-    // Handle transaction events from Helius WebSocket
+    // Handle transaction events from Helius WebSocket - triggers live refresh
     socket.on('transaction', (event) => {
-      if (event.type === 'buy') {
-        gameState.addEventLog(`🟢 BUY tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
-      } else if (event.type === 'sell') {
-        gameState.addEventLog(`🔴 SELL tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
-      } else {
-        gameState.addEventLog(`💫 TX: ${event.signature?.slice(0, 8) || 'unknown'}...`);
-      }
+      gameState.handleTransaction(event);
     });
 
     socket.on('disconnect', () => {

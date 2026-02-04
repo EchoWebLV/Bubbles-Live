@@ -41,9 +41,72 @@ class GameState {
       logoUri: '',
     };
     this.priceData = null;
+    this.pendingRefresh = false;
+    this.lastRefreshTime = 0;
+    this.minRefreshInterval = 5000; // Minimum 5 seconds between refreshes
+    this.lastPriceUpdate = 0;
   }
 
-  // Fetch token metadata from DexScreener
+  // Fast price-only update (doesn't fetch full metadata)
+  async updatePrice() {
+    try {
+      const isPumpToken = this.tokenAddress.toLowerCase().endsWith('pump');
+      
+      // Try multiple sources in parallel for fastest response
+      const [dexResult, jupResult] = await Promise.allSettled([
+        fetch(`https://api.dexscreener.com/latest/dex/tokens/${this.tokenAddress}`)
+          .then(r => r.json())
+          .catch(() => null),
+        fetch(`https://api.jup.ag/price/v2?ids=${this.tokenAddress}`)
+          .then(r => r.json())
+          .catch(() => null),
+      ]);
+
+      let price = 0;
+      let priceChange1h = this.priceData?.priceChange1h || 0;
+      let priceChange24h = this.priceData?.priceChange24h || 0;
+
+      // Try Jupiter first (usually faster and more accurate)
+      if (jupResult.status === 'fulfilled' && jupResult.value?.data?.[this.tokenAddress]) {
+        price = parseFloat(jupResult.value.data[this.tokenAddress].price) || 0;
+      }
+
+      // Use DexScreener as backup or for additional data
+      if (dexResult.status === 'fulfilled' && dexResult.value?.pairs?.[0]) {
+        const pair = dexResult.value.pairs[0];
+        if (!price) {
+          price = parseFloat(pair.priceUsd) || 0;
+        }
+        priceChange1h = pair.priceChange?.h1 || 0;
+        priceChange24h = pair.priceChange?.h24 || 0;
+        
+        // Update logo if we don't have one
+        if (!this.token.logoUri && pair.info?.imageUrl) {
+          this.token.logoUri = pair.info.imageUrl;
+        }
+      }
+
+      if (price > 0) {
+        // Calculate market cap (pump.fun tokens have 1B supply)
+        const totalSupply = isPumpToken ? 1_000_000_000 : (this.token.totalSupply || 1_000_000_000);
+        const marketCap = price * totalSupply;
+
+        this.priceData = {
+          ...this.priceData,
+          price: price,
+          priceChange1h: priceChange1h,
+          priceChange24h: priceChange24h,
+          marketCap: marketCap,
+        };
+        
+        this.lastPriceUpdate = Date.now();
+      }
+    } catch (error) {
+      console.error('Price update error:', error.message);
+    }
+  }
+
+  // Fetch token metadata from DexScreener + Jupiter for accurate pricing
   async fetchTokenMetadata() {
     try {
       if (!this.tokenAddress) {
@@ -51,9 +114,10 @@ class GameState {
         return;
       }
 
-      console.log('Fetching token metadata for:', this.tokenAddress);
+      // Check if this is a pump.fun token (address ends with "pump")
+      const isPumpToken = this.tokenAddress.toLowerCase().endsWith('pump');
       
-      // Try DexScreener first (has good Solana support)
+      // Get DexScreener data for token info
       const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${this.tokenAddress}`);
       const dexData = await dexResponse.json();
       
@@ -67,22 +131,38 @@ class GameState {
           address: this.tokenAddress,
           symbol: tokenInfo.symbol || 'UNKNOWN',
           name: tokenInfo.name || 'Unknown Token',
-          decimals: 9,
-          totalSupply: 0,
+          decimals: isPumpToken ? 6 : 9,
+          totalSupply: isPumpToken ? 1_000_000_000 : 0, // pump.fun tokens have 1B supply
           logoUri: pair.info?.imageUrl || '',
         };
         
-        // Also get price data
+        // For pump.fun tokens, calculate market cap from price * total supply
+        // pump.fun tokens have 1 billion total supply with 6 decimals
+        let marketCap = parseFloat(pair.fdv) || parseFloat(pair.marketCap) || 0;
+        const price = parseFloat(pair.priceUsd) || 0;
+        
+        // If FDV seems off, calculate from price (pump.fun tokens = 1B supply)
+        if (isPumpToken && price > 0) {
+          const calculatedMcap = price * 1_000_000_000;
+          // Use the larger value as pump.fun shows circulating supply mcap
+          // which is close to fully diluted for most pump tokens
+          if (Math.abs(calculatedMcap - marketCap) > marketCap * 0.1) {
+            console.log(`Market cap mismatch - DexScreener: $${marketCap.toFixed(2)}, Calculated: $${calculatedMcap.toFixed(2)}`);
+          }
+          marketCap = calculatedMcap;
+        }
+        
         this.priceData = {
-          price: parseFloat(pair.priceUsd) || 0,
+          price: price,
           priceChange1h: pair.priceChange?.h1 || 0,
           priceChange24h: pair.priceChange?.h24 || 0,
           volume24h: parseFloat(pair.volume?.h24) || 0,
           liquidity: parseFloat(pair.liquidity?.usd) || 0,
-          marketCap: parseFloat(pair.marketCap) || 0,
+          marketCap: marketCap,
         };
         
-        console.log('Token metadata loaded:', this.token.symbol, '-', this.token.name);
+        console.log('Token:', this.token.symbol, '-', this.token.name);
+        console.log('Price: $' + price.toExponential(4), '| Market Cap: $' + marketCap.toFixed(2));
         console.log('Token logo:', this.token.logoUri || 'none');
         return;
       }
@@ -573,6 +653,100 @@ class GameState {
     this.eventLog = this.eventLog.slice(0, 10);
   }
 
+  // Handle incoming transaction - trigger throttled refresh
+  async handleTransaction(event) {
+    const now = Date.now();
+    
+    // Log the transaction
+    if (event.type === 'buy') {
+      this.addEventLog(`🟢 BUY tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    } else if (event.type === 'sell') {
+      this.addEventLog(`🔴 SELL tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    } else {
+      this.addEventLog(`💫 TX: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    }
+
+    // Always update price immediately on any transaction
+    this.updatePrice();
+
+    // Throttle holder refreshes - don't refresh more than once per minRefreshInterval
+    if (now - this.lastRefreshTime < this.minRefreshInterval) {
+      // Schedule a pending refresh if not already scheduled
+      if (!this.pendingRefresh) {
+        this.pendingRefresh = true;
+        const delay = this.minRefreshInterval - (now - this.lastRefreshTime);
+        setTimeout(() => this.refreshHoldersNow(), delay);
+      }
+      return;
+    }
+
+    // Refresh holders immediately
+    await this.refreshHoldersNow();
+  }
+
+  // Refresh holders immediately (with change detection)
+  async refreshHoldersNow() {
+    this.pendingRefresh = false;
+    this.lastRefreshTime = Date.now();
+    
+    const oldHolders = new Map(this.holders.map(h => [h.address, h]));
+    const newHolders = await this.fetchHolders();
+    
+    // Track changes
+    const newAddresses = new Set(newHolders.map(h => h.address));
+    const oldAddresses = new Set(this.holders.map(h => h.address));
+    
+    // Find removed holders (sold everything - bubble pops!)
+    for (const [address, holder] of oldHolders) {
+      if (!newAddresses.has(address)) {
+        // This holder sold everything - create pop effect
+        this.addEventLog(`💥 ${address.slice(0, 6)}... sold everything!`);
+        
+        // Remove their battle bubble
+        this.battleBubbles.delete(address);
+        
+        // You could add explosion effects here if you track them
+        console.log(`Holder removed (sold all): ${address.slice(0, 8)}...`);
+      }
+    }
+    
+    // Find new holders
+    for (const holder of newHolders) {
+      if (!oldAddresses.has(holder.address)) {
+        // New holder appeared!
+        this.addEventLog(`🆕 ${holder.address.slice(0, 6)}... joined! (${holder.percentage.toFixed(2)}%)`);
+        console.log(`New holder: ${holder.address.slice(0, 8)}... with ${holder.percentage.toFixed(2)}%`);
+      }
+    }
+    
+    // Find holders with significant balance changes
+    for (const newHolder of newHolders) {
+      const oldHolder = oldHolders.get(newHolder.address);
+      if (oldHolder) {
+        const pctChange = newHolder.percentage - oldHolder.percentage;
+        
+        // Preserve position and velocity from old holder
+        newHolder.x = oldHolder.x;
+        newHolder.y = oldHolder.y;
+        newHolder.vx = oldHolder.vx;
+        newHolder.vy = oldHolder.vy;
+        
+        // Log significant changes (more than 0.1% change)
+        if (Math.abs(pctChange) > 0.1) {
+          if (pctChange > 0) {
+            this.addEventLog(`📈 ${newHolder.address.slice(0, 6)}... +${pctChange.toFixed(2)}%`);
+          } else {
+            this.addEventLog(`📉 ${newHolder.address.slice(0, 6)}... ${pctChange.toFixed(2)}%`);
+          }
+        }
+      }
+    }
+    
+    this.holders = newHolders;
+    this.initializePositions();
+    console.log(`Live refresh: ${this.holders.length} holders`);
+  }
+
   updateTopKillers() {
     this.topKillers = Array.from(this.battleBubbles.values())
       .filter(b => b.kills > 0)
@@ -666,10 +840,15 @@ class GameState {
       console.log(`Refreshed holders: ${this.holders.length}`);
     }, 120000);
 
-    // Refresh price data every 30 seconds
+    // Fast price refresh every 5 seconds
     this.priceRefresh = setInterval(async () => {
+      await this.updatePrice();
+    }, 5000);
+
+    // Full metadata refresh every 60 seconds (for logo, name updates)
+    this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
-    }, 30000);
+    }, 60000);
   }
 
   stop() {
@@ -677,6 +856,7 @@ class GameState {
     if (this.gameLoop) clearInterval(this.gameLoop);
     if (this.holderRefresh) clearInterval(this.holderRefresh);
     if (this.priceRefresh) clearInterval(this.priceRefresh);
+    if (this.metadataRefresh) clearInterval(this.metadataRefresh);
   }
 }
 
