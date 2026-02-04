@@ -34,13 +34,95 @@ class GameState {
     this.tokenAddress = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || '';
     this.token = {
       address: this.tokenAddress,
-      symbol: 'TOKEN',
-      name: 'Token',
+      symbol: 'Loading...',
+      name: 'Loading...',
       decimals: 9,
       totalSupply: 0,
       logoUri: '',
     };
     this.priceData = null;
+  }
+
+  // Fetch token metadata from DexScreener
+  async fetchTokenMetadata() {
+    try {
+      if (!this.tokenAddress) {
+        console.log('No token address provided, skipping metadata fetch');
+        return;
+      }
+
+      console.log('Fetching token metadata for:', this.tokenAddress);
+      
+      // Try DexScreener first (has good Solana support)
+      const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${this.tokenAddress}`);
+      const dexData = await dexResponse.json();
+      
+      if (dexData.pairs && dexData.pairs.length > 0) {
+        const pair = dexData.pairs[0];
+        const tokenInfo = pair.baseToken.address.toLowerCase() === this.tokenAddress.toLowerCase() 
+          ? pair.baseToken 
+          : pair.quoteToken;
+        
+        this.token = {
+          address: this.tokenAddress,
+          symbol: tokenInfo.symbol || 'UNKNOWN',
+          name: tokenInfo.name || 'Unknown Token',
+          decimals: 9,
+          totalSupply: 0,
+          logoUri: pair.info?.imageUrl || '',
+        };
+        
+        // Also get price data
+        this.priceData = {
+          price: parseFloat(pair.priceUsd) || 0,
+          priceChange1h: pair.priceChange?.h1 || 0,
+          priceChange24h: pair.priceChange?.h24 || 0,
+          volume24h: parseFloat(pair.volume?.h24) || 0,
+          liquidity: parseFloat(pair.liquidity?.usd) || 0,
+          marketCap: parseFloat(pair.marketCap) || 0,
+        };
+        
+        console.log('Token metadata loaded:', this.token.symbol, '-', this.token.name);
+        console.log('Token logo:', this.token.logoUri || 'none');
+        return;
+      }
+
+      // Fallback: Try Helius DAS API for metadata
+      const apiKey = process.env.HELIUS_API_KEY;
+      if (apiKey) {
+        const heliusResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'metadata',
+            method: 'getAsset',
+            params: { id: this.tokenAddress },
+          }),
+        });
+        
+        const heliusData = await heliusResponse.json();
+        
+        if (heliusData.result) {
+          const asset = heliusData.result;
+          this.token = {
+            address: this.tokenAddress,
+            symbol: asset.content?.metadata?.symbol || 'UNKNOWN',
+            name: asset.content?.metadata?.name || 'Unknown Token',
+            decimals: 9,
+            totalSupply: 0,
+            logoUri: asset.content?.links?.image || asset.content?.files?.[0]?.uri || '',
+          };
+          
+          console.log('Token metadata from Helius:', this.token.symbol, '-', this.token.name);
+          return;
+        }
+      }
+
+      console.log('Could not fetch token metadata');
+    } catch (error) {
+      console.error('Error fetching token metadata:', error.message);
+    }
   }
 
   // Initialize holders from API
@@ -552,6 +634,9 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
+    // Fetch token metadata (name, symbol, logo)
+    await this.fetchTokenMetadata();
+
     // Fetch initial holders
     this.holders = await this.fetchHolders();
     this.initializePositions();
@@ -580,12 +665,18 @@ class GameState {
       this.initializePositions();
       console.log(`Refreshed holders: ${this.holders.length}`);
     }, 120000);
+
+    // Refresh price data every 30 seconds
+    this.priceRefresh = setInterval(async () => {
+      await this.fetchTokenMetadata();
+    }, 30000);
   }
 
   stop() {
     this.isRunning = false;
     if (this.gameLoop) clearInterval(this.gameLoop);
     if (this.holderRefresh) clearInterval(this.holderRefresh);
+    if (this.priceRefresh) clearInterval(this.priceRefresh);
   }
 }
 

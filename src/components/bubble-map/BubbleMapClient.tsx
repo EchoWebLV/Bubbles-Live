@@ -28,6 +28,21 @@ const ZOOM_SPEED = 0.1;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2;
 
+// Format market cap with K, M, B suffixes
+function formatMarketCap(value: number): string {
+  if (!value || value === 0) return '$0';
+  if (value >= 1_000_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(2)}B`;
+  }
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(2)}M`;
+  }
+  if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(2)}K`;
+  }
+  return `$${value.toFixed(2)}`;
+}
+
 export function BubbleMapClient() {
   const [selectedHolder, setSelectedHolder] = useState<Holder | null>(null);
   const [hoveredHolder, setHoveredHolder] = useState<Holder | null>(null);
@@ -249,10 +264,10 @@ export function BubbleMapClient() {
 
           {priceData && (
             <div className="bg-slate-900/80 backdrop-blur-md rounded-xl px-4 py-2 border border-slate-700/50">
-              <div className="text-xs text-slate-400">Price</div>
+              <div className="text-xs text-slate-400">Market Cap</div>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-white">
-                  ${priceData.price < 0.01 ? priceData.price.toExponential(2) : priceData.price.toFixed(4)}
+                  {formatMarketCap(priceData.marketCap)}
                 </span>
                 <span className={`text-xs flex items-center ${priceData.priceChange1h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {priceData.priceChange1h >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
