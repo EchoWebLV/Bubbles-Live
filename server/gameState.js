@@ -1,9 +1,12 @@
 // Server-side game state management
 // This runs continuously and maintains the battle simulation
 
+const db = require('./db');
+const playerStore = require('./playerStore');
+
 const BATTLE_CONFIG = {
-  maxHealth: 100,
-  bulletDamage: 0.1,
+  maxHealth: 100,       // base — overridden per-player by progression
+  bulletDamage: 0.1,    // base — overridden per-player by progression
   fireRate: 200, // ms between shots
   bulletSpeed: 8,
   ghostDuration: 60000, // 60 seconds
@@ -48,6 +51,9 @@ class GameState {
     this.newHolders = new Set(); // Track newly added holders for spawn animation
     this.popEffects = []; // Track pop effects for sold holders
     this.missingHolderCounts = new Map(); // Track how many times a holder has been missing
+    this.playerCache = new Map();  // In-memory cache of player stats (wallet -> stats)
+    this.dirtyPlayers = new Set(); // Players that need to be saved to DB
+    this.dbReady = false;          // Whether database is available
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -336,17 +342,24 @@ class GameState {
         holder.vy = (Math.random() - 0.5) * 2;
       }
 
-      // Initialize battle bubble if not exists
+      // Initialize battle bubble if not exists — use player progression stats
       if (!this.battleBubbles.has(holder.address)) {
+        const playerStats = this.playerCache.get(holder.address);
+        const maxHealth = playerStats
+          ? playerStore.calcMaxHealth(playerStats.healthLevel)
+          : BATTLE_CONFIG.maxHealth;
+        const kills = playerStats ? playerStats.kills : 0;
+        const deaths = playerStats ? playerStats.deaths : 0;
+
         this.battleBubbles.set(holder.address, {
           address: holder.address,
-          health: BATTLE_CONFIG.maxHealth,
-          maxHealth: BATTLE_CONFIG.maxHealth,
+          health: maxHealth,
+          maxHealth: maxHealth,
           isGhost: false,
           ghostUntil: null,
           lastShotTime: 0,
-          kills: 0,
-          deaths: 0,
+          kills,
+          deaths,
         });
       }
     });
@@ -458,12 +471,12 @@ class GameState {
       }
     }
 
-    // Check for ghost respawns
+    // Check for ghost respawns — restore to player's max health (progression-based)
     this.battleBubbles.forEach((bubble, address) => {
       if (bubble.isGhost && bubble.ghostUntil && now >= bubble.ghostUntil) {
         bubble.isGhost = false;
         bubble.ghostUntil = null;
-        bubble.health = BATTLE_CONFIG.maxHealth;
+        bubble.health = bubble.maxHealth; // Use progression-based maxHealth
         this.addEventLog(`👻 ${address.slice(0, 6)}... respawned!`);
       }
     });
@@ -503,6 +516,12 @@ class GameState {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const curveDir = Math.random() > 0.5 ? 1 : -1;
 
+        // Use shooter's progression-based damage
+        const shooterStats = this.playerCache.get(holder.address);
+        const damage = shooterStats
+          ? playerStore.calcBulletDamage(shooterStats.shootingLevel)
+          : BATTLE_CONFIG.bulletDamage;
+
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
           shooterAddress: holder.address,
@@ -520,7 +539,7 @@ class GameState {
             Math.random() * (BATTLE_CONFIG.curveStrength.max - BATTLE_CONFIG.curveStrength.min),
           vx: (dx / dist) * BATTLE_CONFIG.bulletSpeed,
           vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
-          damage: BATTLE_CONFIG.bulletDamage,
+          damage: damage,
           createdAt: now,
         });
 
@@ -604,6 +623,9 @@ class GameState {
             if (shooter) {
               shooter.kills++;
             }
+
+            // Award XP and update player cache
+            this.awardKillXP(bullet.shooterAddress, target.address);
 
             this.killFeed.unshift({
               killer: bullet.shooterAddress,
@@ -766,6 +788,108 @@ class GameState {
     console.log(`Live refresh: ${this.holders.length} holders`);
   }
 
+  // ─── Player Progression Methods ─────────────────────────────────
+
+  /**
+   * Ensure a player exists in the in-memory cache.
+   * Creates a default entry if the wallet is new.
+   */
+  ensurePlayerCached(walletAddress) {
+    if (!this.playerCache.has(walletAddress)) {
+      this.playerCache.set(walletAddress, {
+        walletAddress,
+        xp: 0,
+        kills: 0,
+        deaths: 0,
+        holdStreakDays: 0,
+        totalTransactions: 0,
+        totalBuys: 0,
+        totalSells: 0,
+        firstSeen: new Date(),
+        lastSeen: new Date(),
+        ...playerStore.deriveStats(0),
+      });
+    }
+    return this.playerCache.get(walletAddress);
+  }
+
+  /**
+   * Award XP for a kill (to killer) and death (to victim).
+   * Recalculates levels and updates battle bubble stats.
+   */
+  awardKillXP(killerAddress, victimAddress) {
+    // Update killer
+    const killer = this.ensurePlayerCached(killerAddress);
+    killer.xp += playerStore.PROGRESSION.xpPerKill;
+    killer.kills++;
+    const killerStats = playerStore.deriveStats(killer.xp);
+    Object.assign(killer, killerStats);
+    this.dirtyPlayers.add(killerAddress);
+
+    // Update killer's battle bubble max health (level up mid-game!)
+    const killerBubble = this.battleBubbles.get(killerAddress);
+    if (killerBubble) {
+      const oldMax = killerBubble.maxHealth;
+      killerBubble.maxHealth = killerStats.maxHealth;
+      // Heal the difference (reward for leveling up)
+      if (killerStats.maxHealth > oldMax) {
+        killerBubble.health = Math.min(
+          killerBubble.health + (killerStats.maxHealth - oldMax),
+          killerStats.maxHealth
+        );
+      }
+    }
+
+    // Update victim
+    const victim = this.ensurePlayerCached(victimAddress);
+    victim.xp += playerStore.PROGRESSION.xpPerDeath;
+    victim.deaths++;
+    const victimStats = playerStore.deriveStats(victim.xp);
+    Object.assign(victim, victimStats);
+    this.dirtyPlayers.add(victimAddress);
+
+    // Update victim's battle bubble max health for next respawn
+    const victimBubble = this.battleBubbles.get(victimAddress);
+    if (victimBubble) {
+      victimBubble.maxHealth = victimStats.maxHealth;
+    }
+  }
+
+  /**
+   * Award XP for a transaction (buy/sell).
+   */
+  awardTransactionXP(type) {
+    // We don't know the exact wallet from a Helius tx event,
+    // so we award XP to all current holders when a tx happens.
+    // In the future, parse the tx to find the exact wallet.
+    // For now, this is a placeholder — the main XP comes from kills and holding.
+  }
+
+  /**
+   * Periodically save dirty players to DB.
+   */
+  async flushPlayersToDB() {
+    if (!this.dbReady || this.dirtyPlayers.size === 0) return;
+
+    const toSave = new Map();
+    for (const addr of this.dirtyPlayers) {
+      const player = this.playerCache.get(addr);
+      if (player) toSave.set(addr, player);
+    }
+
+    this.dirtyPlayers.clear();
+
+    try {
+      await playerStore.savePlayers(toSave);
+    } catch (err) {
+      console.error('Failed to flush players to DB:', err.message);
+      // Re-mark as dirty so we retry next cycle
+      for (const addr of toSave.keys()) {
+        this.dirtyPlayers.add(addr);
+      }
+    }
+  }
+
   updateTopKillers() {
     this.topKillers = Array.from(this.battleBubbles.values())
       .filter(b => b.kills > 0)
@@ -793,15 +917,24 @@ class GameState {
         ...p,
         progress: Math.min(1, (now - p.time) / 1000), // 0 to 1 over 1 second
       })),
-      battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => ({
-        address: addr,
-        health: b.health,
-        maxHealth: b.maxHealth,
-        isGhost: b.isGhost,
-        ghostUntil: b.ghostUntil,
-        kills: b.kills,
-        deaths: b.deaths,
-      })),
+      battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => {
+        const playerStats = this.playerCache.get(addr);
+        return {
+          address: addr,
+          health: b.health,
+          maxHealth: b.maxHealth,
+          isGhost: b.isGhost,
+          ghostUntil: b.ghostUntil,
+          kills: b.kills,
+          deaths: b.deaths,
+          // Progression data
+          level: playerStats ? playerStats.level : 1,
+          xp: playerStats ? playerStats.xp : 0,
+          healthLevel: playerStats ? playerStats.healthLevel : 1,
+          shootingLevel: playerStats ? playerStats.shootingLevel : 1,
+          holdStreakDays: playerStats ? playerStats.holdStreakDays : 0,
+        };
+      }),
       bullets: this.bullets.map(b => ({
         id: b.id,
         shooterAddress: b.shooterAddress,
@@ -834,6 +967,14 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
+    // Initialize database (creates tables if needed)
+    this.dbReady = await db.migrate();
+    if (this.dbReady) {
+      console.log('Loading player stats from database...');
+      this.playerCache = await playerStore.loadAllPlayers();
+      console.log(`Loaded ${this.playerCache.size} players from DB`);
+    }
+
     // Fetch token metadata (name, symbol, logo)
     await this.fetchTokenMetadata();
 
@@ -842,6 +983,11 @@ class GameState {
     this.initializePositions();
     
     console.log(`Loaded ${this.holders.length} holders`);
+
+    // Ensure all current holders are in the player cache
+    for (const holder of this.holders) {
+      this.ensurePlayerCached(holder.address);
+    }
 
     // Run game loop at 60fps
     this.gameLoop = setInterval(() => {
@@ -863,6 +1009,12 @@ class GameState {
       });
       this.holders = newHolders;
       this.initializePositions();
+
+      // Ensure new holders are cached
+      for (const holder of newHolders) {
+        this.ensurePlayerCached(holder.address);
+      }
+
       console.log(`Refreshed holders: ${this.holders.length}`);
     }, 120000);
 
@@ -875,14 +1027,49 @@ class GameState {
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
+
+    // Flush dirty player stats to DB every 30 seconds
+    this.dbFlushInterval = setInterval(async () => {
+      await this.flushPlayersToDB();
+    }, 30000);
+
+    // Update hold streaks once per day (check every hour, but only awards once per ~20h)
+    this.holdStreakInterval = setInterval(async () => {
+      if (!this.dbReady) return;
+      const currentAddresses = this.holders.map(h => h.address);
+      if (currentAddresses.length > 0) {
+        await playerStore.updateHoldStreaks(currentAddresses);
+        // Reload updated stats
+        const updated = await playerStore.loadAllPlayers();
+        for (const [addr, stats] of updated) {
+          this.playerCache.set(addr, stats);
+          // Update battle bubble max health if level changed
+          const bubble = this.battleBubbles.get(addr);
+          if (bubble && bubble.maxHealth !== stats.maxHealth) {
+            const oldMax = bubble.maxHealth;
+            bubble.maxHealth = stats.maxHealth;
+            if (stats.maxHealth > oldMax && !bubble.isGhost) {
+              bubble.health = Math.min(bubble.health + (stats.maxHealth - oldMax), stats.maxHealth);
+            }
+          }
+        }
+        console.log('Hold streaks updated');
+      }
+    }, 60 * 60 * 1000); // Every hour
   }
 
-  stop() {
+  async stop() {
     this.isRunning = false;
     if (this.gameLoop) clearInterval(this.gameLoop);
     if (this.holderRefresh) clearInterval(this.holderRefresh);
     if (this.priceRefresh) clearInterval(this.priceRefresh);
     if (this.metadataRefresh) clearInterval(this.metadataRefresh);
+    if (this.dbFlushInterval) clearInterval(this.dbFlushInterval);
+    if (this.holdStreakInterval) clearInterval(this.holdStreakInterval);
+
+    // Final flush of player stats before shutdown
+    await this.flushPlayersToDB();
+    await db.close();
   }
 }
 

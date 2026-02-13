@@ -8,7 +8,7 @@ const { Server } = require('socket.io');
 const { GameState } = require('./gameState');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = dev ? 'localhost' : '0.0.0.0'; // Railway needs 0.0.0.0 in production
 const port = parseInt(process.env.PORT || '3000', 10);
 
 console.log('Initializing Next.js...');
@@ -30,7 +30,11 @@ app.prepare().then(() => {
   // Initialize Socket.io
   const io = new Server(httpServer, {
     cors: {
-      origin: dev ? 'http://localhost:3000' : process.env.NEXT_PUBLIC_URL,
+      origin: dev
+        ? 'http://localhost:3000'
+        : (process.env.RAILWAY_PUBLIC_DOMAIN
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+            : process.env.NEXT_PUBLIC_URL || '*'),
       methods: ['GET', 'POST'],
     },
     transports: ['websocket', 'polling'],
@@ -100,22 +104,17 @@ app.prepare().then(() => {
       `);
     });
 
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
+  // Graceful shutdown (async — flushes player stats to DB before exit)
+  async function shutdown() {
     console.log('Shutting down...');
     clearInterval(broadcastInterval);
-    gameState.stop();
+    await gameState.stop(); // Flushes DB + closes pool
     httpServer.close();
     process.exit(0);
-  });
+  }
 
-  process.on('SIGINT', () => {
-    console.log('Shutting down...');
-    clearInterval(broadcastInterval);
-    gameState.stop();
-    httpServer.close();
-    process.exit(0);
-  });
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }).catch((err) => {
   console.error('Failed to start server:', err);
   process.exit(1);

@@ -643,6 +643,7 @@ export function BubbleMap({ tokenAddress }: BubbleMapProps) {
           hoveredHolder={hoveredHolder}
           effectsState={effectsState}
           battleState={battleState}
+          popEffects={[]}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />

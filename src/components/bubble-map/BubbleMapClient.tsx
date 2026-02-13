@@ -248,6 +248,12 @@ export function BubbleMapClient() {
         lastShotTime: 0,
         kills: b.kills,
         deaths: b.deaths,
+        // Progression
+        level: b.level ?? 1,
+        xp: b.xp ?? 0,
+        healthLevel: b.healthLevel ?? 1,
+        shootingLevel: b.shootingLevel ?? 1,
+        holdStreakDays: b.holdStreakDays ?? 0,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -382,7 +388,7 @@ export function BubbleMapClient() {
               <div className="text-xs text-slate-400">Market Cap</div>
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-white">
-                  {formatMarketCap(priceData.marketCap)}
+                  {formatMarketCap(priceData.marketCap ?? 0)}
                 </span>
                 <span className={`text-xs flex items-center ${priceData.priceChange1h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {priceData.priceChange1h >= 0 ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
@@ -641,16 +647,27 @@ export function BubbleMapClient() {
                   {hoveredHolder.percentage.toFixed(2)}%
                 </span>
               </div>
-              {battleState.bubbles.get(hoveredHolder.address) && (
-                <div className="text-xs text-slate-400 border-l border-slate-600 pl-3">
-                  ❤️ {battleState.bubbles.get(hoveredHolder.address)!.health.toFixed(0)} HP
-                  {battleState.bubbles.get(hoveredHolder.address)!.kills > 0 && (
-                    <span className="ml-2 text-yellow-400">
-                      ☠️ {battleState.bubbles.get(hoveredHolder.address)!.kills}
-                    </span>
-                  )}
-                </div>
-              )}
+              {battleState.bubbles.get(hoveredHolder.address) && (() => {
+                const b = battleState.bubbles.get(hoveredHolder.address)!;
+                return (
+                  <div className="text-xs text-slate-400 border-l border-slate-600 pl-3 flex items-center gap-2">
+                    {(b.level ?? 1) > 1 && (
+                      <span className="text-purple-400 font-bold">Lv.{b.level}</span>
+                    )}
+                    <span>❤️ {b.health.toFixed(0)}/{b.maxHealth} HP</span>
+                    {b.kills > 0 && (
+                      <span className="text-yellow-400">
+                        ☠️ {b.kills}
+                      </span>
+                    )}
+                    {(b.holdStreakDays ?? 0) > 0 && (
+                      <span className="text-blue-400">
+                        💎 {b.holdStreakDays}d
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </motion.div>
         )}

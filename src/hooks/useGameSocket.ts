@@ -12,6 +12,8 @@ export interface GameHolder {
   radius: number;
   x?: number;
   y?: number;
+  isNew?: boolean;
+  spawnTime?: number;
 }
 
 export interface GameBattleBubble {
@@ -22,6 +24,12 @@ export interface GameBattleBubble {
   ghostUntil: number | null;
   kills: number;
   deaths: number;
+  // Progression data from DB
+  level: number;
+  xp: number;
+  healthLevel: number;
+  shootingLevel: number;
+  holdStreakDays: number;
 }
 
 export interface GameBullet {
@@ -54,6 +62,16 @@ export interface GameKillFeed {
   time: number;
 }
 
+export interface GamePopEffect {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  time: number;
+  progress: number;
+}
+
 export interface GameState {
   holders: GameHolder[];
   battleBubbles: GameBattleBubble[];
@@ -62,6 +80,7 @@ export interface GameState {
   killFeed: GameKillFeed[];
   eventLog: string[];
   topKillers: { address: string; kills: number }[];
+  popEffects: GamePopEffect[];
   token: {
     address: string;
     symbol: string;
@@ -73,6 +92,10 @@ export interface GameState {
   priceData: {
     price: number;
     priceChange1h: number;
+    priceChange24h?: number;
+    volume24h?: number;
+    liquidity?: number;
+    marketCap?: number;
   } | null;
   dimensions: { width: number; height: number };
   timestamp: number;

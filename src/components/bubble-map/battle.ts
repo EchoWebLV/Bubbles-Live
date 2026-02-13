@@ -9,6 +9,12 @@ export interface BattleBubble {
   lastShotTime: number;
   kills: number;
   deaths: number;
+  // Progression (from DB, via server)
+  level?: number;
+  xp?: number;
+  healthLevel?: number;
+  shootingLevel?: number;
+  holdStreakDays?: number;
 }
 
 export interface Bullet {
