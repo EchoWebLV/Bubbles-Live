@@ -230,7 +230,12 @@ export function BubbleMapClient() {
     radius: h.radius,
     x: h.x,
     y: h.y,
+    isNew: h.isNew,
+    spawnTime: h.spawnTime,
   })) || [];
+
+  // Pop effects for holders who sold
+  const popEffects = gameState?.popEffects || [];
 
   const battleState: BattleState = {
     bubbles: new Map(
@@ -513,6 +518,7 @@ export function BubbleMapClient() {
           hoveredHolder={hoveredHolder}
           effectsState={effectsState}
           battleState={battleState}
+          popEffects={popEffects}
           camera={camera}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}

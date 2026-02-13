@@ -13,6 +13,19 @@ export interface Holder extends SimulationNodeDatum {
   vy?: number;
   fx?: number | null;
   fy?: number | null;
+  // Animation properties
+  isNew?: boolean;
+  spawnTime?: number;
+}
+
+export interface PopEffect {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  time: number;
+  progress: number;
 }
 
 export interface TokenInfo {

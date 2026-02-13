@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback } from "react";
-import type { Holder } from "./types";
+import type { Holder, PopEffect } from "./types";
 import type { EffectsState } from "./effects";
 import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
@@ -22,6 +22,7 @@ interface BubbleCanvasProps {
   hoveredHolder: Holder | null;
   effectsState: EffectsState;
   battleState: BattleState;
+  popEffects: PopEffect[];
   camera?: Camera;
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
@@ -34,6 +35,7 @@ export function BubbleCanvas({
   hoveredHolder,
   effectsState,
   battleState,
+  popEffects,
   camera = DEFAULT_CAMERA,
   onHolderClick,
   onHolderHover,
@@ -111,18 +113,43 @@ export function BubbleCanvas({
       const x = holder.x;
       const y = holder.y;
       
+      // Check if this is a new holder (spawn animation)
+      const isNew = holder.isNew && holder.spawnTime;
+      let spawnProgress = 1;
+      if (isNew && holder.spawnTime) {
+        spawnProgress = Math.min(1, (now - holder.spawnTime) / 500); // 500ms spawn animation
+      }
+      
       // Get effect modifiers
       const { scale, glowColor, glowIntensity } = getBubbleEffectModifiers(
         holder.address,
         effectsState
       );
       
-      let radius = holder.radius * scale;
+      // Apply spawn animation scale (bounce effect)
+      const spawnScale = isNew ? (spawnProgress < 1 ? 
+        0.3 + spawnProgress * 0.7 * (1 + Math.sin(spawnProgress * Math.PI) * 0.3) : 1) : 1;
+      
+      let radius = holder.radius * scale * spawnScale;
       if (isHovered) radius *= 1.15;
 
       // Ghost mode - semi-transparent and gray
       const ghostAlpha = isGhost ? 0.4 : 1;
       ctx.globalAlpha = ghostAlpha;
+
+      // Draw spawn glow for new holders
+      if (isNew && spawnProgress < 1) {
+        const spawnGlowRadius = radius + 30 * (1 - spawnProgress);
+        const spawnGlow = ctx.createRadialGradient(x, y, radius * 0.5, x, y, spawnGlowRadius);
+        spawnGlow.addColorStop(0, `${holder.color}99`);
+        spawnGlow.addColorStop(0.5, `${holder.color}44`);
+        spawnGlow.addColorStop(1, `${holder.color}00`);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, spawnGlowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = spawnGlow;
+        ctx.fill();
+      }
 
       // Draw effect glow if present (and not ghost)
       if (glowColor && glowIntensity > 0 && !isGhost) {
@@ -205,6 +232,10 @@ export function BubbleCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(`${remainingTime}s`, x, y - radius - 10);
+        
+        // Draw skull emoji in the center of dead bubbles
+        ctx.font = `${Math.max(16, radius * 0.6)}px system-ui, sans-serif`;
+        ctx.fillText("💀", x, y);
       }
 
       // Draw percentage text for larger bubbles
@@ -256,8 +287,65 @@ export function BubbleCanvas({
         ctx.globalAlpha = 1;
       });
     });
+
+    // Draw pop effects (when holders sell everything)
+    popEffects.forEach(pop => {
+      const progress = pop.progress;
+      if (progress >= 1) return;
+      
+      const alpha = 1 - progress;
+      const expandScale = 1 + progress * 2; // Expand to 3x size
+      const expandedRadius = pop.radius * expandScale;
+      
+      // Outer expanding ring
+      ctx.beginPath();
+      ctx.arc(pop.x, pop.y, expandedRadius, 0, Math.PI * 2);
+      ctx.strokeStyle = `${pop.color}${Math.floor(alpha * 200).toString(16).padStart(2, '0')}`;
+      ctx.lineWidth = 3 * (1 - progress);
+      ctx.stroke();
+      
+      // Inner fading circle
+      const innerGradient = ctx.createRadialGradient(
+        pop.x, pop.y, 0,
+        pop.x, pop.y, expandedRadius * 0.8
+      );
+      innerGradient.addColorStop(0, `${pop.color}${Math.floor(alpha * 100).toString(16).padStart(2, '0')}`);
+      innerGradient.addColorStop(0.5, `${pop.color}${Math.floor(alpha * 50).toString(16).padStart(2, '0')}`);
+      innerGradient.addColorStop(1, `${pop.color}00`);
+      
+      ctx.beginPath();
+      ctx.arc(pop.x, pop.y, expandedRadius * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = innerGradient;
+      ctx.fill();
+      
+      // Particle burst effect
+      const numParticles = 8;
+      for (let i = 0; i < numParticles; i++) {
+        const angle = (i / numParticles) * Math.PI * 2;
+        const particleDistance = expandedRadius * 0.5 + progress * pop.radius * 2;
+        const particleX = pop.x + Math.cos(angle) * particleDistance;
+        const particleY = pop.y + Math.sin(angle) * particleDistance;
+        const particleSize = 4 * (1 - progress);
+        
+        ctx.beginPath();
+        ctx.arc(particleX, particleY, particleSize, 0, Math.PI * 2);
+        ctx.fillStyle = `${pop.color}${Math.floor(alpha * 255).toString(16).padStart(2, '0')}`;
+        ctx.fill();
+      }
+      
+      // "POP" text
+      if (progress < 0.5) {
+        ctx.globalAlpha = (0.5 - progress) * 2;
+        ctx.fillStyle = "#ff4444";
+        ctx.font = `bold ${Math.max(14, pop.radius * 0.5)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("💥 SOLD", pop.x, pop.y);
+        ctx.globalAlpha = 1;
+      }
+    });
     
-  }, [holders, width, height, hoveredHolder, effectsState, battleState, camera]);
+  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);

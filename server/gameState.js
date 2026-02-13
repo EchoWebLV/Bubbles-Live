@@ -45,6 +45,9 @@ class GameState {
     this.lastRefreshTime = 0;
     this.minRefreshInterval = 5000; // Minimum 5 seconds between refreshes
     this.lastPriceUpdate = 0;
+    this.newHolders = new Set(); // Track newly added holders for spawn animation
+    this.popEffects = []; // Track pop effects for sold holders
+    this.missingHolderCounts = new Map(); // Track how many times a holder has been missing
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -244,7 +247,7 @@ class GameState {
 
       // Show all holders above minimum percentage threshold
       const maxHolders = parseInt(process.env.MAX_HOLDERS_DISPLAY) || 500;
-      const minPercentage = 0.01; // Filter out holders with 0.01% or less
+      const minPercentage = parseFloat(process.env.MIN_HOLDER_PERCENTAGE) || 0.01;
       
       const holders = accounts
         .sort((a, b) => b.amount - a.amount)
@@ -664,6 +667,7 @@ class GameState {
   async refreshHoldersNow() {
     this.pendingRefresh = false;
     this.lastRefreshTime = Date.now();
+    const now = Date.now();
     
     const oldHolders = new Map(this.holders.map(h => [h.address, h]));
     const newHolders = await this.fetchHolders();
@@ -672,24 +676,62 @@ class GameState {
     const newAddresses = new Set(newHolders.map(h => h.address));
     const oldAddresses = new Set(this.holders.map(h => h.address));
     
+    // Clear old new holder markers (after 3 seconds)
+    this.newHolders = new Set([...this.newHolders].filter(addr => {
+      const holder = newHolders.find(h => h.address === addr);
+      return holder && holder.spawnTime && (now - holder.spawnTime) < 3000;
+    }));
+    
+    // Clean up old pop effects (after 1 second)
+    this.popEffects = this.popEffects.filter(p => (now - p.time) < 1000);
+    
     // Find removed holders (sold everything - bubble pops!)
+    // Only consider truly removed after missing 3+ consecutive refreshes
     for (const [address, holder] of oldHolders) {
-      if (!newAddresses.has(address)) {
-        // This holder sold everything - create pop effect
-        this.addEventLog(`💥 ${address.slice(0, 6)}... sold everything!`);
+      if (!newAddresses.has(address) && holder.x !== undefined) {
+        // Increment missing counter
+        const missingCount = (this.missingHolderCounts.get(address) || 0) + 1;
+        this.missingHolderCounts.set(address, missingCount);
         
-        // Remove their battle bubble
-        this.battleBubbles.delete(address);
-        
-        // You could add explosion effects here if you track them
-        console.log(`Holder removed (sold all): ${address.slice(0, 8)}...`);
+        // Only remove after 3 consecutive misses (prevents API glitches from resetting health)
+        if (missingCount >= 3) {
+          // This holder truly sold everything - create pop effect
+          this.addEventLog(`💥 ${address.slice(0, 6)}... sold everything!`);
+          
+          // Create pop effect at holder's position
+          this.popEffects.push({
+            id: `pop-${now}-${address}`,
+            x: holder.x,
+            y: holder.y,
+            radius: holder.radius,
+            color: holder.color,
+            time: now,
+          });
+          
+          // Remove their battle bubble
+          this.battleBubbles.delete(address);
+          this.missingHolderCounts.delete(address);
+          
+          console.log(`Holder removed (sold all): ${address.slice(0, 8)}...`);
+        } else {
+          console.log(`Holder missing (${missingCount}/3): ${address.slice(0, 8)}...`);
+        }
+      }
+    }
+    
+    // Reset missing count for holders that are present
+    for (const holder of newHolders) {
+      if (this.missingHolderCounts.has(holder.address)) {
+        this.missingHolderCounts.delete(holder.address);
       }
     }
     
     // Find new holders
     for (const holder of newHolders) {
       if (!oldAddresses.has(holder.address)) {
-        // New holder appeared!
+        // New holder appeared - mark for spawn animation
+        this.newHolders.add(holder.address);
+        holder.spawnTime = now;
         this.addEventLog(`🆕 ${holder.address.slice(0, 6)}... joined! (${holder.percentage.toFixed(2)}%)`);
         console.log(`New holder: ${holder.address.slice(0, 8)}... with ${holder.percentage.toFixed(2)}%`);
       }
@@ -706,6 +748,7 @@ class GameState {
         newHolder.y = oldHolder.y;
         newHolder.vx = oldHolder.vx;
         newHolder.vy = oldHolder.vy;
+        newHolder.spawnTime = oldHolder.spawnTime; // Preserve spawn time
         
         // Log significant changes (more than 0.1% change)
         if (Math.abs(pctChange) > 0.1) {
@@ -733,6 +776,7 @@ class GameState {
 
   // Get serializable state for clients
   getState() {
+    const now = Date.now();
     return {
       holders: this.holders.map(h => ({
         address: h.address,
@@ -742,6 +786,12 @@ class GameState {
         radius: h.radius,
         x: h.x,
         y: h.y,
+        isNew: this.newHolders.has(h.address),
+        spawnTime: h.spawnTime,
+      })),
+      popEffects: this.popEffects.map(p => ({
+        ...p,
+        progress: Math.min(1, (now - p.time) / 1000), // 0 to 1 over 1 second
       })),
       battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => ({
         address: addr,
