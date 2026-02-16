@@ -91,7 +91,7 @@ app.prepare().then(() => {
       console.log(`
 ╔════════════════════════════════════════════════════════╗
 ║                                                        ║
-║   🎮 Bubble Battle Server Running!                     ║
+║   🎮 HODLWARZ Server Running!                     ║
 ║                                                        ║
 ║   > Local:    http://${hostname}:${port}                     ║
 ║   > Mode:     ${dev ? 'Development' : 'Production'}                          ║

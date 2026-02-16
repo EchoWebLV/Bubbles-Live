@@ -1,4 +1,4 @@
-// Visual effects system for bubble map
+// Visual effects system for HODLWARZ
 
 export type EffectType = 
   | "explosion"      // New buyer - particles exploding outward

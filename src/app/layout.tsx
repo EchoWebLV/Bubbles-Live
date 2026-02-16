@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Bubbles Live - Solana Token Holder Visualization",
-  description: "Interactive bubble map visualization of Solana token holders",
+  title: "HODLWARZ - Token Holder Battle Royale",
+  description: "Real-time battle royale where Solana token holders fight. Hold the token, level up, dominate.",
 };
 
 export default function RootLayout({

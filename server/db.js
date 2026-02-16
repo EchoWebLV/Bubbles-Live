@@ -8,7 +8,7 @@ let pool = null;
 /**
  * Get or create the connection pool.
  * DATABASE_URL is set automatically by Railway when you add Postgres.
- * For local dev, use: postgresql://postgres:postgres@localhost:5432/bubbles_live
+ * For local dev, use: postgresql://postgres:postgres@localhost:5432/hodlwarz
  */
 function getPool() {
   if (pool) return pool;

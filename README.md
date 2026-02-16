@@ -1,8 +1,8 @@
-# Bubbles Live
+# HODLWARZ
 
-An interactive, physics-based visualization of Solana token holder distribution. Watch bubbles bounce around and collide as they represent token holders - the bigger the bubble, the larger the holder's stake.
+A real-time token holder battle royale on Solana. Every holder is a bubble. Bubbles auto-fight, earn XP from kills and holding, and level up with more HP and damage. All data is live on-chain.
 
-![Bubbles Live](https://via.placeholder.com/800x400?text=Bubbles+Live+Preview)
+![HODLWARZ](https://via.placeholder.com/800x400?text=HODLWARZ+Preview)
 
 ## Features
 
@@ -33,8 +33,8 @@ An interactive, physics-based visualization of Solana token holder distribution.
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/bubbles-live.git
-cd bubbles-live
+git clone https://github.com/yourusername/hodlwarz.git
+cd hodlwarz
 ```
 
 2. Install dependencies:

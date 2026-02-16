@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info } from "lucide-react";
+import { WelcomeModal } from "@/components/WelcomeModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
 import { useGameSocket, GameState, GameHolder, GameBattleBubble } from "@/hooks/useGameSocket";
@@ -50,9 +51,63 @@ export function BubbleMapClient() {
   const [effectsState, setEffectsState] = useState<EffectsState>(createInitialEffectsState());
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [musicStarted, setMusicStarted] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
+
+  // Initialize audio element and autoplay
+  useEffect(() => {
+    const audio = new Audio("/where-it-leads.mp3");
+    audio.loop = true;
+    audio.volume = 0.4;
+    audioRef.current = audio;
+
+    // Attempt autoplay — browsers may block until user interacts
+    audio.play().then(() => {
+      setIsMusicPlaying(true);
+      setMusicStarted(true);
+    }).catch(() => {
+      // Autoplay blocked — start on first user click anywhere
+      const startOnClick = () => {
+        audio.play().then(() => {
+          setIsMusicPlaying(true);
+          setMusicStarted(true);
+        }).catch(() => {});
+        document.removeEventListener("click", startOnClick);
+        document.removeEventListener("keydown", startOnClick);
+      };
+      document.addEventListener("click", startOnClick, { once: true });
+      document.addEventListener("keydown", startOnClick, { once: true });
+    });
+
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
+  }, []);
+
+  // Toggle music
+  const toggleMusic = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isMusicPlaying) {
+      audio.pause();
+      setIsMusicPlaying(false);
+    } else {
+      audio.play().then(() => {
+        setIsMusicPlaying(true);
+        setMusicStarted(true);
+      }).catch(() => {
+        // Browser blocked autoplay — user needs to click again
+        console.log("Audio play blocked by browser");
+      });
+    }
+  }, [isMusicPlaying]);
 
   // Connect to game server
   const { connected, gameState, setDimensions: sendDimensions, sendTransaction } = useGameSocket();
@@ -341,11 +396,11 @@ export function BubbleMapClient() {
               animation: 'shimmer 3s linear infinite',
             }}
           >
-            Holderz Warz
+            HODLWARZ
           </div>
           <img 
             src="/logo.png" 
-            alt="Bubbles Live" 
+            alt="HODLWARZ" 
             className="h-12 w-auto relative z-10 -mt-0.5"
           />
         </div>
@@ -435,6 +490,34 @@ export function BubbleMapClient() {
               <span className="text-xs text-blue-400">TXs: {transactionCount}</span>
             </div>
           )}
+
+          {/* Music toggle */}
+          <button
+            onClick={toggleMusic}
+            className={`bg-slate-900/80 backdrop-blur-md rounded-xl px-3 py-2 border flex items-center gap-2 transition-all hover:bg-slate-800/80 ${
+              isMusicPlaying ? 'border-purple-500/50' : 'border-slate-700/50'
+            }`}
+            title={isMusicPlaying ? "Pause music" : "Play music"}
+          >
+            {isMusicPlaying ? (
+              <>
+                <Volume2 className="w-3.5 h-3.5 text-purple-400" />
+                <div className="flex items-center gap-0.5">
+                  <div className="w-0.5 h-2 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                  <div className="w-0.5 h-3 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                  <div className="w-0.5 h-1.5 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                  <div className="w-0.5 h-2.5 bg-purple-400 rounded-full animate-pulse" style={{ animationDelay: '75ms' }} />
+                </div>
+              </>
+            ) : (
+              <>
+                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                {!musicStarted && (
+                  <span className="text-xs text-slate-400">Music</span>
+                )}
+              </>
+            )}
+          </button>
         </div>
       </motion.div>
 
@@ -705,6 +788,31 @@ export function BubbleMapClient() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Info button — bottom left */}
+      <button
+        onClick={() => setShowRules(true)}
+        className="absolute bottom-4 left-4 z-20 w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+        style={{
+          background: "linear-gradient(135deg, rgba(255,0,255,0.15), rgba(0,255,255,0.15))",
+          border: "1px solid rgba(255,0,255,0.3)",
+          boxShadow: "0 0 15px rgba(255,0,255,0.1)",
+        }}
+        title="Game rules"
+      >
+        <Info className="w-4 h-4 text-purple-300" />
+      </button>
+
+      {/* Welcome modal — shows once per device */}
+      <WelcomeModal />
+
+      {/* Rules modal — opened via info button */}
+      {showRules && (
+        <WelcomeModal
+          forceOpen
+          onClose={() => setShowRules(false)}
+        />
+      )}
     </div>
   );
 }
