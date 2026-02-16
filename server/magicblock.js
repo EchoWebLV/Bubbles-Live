@@ -25,6 +25,10 @@ const ER_WS = 'wss://devnet.magicblock.app';
 const ARENA_SEED = Buffer.from('arena');
 const PLAYER_SEED = Buffer.from('player');
 
+// On-chain uses u16 integers for damage/attack (BASE_ATTACK=10).
+// Local game uses floats (bulletDamage=0.1).  Scale factor = 100.
+const DAMAGE_SCALE = 100;
+
 // Load IDL
 const combatIdl = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'hodlwarz_combat.json'), 'utf-8')
@@ -377,8 +381,11 @@ class MagicBlockService {
     try {
       const start = Date.now();
 
+      // Scale local float damage (0.1) → on-chain u16 (10)
+      const onchainDamage = Math.round(damage * DAMAGE_SCALE);
+
       const tx = await this.erProgram.methods
-        .processAttack(damage)
+        .processAttack(onchainDamage)
         .accounts({
           attacker: attacker.playerPda,
           victim: victim.playerPda,
@@ -495,7 +502,7 @@ class MagicBlockService {
         wallet: account.wallet.toBase58(),
         health: account.health,
         maxHealth: account.maxHealth,
-        attackPower: account.attackPower,
+        attackPower: account.attackPower / DAMAGE_SCALE, // on-chain 10 → local 0.1
         xp: typeof account.xp === 'object' ? account.xp.toNumber() : account.xp,
         kills: typeof account.kills === 'object' ? account.kills.toNumber() : account.kills,
         deaths: typeof account.deaths === 'object' ? account.deaths.toNumber() : account.deaths,

@@ -22,14 +22,16 @@ const PHYSICS_CONFIG = {
 };
 
 // Progression formulas (mirror onchain but used for local preview)
+// On-chain uses u16: BASE_ATTACK=10, +5/level, BASE_HEALTH=100, +10/level
+// Local uses floats: scale damage by /100
 const PROGRESSION = {
   xpPerKill: 25,
   xpPerDeath: 5,
   levelScale: 50,
   healthPerLevel: 10,
-  damagePerLevel: 0.01, // +0.01 bullet damage per level
+  damagePerLevel: 0.05, // on-chain +5 per level → local +0.05
   baseHealth: 100,
-  baseDamage: 0.1,      // base attack per bullet
+  baseDamage: 0.1,      // on-chain 10 → local 0.1
 };
 
 function calcLevel(xp) {
@@ -76,9 +78,13 @@ class GameState {
     this.magicBlock = new MagicBlockService();
     this.magicBlockReady = false;
 
-    // Pending attack queue (for when ER is processing)
-    this.attackQueue = [];
-    this.isProcessingAttacks = false;
+    // Damage aggregation buffer: "attacker|victim" → { attacker, victim, damage, isLocalKill }
+    // Instead of sending one tx per bullet, we accumulate damage and flush every N seconds.
+    this.damageBuffer = new Map();
+    this.lastDamageFlush = Date.now();
+    this.damageFlushInterval = 3000; // flush every 3 seconds
+    this.isFlushingDamage = false;
+    this.maxConcurrentFlush = 3; // max txs sent per flush cycle
 
     // Player registration queue
     this.registerQueue = [];
@@ -640,23 +646,62 @@ class GameState {
     this._processAttackQueue();
   }
 
-  // ─── ER Attack Queue ─────────────────────────────────────────────
+  // ─── ER Damage Aggregation ───────────────────────────────────────
+  // Instead of sending one processAttack tx per bullet (hundreds/sec),
+  // we accumulate damage per attacker→victim pair and flush every few
+  // seconds.  This keeps ER tx count manageable (~1-5 txs per flush).
 
   _queueAttack(attackerAddress, victimAddress, damage, isLocalKill = false) {
-    this.attackQueue.push({ attacker: attackerAddress, victim: victimAddress, damage, isLocalKill });
+    const key = `${attackerAddress}|${victimAddress}`;
+    const existing = this.damageBuffer.get(key);
+    if (existing) {
+      existing.damage += damage;
+      if (isLocalKill) existing.isLocalKill = true;
+    } else {
+      this.damageBuffer.set(key, {
+        attacker: attackerAddress,
+        victim: victimAddress,
+        damage,
+        isLocalKill,
+      });
+    }
   }
 
   async _processAttackQueue() {
-    if (this.isProcessingAttacks || this.attackQueue.length === 0) return;
-    this.isProcessingAttacks = true;
+    const now = Date.now();
+    if (this.isFlushingDamage) return;
+    if (now - this.lastDamageFlush < this.damageFlushInterval) return;
+    if (this.damageBuffer.size === 0) return;
 
-    // Process up to 5 attacks per tick
-    const batch = this.attackQueue.splice(0, 5);
-    for (const attack of batch) {
-      this.magicBlock.processAttack(attack.attacker, attack.victim, attack.damage, attack.isLocalKill).catch(() => {});
+    this.isFlushingDamage = true;
+    this.lastDamageFlush = now;
+
+    // Take the current buffer and clear it so new damage accumulates fresh
+    const batch = Array.from(this.damageBuffer.values());
+    this.damageBuffer.clear();
+
+    // Send up to maxConcurrentFlush txs in parallel, then the rest sequentially
+    // to avoid overwhelming the ER
+    const toSend = batch.slice(0, this.maxConcurrentFlush);
+    const overflow = batch.slice(this.maxConcurrentFlush);
+
+    // Send first batch in parallel
+    await Promise.allSettled(
+      toSend.map(attack =>
+        this.magicBlock.processAttack(
+          attack.attacker, attack.victim, attack.damage, attack.isLocalKill
+        ).catch(() => {})
+      )
+    );
+
+    // Send overflow sequentially with a small gap
+    for (const attack of overflow) {
+      await this.magicBlock.processAttack(
+        attack.attacker, attack.victim, attack.damage, attack.isLocalKill
+      ).catch(() => {});
     }
 
-    this.isProcessingAttacks = false;
+    this.isFlushingDamage = false;
   }
 
   // ─── Player Registration Queue ───────────────────────────────────
