@@ -127,7 +127,7 @@ export interface GameState {
 }
 
 export interface OnchainEvent {
-  type: 'arena' | 'register' | 'delegate' | 'attack' | 'attack_pending' | 'respawn' | 'upgrade' | 'commit' | 'system' | 'error';
+  type: 'arena' | 'register' | 'delegate' | 'attack' | 'attack_pending' | 'respawn' | 'kill' | 'death' | 'upgrade' | 'commit' | 'system' | 'error';
   message: string;
   tx: string | null;
   txFull: string | null;

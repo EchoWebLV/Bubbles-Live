@@ -593,13 +593,15 @@ class GameState {
             alpha: 1,
           });
 
-          // Send attack to ER (fire-and-forget, ER is authoritative)
+          // Check for local death (preview — ER confirms with tx proof)
+          const isLocalKill = targetBattle.health <= 0;
+
+          // Send attack to ER; flag lethal hits so ER can verify and log with tx hash
           if (this.magicBlockReady) {
-            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage);
+            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage, isLocalKill);
           }
 
-          // Check for local death (preview — ER confirms)
-          if (targetBattle.health <= 0) {
+          if (isLocalKill) {
             targetBattle.health = 0;
             targetBattle.isGhost = true;
             targetBattle.isAlive = false;
@@ -619,13 +621,8 @@ class GameState {
             this.killFeed = this.killFeed.slice(0, 5);
             this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
 
-            // Log kill to on-chain records panel
-            if (this.magicBlockReady) {
-              this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
-                killer: bullet.shooterAddress,
-                victim: target.address,
-              });
-            }
+            // Kill/death events are logged by magicBlock.processAttack()
+            // with the actual ER tx hash as on-chain proof.
 
             this.updateTopKillers();
           }
@@ -645,8 +642,8 @@ class GameState {
 
   // ─── ER Attack Queue ─────────────────────────────────────────────
 
-  _queueAttack(attackerAddress, victimAddress, damage) {
-    this.attackQueue.push({ attacker: attackerAddress, victim: victimAddress, damage });
+  _queueAttack(attackerAddress, victimAddress, damage, isLocalKill = false) {
+    this.attackQueue.push({ attacker: attackerAddress, victim: victimAddress, damage, isLocalKill });
   }
 
   async _processAttackQueue() {
@@ -656,7 +653,7 @@ class GameState {
     // Process up to 5 attacks per tick
     const batch = this.attackQueue.splice(0, 5);
     for (const attack of batch) {
-      this.magicBlock.processAttack(attack.attacker, attack.victim, attack.damage).catch(() => {});
+      this.magicBlock.processAttack(attack.attacker, attack.victim, attack.damage, attack.isLocalKill).catch(() => {});
     }
 
     this.isProcessingAttacks = false;

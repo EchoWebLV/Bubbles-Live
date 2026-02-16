@@ -102,15 +102,29 @@ class MagicBlockService {
   // ─── Event Logging ───────────────────────────────────────────────
 
   _logEvent(type, message, tx = null, extra = {}) {
+    // Build explorer URL: base-layer txs go to devnet, ER txs use custom cluster
+    let explorer = null;
+    if (tx) {
+      const isERTx = extra._er === true;
+      if (isERTx) {
+        explorer = `https://explorer.solana.com/tx/${tx}?cluster=custom&customUrl=${encodeURIComponent(ER_RPC)}`;
+      } else {
+        explorer = `https://explorer.solana.com/tx/${tx}?cluster=devnet`;
+      }
+    }
+
+    // Remove internal-only flags before storing
+    const { _er, ...publicExtra } = extra;
+
     const event = {
       type,
       message,
       tx: tx ? tx.slice(0, 20) + '...' : null,
       txFull: tx || null,
-      explorer: tx ? `https://explorer.solana.com/tx/${tx}?cluster=devnet` : null,
+      explorer,
       time: Date.now(),
       status: tx ? 'confirmed' : (type.includes('pending') ? 'pending' : null),
-      ...extra,
+      ...publicExtra,
     };
     this.eventLog.unshift(event);
     if (this.eventLog.length > this.MAX_EVENT_LOG) {
@@ -350,7 +364,7 @@ class MagicBlockService {
 
   // ─── Combat (runs on ER) ─────────────────────────────────────────
 
-  async processAttack(attackerAddress, victimAddress, damage) {
+  async processAttack(attackerAddress, victimAddress, damage, isLocalKill = false) {
     if (!this.ready || !this.arenaDelegated) return null;
 
     const attacker = this.playerMap.get(attackerAddress);
@@ -359,12 +373,6 @@ class MagicBlockService {
     if (!this.playerDelegated.has(attackerAddress) || !this.playerDelegated.has(victimAddress)) return null;
 
     this.stats.attacksSent++;
-    this._logEvent('attack_pending', `${attackerAddress.slice(0, 6)}... → ${victimAddress.slice(0, 6)}...`, null, {
-      attacker: attackerAddress,
-      victim: victimAddress,
-      damage,
-      status: 'pending',
-    });
 
     try {
       const start = Date.now();
@@ -381,18 +389,40 @@ class MagicBlockService {
       this.stats.erLatencyMs = Date.now() - start;
       this.stats.attacksConfirmed++;
 
-      this._logEvent('attack', `${attackerAddress.slice(0, 6)}... → ${victimAddress.slice(0, 6)}... (${damage}dmg)`, tx, {
-        attacker: attackerAddress,
-        victim: victimAddress,
-        damage,
-        latencyMs: this.stats.erLatencyMs,
-        status: 'confirmed',
-      });
+      // When the local game predicted a kill, verify on ER and log with tx proof
+      if (isLocalKill) {
+        try {
+          const victimState = await this.erProgram.account.playerState.fetch(victim.playerPda);
+          if (!victimState.isAlive) {
+            this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
+              killer: attackerAddress,
+              victim: victimAddress,
+              _er: true,
+            });
+            this._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated`, tx, {
+              victim: victimAddress,
+              killer: attackerAddress,
+              _er: true,
+            });
+          }
+        } catch (_) {
+          // State fetch failed — still log with tx as best-effort proof
+          this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
+            killer: attackerAddress,
+            victim: victimAddress,
+            _er: true,
+          });
+          this._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated`, tx, {
+            victim: victimAddress,
+            killer: attackerAddress,
+            _er: true,
+          });
+        }
+      }
 
       return tx;
     } catch (err) {
       this.stats.attacksFailed++;
-      // Don't spam error logs for common ER issues
       if (!err.message.includes('blockhash')) {
         console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, err.message);
       }
@@ -413,7 +443,7 @@ class MagicBlockService {
         })
         .rpc();
 
-      this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress });
+      this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress, _er: true });
       return tx;
     } catch (err) {
       console.error(`MagicBlock: Respawn failed for ${walletAddress.slice(0, 6)}:`, err.message);
@@ -439,6 +469,7 @@ class MagicBlockService {
         wallet: walletAddress,
         statType,
         statName,
+        _er: true,
       });
       return true;
     } catch (err) {
@@ -531,7 +562,7 @@ class MagicBlockService {
       this.stats.commits++;
       this.stats.lastCommitTime = Date.now();
       console.log('MagicBlock: State committed! tx:', tx);
-      this._logEvent('commit', 'ER state committed to Solana base layer', tx);
+      this._logEvent('commit', 'ER state committed to Solana base layer', tx, { _er: true });
       return tx;
     } catch (err) {
       console.error('MagicBlock: Commit failed:', err.message);
