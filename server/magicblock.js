@@ -54,14 +54,28 @@ class MagicBlockService {
     this.MAX_EVENT_LOG = 50;
 
     // Load server keypair for signing transactions
+    // Supports: SOLANA_PRIVATE_KEY (JSON array string) > ANCHOR_WALLET (file path) > default path
     try {
-      const keypairPath = process.env.SOLANA_KEYPAIR_PATH || 
-        path.join(require('os').homedir(), '.config', 'solana', 'id.json');
-      // Set ANCHOR_WALLET if not already set (needed by ApplySystem)
-      if (!process.env.ANCHOR_WALLET) {
-        process.env.ANCHOR_WALLET = keypairPath;
+      let keypairData;
+
+      if (process.env.SOLANA_PRIVATE_KEY) {
+        // Production: keypair provided as JSON array in env var (e.g. "[1,2,3,...]")
+        keypairData = JSON.parse(process.env.SOLANA_PRIVATE_KEY);
+        // Write to a temp file so Anchor SDK can find it via ANCHOR_WALLET
+        const tmpKeypath = path.join(require('os').tmpdir(), 'solana-keypair.json');
+        fs.writeFileSync(tmpKeypath, JSON.stringify(keypairData));
+        process.env.ANCHOR_WALLET = tmpKeypath;
+      } else {
+        // Local dev: load from file
+        const keypairPath = process.env.ANCHOR_WALLET ||
+          process.env.SOLANA_KEYPAIR_PATH ||
+          path.join(require('os').homedir(), '.config', 'solana', 'id.json');
+        if (!process.env.ANCHOR_WALLET) {
+          process.env.ANCHOR_WALLET = keypairPath;
+        }
+        keypairData = JSON.parse(fs.readFileSync(keypairPath, 'utf-8'));
       }
-      const keypairData = JSON.parse(fs.readFileSync(keypairPath, 'utf-8'));
+
       this.serverKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
       this.wallet = new anchor.Wallet(this.serverKeypair);
       console.log('MagicBlock: Server wallet loaded:', this.serverKeypair.publicKey.toBase58().slice(0, 8) + '...');
