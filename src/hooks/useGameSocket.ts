@@ -122,12 +122,15 @@ export interface GameState {
 }
 
 export interface OnchainEvent {
-  type: 'world' | 'entity' | 'component' | 'init' | 'kill' | 'upgrade' | 'batch' | 'error';
+  type: 'world' | 'entity' | 'component' | 'init' | 'kill' | 'kill_pending' | 'upgrade' | 'batch' | 'error';
   message: string;
   tx: string | null;
   txFull: string | null;
   explorer: string | null;
   time: number;
+  status?: 'pending' | 'confirmed' | null;
+  killer?: string;
+  victim?: string;
   [key: string]: unknown;
 }
 

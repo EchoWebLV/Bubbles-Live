@@ -724,22 +724,27 @@ export function BubbleMapClient() {
               </div>
 
               {/* Event Log */}
-              <div className="max-h-80 overflow-y-auto">
+              <div className="max-h-[28rem] overflow-y-auto scrollbar-thin">
                 {(!gameState.magicBlock.eventLog || gameState.magicBlock.eventLog.length === 0) ? (
                   <div className="px-4 py-6 text-center text-xs text-slate-500">
                     Waiting for onchain events...
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-800/30">
+                  <div className="divide-y divide-slate-800/20">
                     {gameState.magicBlock.eventLog.map((event: OnchainEvent, i: number) => {
+                      const isKillPending = event.type === 'kill_pending';
+                      const isKillConfirmed = event.type === 'kill';
+                      const isKill = isKillPending || isKillConfirmed;
+
                       const iconMap: Record<string, string> = {
                         world: '🌐',
                         entity: '📦',
                         component: '🧩',
                         init: '🚀',
-                        kill: '☠️',
+                        kill: '⚔️',
+                        kill_pending: '⚔️',
                         upgrade: '⬆️',
-                        batch: '📦',
+                        batch: '📊',
                         error: '❌',
                       };
                       const colorMap: Record<string, string> = {
@@ -747,39 +752,66 @@ export function BubbleMapClient() {
                         entity: 'text-cyan-400',
                         component: 'text-purple-400',
                         init: 'text-green-400',
-                        kill: 'text-red-400',
+                        kill: 'text-green-400',
+                        kill_pending: 'text-red-400',
                         upgrade: 'text-amber-400',
                         batch: 'text-orange-400',
                         error: 'text-red-500',
                       };
                       const age = Math.floor((Date.now() - event.time) / 1000);
-                      const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`;
+                      const ageStr = age < 5 ? 'now' : age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age / 60)}m` : `${Math.floor(age / 3600)}h`;
 
                       return (
                         <div
                           key={`${event.time}-${i}`}
-                          className="px-4 py-2 hover:bg-slate-800/30 transition-colors group"
-                          style={{ opacity: Math.max(0.4, 1 - i * 0.03) }}
+                          className={`px-3 py-1.5 hover:bg-slate-800/30 transition-colors group ${isKill && i < 3 ? 'bg-slate-800/15' : ''}`}
+                          style={{ opacity: Math.max(0.35, 1 - i * 0.015) }}
                         >
-                          <div className="flex items-start gap-2">
-                            <span className="text-sm leading-none mt-0.5">{iconMap[event.type] || '📝'}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs leading-none">{iconMap[event.type] || '📝'}</span>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={`text-xs font-medium ${colorMap[event.type] || 'text-slate-300'}`}>
-                                  {event.message}
-                                </span>
-                                <span className="text-[10px] text-slate-600 shrink-0">{ageStr}</span>
+                              <div className="flex items-center gap-1.5">
+                                {isKill ? (
+                                  <span className="text-[11px] font-medium flex items-center gap-1">
+                                    <span className="text-red-400 font-mono">{(event.killer as string)?.slice(0, 6) || '???'}</span>
+                                    <span className="text-slate-500">→</span>
+                                    <span className="text-slate-300 font-mono">{(event.victim as string)?.slice(0, 6) || '???'}</span>
+                                  </span>
+                                ) : (
+                                  <span className={`text-[11px] font-medium truncate ${colorMap[event.type] || 'text-slate-300'}`}>
+                                    {event.message}
+                                  </span>
+                                )}
+                                {/* Status badge */}
+                                {isKillPending && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">
+                                    <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
+                                    pending
+                                  </span>
+                                )}
+                                {isKillConfirmed && event.tx && (
+                                  <a
+                                    href={event.explorer || '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-green-500/15 text-green-400 border border-green-500/20 hover:bg-green-500/25 transition-colors"
+                                  >
+                                    <span className="w-1 h-1 bg-green-400 rounded-full" />
+                                    confirmed
+                                  </a>
+                                )}
+                                {!isKill && event.tx && (
+                                  <a
+                                    href={event.explorer || '#'}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[9px] text-slate-600 hover:text-amber-400 transition-colors font-mono truncate max-w-[80px]"
+                                  >
+                                    {event.tx}
+                                  </a>
+                                )}
+                                <span className="text-[9px] text-slate-600 shrink-0 ml-auto">{ageStr}</span>
                               </div>
-                              {event.tx && (
-                                <a
-                                  href={event.explorer || '#'}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-slate-600 hover:text-amber-400 transition-colors font-mono block truncate"
-                                >
-                                  tx: {event.tx}
-                                </a>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -791,14 +823,23 @@ export function BubbleMapClient() {
 
               {/* Footer */}
               <div className="px-4 py-2 border-t border-slate-800/50 bg-slate-900/30 flex items-center justify-between">
-                <span className="text-[10px] text-slate-600">Batching: every 60s, max 20 tx/batch</span>
+                <div className="flex items-center gap-3 text-[10px]">
+                  <span className="flex items-center gap-1 text-yellow-400/60">
+                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                    pending = queued
+                  </span>
+                  <span className="flex items-center gap-1 text-green-400/60">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+                    confirmed = onchain
+                  </span>
+                </div>
                 <a
                   href={`https://explorer.solana.com/address/${gameState.magicBlock.worldPda}?cluster=devnet`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[10px] text-amber-500/60 hover:text-amber-400 transition-colors"
                 >
-                  View on Explorer →
+                  Explorer →
                 </a>
               </div>
             </div>

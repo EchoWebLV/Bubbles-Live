@@ -50,8 +50,8 @@ class MagicBlockService {
     this.MAX_BATCH_TX = 20; // Max transactions per settlement (cap RPC load)
 
     // Onchain event log — rolling buffer of recent tx events for frontend display
-    this.eventLog = []; // { type, message, tx, time, explorer }
-    this.MAX_EVENT_LOG = 50;
+    this.eventLog = []; // { type, message, tx, time, explorer, status }
+    this.MAX_EVENT_LOG = 200;
 
     // Load server keypair for signing transactions
     // Supports: SOLANA_PRIVATE_KEY (JSON array string) > ANCHOR_WALLET (file path) > default path
@@ -89,12 +89,13 @@ class MagicBlockService {
   // Push an event to the rolling onchain log
   _logEvent(type, message, tx = null, extra = {}) {
     const event = {
-      type,       // 'world' | 'entity' | 'component' | 'init' | 'kill' | 'upgrade' | 'batch' | 'error'
+      type,       // 'world' | 'entity' | 'component' | 'init' | 'kill' | 'kill_pending' | 'upgrade' | 'batch' | 'error'
       message,
       tx: tx ? tx.slice(0, 20) + '...' : null,
       txFull: tx || null,
       explorer: tx ? `https://explorer.solana.com/tx/${tx}?cluster=devnet` : null,
       time: Date.now(),
+      status: tx ? 'confirmed' : (type === 'kill_pending' ? 'pending' : null),
       ...extra,
     };
     this.eventLog.unshift(event);
@@ -246,6 +247,13 @@ class MagicBlockService {
     if (!this.ready) return;
     this.killBuffer.push({ killer: killerAddress, victim: victimAddress, timestamp: Date.now() });
     this.batchStats.queued++;
+
+    // Log each kill immediately so the frontend can display it in real-time
+    this._logEvent('kill_pending', `${killerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, null, {
+      killer: killerAddress,
+      victim: victimAddress,
+      status: 'pending',
+    });
   }
 
   // Start the batch settlement timer (call once after initialize)
@@ -434,7 +442,7 @@ class MagicBlockService {
       playersOnchain: this.entityMap.size,
       killsPending: this.killBuffer.length,
       batchStats: { ...this.batchStats },
-      eventLog: this.eventLog.slice(0, 30), // Last 30 events for the frontend
+      eventLog: this.eventLog.slice(0, 100), // Last 100 events for the frontend
       rpc: DEVNET_RPC,
       programs: {
         playerStats: PLAYER_STATS_COMPONENT_ID.toBase58(),
