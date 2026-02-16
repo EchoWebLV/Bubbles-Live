@@ -138,11 +138,11 @@ app.prepare().then(() => {
       `);
     });
 
-  // Graceful shutdown (async — flushes player stats to DB before exit)
+  // Graceful shutdown — settles pending kills onchain before exit
   async function shutdown() {
     console.log('Shutting down...');
     clearInterval(broadcastInterval);
-    await gameState.stop(); // Flushes DB + closes pool
+    await gameState.stop();
     httpServer.close();
     process.exit(0);
   }

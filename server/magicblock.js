@@ -271,57 +271,37 @@ class MagicBlockService {
     }
   }
 
-  // Settle accumulated kills onchain in one burst
+  // Settle accumulated kills onchain — each kill is its own transaction (no dedup)
   async settleKillBatch() {
     if (this.isSettling || !this.ready || this.killBuffer.length === 0) return;
     this.isSettling = true;
 
-    const batch = this.killBuffer.splice(0); // Drain the buffer
+    // Take up to MAX_BATCH_TX kills from the buffer
+    const batch = this.killBuffer.splice(0, this.MAX_BATCH_TX);
+    const remaining = this.killBuffer.length;
     const batchSize = batch.length;
 
-    // Deduplicate: group by (killer, victim) pair, keep count
-    const pairMap = new Map(); // "killer|victim" -> count
-    for (const kill of batch) {
-      const key = `${kill.killer}|${kill.victim}`;
-      pairMap.set(key, (pairMap.get(key) || 0) + 1);
-    }
-
-    // Sort by count descending (most active pairs first)
-    const pairs = [...pairMap.entries()]
-      .map(([key, count]) => {
-        const [killer, victim] = key.split('|');
-        return { killer, victim, count };
-      })
-      .sort((a, b) => b.count - a.count);
-
-    // Build transaction list: one record_kill per unique pair (capped)
+    // Filter out kills where either entity isn't initialized onchain yet
     const txList = [];
-    for (const pair of pairs) {
-      if (txList.length >= this.MAX_BATCH_TX) break;
-
-      const killerEntity = this.entityMap.get(pair.killer);
-      const victimEntity = this.entityMap.get(pair.victim);
+    for (const kill of batch) {
+      const killerEntity = this.entityMap.get(kill.killer);
+      const victimEntity = this.entityMap.get(kill.victim);
       if (!killerEntity || !victimEntity) {
-        this.batchStats.skipped += pair.count;
+        this.batchStats.skipped++;
         continue;
       }
-
-      txList.push(pair);
+      txList.push(kill);
     }
 
-    // Count kills that won't be settled (over cap or missing entities)
-    const settledKills = txList.reduce((sum, p) => sum + 1, 0);
-    const droppedKills = batchSize - settledKills;
+    console.log(`MagicBlock: Settling ${txList.length} kills onchain (${remaining} still queued)`);
+    this._logEvent('batch', `Settling ${txList.length} kills onchain...`, null, { batchSize, txCount: txList.length, remaining });
 
-    console.log(`MagicBlock: Settling batch — ${batchSize} kills buffered, ${pairMap.size} unique pairs, sending ${txList.length} tx (dropped ${droppedKills})`);
-    this._logEvent('batch', `Settling ${batchSize} kills → ${txList.length} tx (${pairMap.size} pairs)`, null, { batchSize, uniquePairs: pairMap.size, txCount: txList.length });
-
-    // Send transactions with small delays between them
+    // Send each kill as its own transaction
     let successCount = 0;
-    for (const pair of txList) {
+    for (const kill of txList) {
       try {
-        const killerEntity = this.entityMap.get(pair.killer);
-        const victimEntity = this.entityMap.get(pair.victim);
+        const killerEntity = this.entityMap.get(kill.killer);
+        const victimEntity = this.entityMap.get(kill.victim);
 
         const applySystem = await ApplySystem({
           authority: this.serverKeypair.publicKey,
@@ -342,21 +322,39 @@ class MagicBlockService {
 
         const tx = await this.provider.sendAndConfirm(applySystem.transaction);
         successCount++;
-        this._logEvent('kill', `Kill settled: ${pair.killer.slice(0, 6)}→${pair.victim.slice(0, 6)}`, tx, { killer: pair.killer, victim: pair.victim });
+        this._logEvent('kill', `${kill.killer.slice(0, 6)}... → ${kill.victim.slice(0, 6)}...`, tx, {
+          killer: kill.killer,
+          victim: kill.victim,
+          status: 'confirmed',
+        });
       } catch (err) {
-        console.error(`MagicBlock: Batch tx failed (${pair.killer.slice(0, 6)} -> ${pair.victim.slice(0, 6)}):`, err.message);
-        this._logEvent('error', `Kill tx failed: ${pair.killer.slice(0, 6)}→${pair.victim.slice(0, 6)}`, null, { error: err.message });
+        console.error(`MagicBlock: Kill tx failed (${kill.killer.slice(0, 6)} -> ${kill.victim.slice(0, 6)}):`, err.message);
+        this._logEvent('error', `Kill tx failed: ${kill.killer.slice(0, 6)}→${kill.victim.slice(0, 6)}`, null, { error: err.message });
       }
       // Small delay between transactions to avoid rate limits
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 400));
     }
 
     this.batchStats.settled += successCount;
     this.batchStats.lastSettleTime = Date.now();
-    console.log(`MagicBlock: Batch settled — ${successCount}/${txList.length} tx confirmed`);
-    this._logEvent('batch', `Batch complete: ${successCount}/${txList.length} tx confirmed`, null, { success: successCount, total: txList.length });
+    console.log(`MagicBlock: Batch done — ${successCount}/${txList.length} confirmed (${remaining} still queued)`);
+    this._logEvent('batch', `${successCount}/${txList.length} kills confirmed onchain`, null, { success: successCount, total: txList.length, remaining });
+
+    // After settlement, sync onchain state back to inform the game
+    if (successCount > 0 && this.onBatchSettled) {
+      try {
+        await this.onBatchSettled();
+      } catch (err) {
+        console.error('MagicBlock: onBatchSettled callback error:', err.message);
+      }
+    }
 
     this.isSettling = false;
+  }
+
+  // Register a callback to run after each successful batch settlement
+  setOnBatchSettled(callback) {
+    this.onBatchSettled = callback;
   }
 
   // Upgrade a player stat onchain (called from frontend when player chooses to upgrade)

@@ -1,7 +1,7 @@
 // Server-side game state management
 // This runs continuously and maintains the battle simulation
+// All player progression is stored onchain via MagicBlock (no database)
 
-const db = require('./db');
 const playerStore = require('./playerStore');
 const { MagicBlockService } = require('./magicblock');
 
@@ -53,8 +53,6 @@ class GameState {
     this.popEffects = []; // Track pop effects for sold holders
     this.missingHolderCounts = new Map(); // Track how many times a holder has been missing
     this.playerCache = new Map();  // In-memory cache of player stats (wallet -> stats)
-    this.dirtyPlayers = new Set(); // Players that need to be saved to DB
-    this.dbReady = false;          // Whether database is available
     this.magicBlock = new MagicBlockService(); // MagicBlock onchain integration
     this.magicBlockReady = false;
   }
@@ -345,14 +343,12 @@ class GameState {
         holder.vy = (Math.random() - 0.5) * 2;
       }
 
-      // Initialize battle bubble if not exists — use player progression stats
+      // Initialize battle bubble if not exists — use onchain progression stats
       if (!this.battleBubbles.has(holder.address)) {
         const playerStats = this.playerCache.get(holder.address);
         const maxHealth = playerStats
           ? playerStore.calcMaxHealth(playerStats.healthLevel)
           : BATTLE_CONFIG.maxHealth;
-        const kills = playerStats ? playerStats.kills : 0;
-        const deaths = playerStats ? playerStats.deaths : 0;
 
         this.battleBubbles.set(holder.address, {
           address: holder.address,
@@ -361,8 +357,8 @@ class GameState {
           isGhost: false,
           ghostUntil: null,
           lastShotTime: 0,
-          kills,
-          deaths,
+          kills: playerStats ? playerStats.kills : 0,
+          deaths: playerStats ? playerStats.deaths : 0,
         });
       }
     });
@@ -839,7 +835,6 @@ class GameState {
     killer.kills++;
     const killerStats = playerStore.deriveStats(killer.xp);
     Object.assign(killer, killerStats);
-    this.dirtyPlayers.add(killerAddress);
 
     // Update killer's battle bubble max health (level up mid-game!)
     const killerBubble = this.battleBubbles.get(killerAddress);
@@ -861,7 +856,6 @@ class GameState {
     victim.deaths++;
     const victimStats = playerStore.deriveStats(victim.xp);
     Object.assign(victim, victimStats);
-    this.dirtyPlayers.add(victimAddress);
 
     // Update victim's battle bubble max health for next respawn
     const victimBubble = this.battleBubbles.get(victimAddress);
@@ -881,27 +875,61 @@ class GameState {
   }
 
   /**
-   * Periodically save dirty players to DB.
+   * Sync onchain stats back to in-memory cache after batch settlement.
+   * This makes MagicBlock the source of truth for kills/deaths/XP.
    */
-  async flushPlayersToDB() {
-    if (!this.dbReady || this.dirtyPlayers.size === 0) return;
-
-    const toSave = new Map();
-    for (const addr of this.dirtyPlayers) {
-      const player = this.playerCache.get(addr);
-      if (player) toSave.set(addr, player);
-    }
-
-    this.dirtyPlayers.clear();
+  async syncFromOnchain() {
+    if (!this.magicBlockReady) return;
 
     try {
-      await playerStore.savePlayers(toSave);
-    } catch (err) {
-      console.error('Failed to flush players to DB:', err.message);
-      // Re-mark as dirty so we retry next cycle
-      for (const addr of toSave.keys()) {
-        this.dirtyPlayers.add(addr);
+      const onchainStats = await this.magicBlock.getAllPlayerStats();
+      let synced = 0;
+
+      for (const [walletAddress, stats] of onchainStats) {
+        const cached = this.playerCache.get(walletAddress);
+        if (!cached) continue;
+
+        // Log if onchain and in-memory diverge significantly
+        if (Math.abs(cached.kills - stats.kills) > 5) {
+          console.log(`Onchain sync: ${walletAddress.slice(0, 6)} kills ${cached.kills} → ${stats.kills}`);
+        }
+
+        // Onchain is source of truth for these fields
+        cached.xp = stats.xp;
+        cached.kills = stats.kills;
+        cached.deaths = stats.deaths;
+        cached.healthLevel = stats.healthLevel;
+        cached.shootingLevel = stats.shootingLevel;
+        cached.holdStreakDays = stats.holdStreakDays;
+
+        // Recalculate derived stats from onchain XP
+        const derived = playerStore.deriveStats(stats.xp);
+        Object.assign(cached, derived);
+
+        // Update battle bubble to match onchain
+        const bubble = this.battleBubbles.get(walletAddress);
+        if (bubble) {
+          bubble.kills = stats.kills;
+          bubble.deaths = stats.deaths;
+          const newMaxHealth = playerStore.calcMaxHealth(stats.healthLevel);
+          if (newMaxHealth !== bubble.maxHealth) {
+            const oldMax = bubble.maxHealth;
+            bubble.maxHealth = newMaxHealth;
+            if (newMaxHealth > oldMax && !bubble.isGhost) {
+              bubble.health = Math.min(bubble.health + (newMaxHealth - oldMax), newMaxHealth);
+            }
+          }
+        }
+
+        synced++;
       }
+
+      if (synced > 0) {
+        console.log(`Onchain sync: ${synced} players updated from Solana`);
+        this.updateTopKillers();
+      }
+    } catch (err) {
+      console.error('Onchain sync error:', err.message);
     }
   }
 
@@ -983,24 +1011,22 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
-    // Initialize MagicBlock (onchain state)
+    // Initialize MagicBlock (onchain state — source of truth)
     console.log('Initializing MagicBlock onchain state...');
     this.magicBlockReady = await this.magicBlock.initialize();
     if (this.magicBlockReady) {
       console.log('✅ MagicBlock World initialized on Solana devnet!');
       console.log('   World:', this.magicBlock.worldPda.toBase58());
+
+      // After each batch settlement, sync onchain stats back to in-memory cache
+      this.magicBlock.setOnBatchSettled(async () => {
+        await this.syncFromOnchain();
+      });
+
       // Start batched kill settlement (every 60 seconds)
       this.magicBlock.startBatchSettlement(60000);
     } else {
-      console.warn('⚠️  MagicBlock not available - falling back to DB');
-    }
-
-    // Initialize database as fallback (creates tables if needed)
-    this.dbReady = await db.migrate();
-    if (this.dbReady) {
-      console.log('Loading player stats from database...');
-      this.playerCache = await playerStore.loadAllPlayers();
-      console.log(`Loaded ${this.playerCache.size} players from DB`);
+      console.warn('⚠️  MagicBlock not available — kills will only be tracked in memory');
     }
 
     // Fetch token metadata (name, symbol, logo)
@@ -1012,7 +1038,7 @@ class GameState {
     
     console.log(`Loaded ${this.holders.length} holders`);
 
-    // Ensure all current holders are in the player cache
+    // Ensure all current holders are in the player cache (fresh stats, no DB)
     for (const holder of this.holders) {
       this.ensurePlayerCached(holder.address);
     }
@@ -1055,35 +1081,6 @@ class GameState {
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
-
-    // Flush dirty player stats to DB every 30 seconds
-    this.dbFlushInterval = setInterval(async () => {
-      await this.flushPlayersToDB();
-    }, 30000);
-
-    // Update hold streaks once per day (check every hour, but only awards once per ~20h)
-    this.holdStreakInterval = setInterval(async () => {
-      if (!this.dbReady) return;
-      const currentAddresses = this.holders.map(h => h.address);
-      if (currentAddresses.length > 0) {
-        await playerStore.updateHoldStreaks(currentAddresses);
-        // Reload updated stats
-        const updated = await playerStore.loadAllPlayers();
-        for (const [addr, stats] of updated) {
-          this.playerCache.set(addr, stats);
-          // Update battle bubble max health if level changed
-          const bubble = this.battleBubbles.get(addr);
-          if (bubble && bubble.maxHealth !== stats.maxHealth) {
-            const oldMax = bubble.maxHealth;
-            bubble.maxHealth = stats.maxHealth;
-            if (stats.maxHealth > oldMax && !bubble.isGhost) {
-              bubble.health = Math.min(bubble.health + (stats.maxHealth - oldMax), stats.maxHealth);
-            }
-          }
-        }
-        console.log('Hold streaks updated');
-      }
-    }, 60 * 60 * 1000); // Every hour
   }
 
   async stop() {
@@ -1092,18 +1089,12 @@ class GameState {
     if (this.holderRefresh) clearInterval(this.holderRefresh);
     if (this.priceRefresh) clearInterval(this.priceRefresh);
     if (this.metadataRefresh) clearInterval(this.metadataRefresh);
-    if (this.dbFlushInterval) clearInterval(this.dbFlushInterval);
-    if (this.holdStreakInterval) clearInterval(this.holdStreakInterval);
 
-    // Final batch settlement before shutdown
+    // Final batch settlement before shutdown — flush all pending kills onchain
     if (this.magicBlockReady) {
       this.magicBlock.stopBatchSettlement();
-      await this.magicBlock.settleKillBatch(); // Flush remaining kills
+      await this.magicBlock.settleKillBatch();
     }
-
-    // Final flush of player stats before shutdown
-    await this.flushPlayersToDB();
-    await db.close();
   }
 }
 
