@@ -1,9 +1,9 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npm run build"
+buildCommand = "npm ci && npm run build"
 
 [build.nixpacksConfig]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_22"]
 
 [deploy]
 startCommand = "npm start"
