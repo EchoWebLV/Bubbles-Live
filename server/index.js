@@ -66,22 +66,27 @@ app.prepare().then(() => {
       gameState.handleTransaction(event);
     });
 
-    // MagicBlock: Upgrade stat (player sends from frontend)
+    // MagicBlock ER: Upgrade stat (player sends from frontend)
     socket.on('upgradeStat', async ({ walletAddress, statType }) => {
       if (!gameState.magicBlockReady) {
-        socket.emit('upgradeResult', { success: false, error: 'MagicBlock not ready' });
+        socket.emit('upgradeResult', { success: false, error: 'MagicBlock ER not ready' });
         return;
       }
       try {
         const success = await gameState.magicBlock.upgradeStat(walletAddress, statType);
         if (success) {
-          // Also update local cache
-          const player = gameState.ensurePlayerCached(walletAddress);
-          const stats = await gameState.magicBlock.getPlayerStats(walletAddress);
-          if (stats) {
-            player.healthLevel = stats.healthLevel;
-            player.shootingLevel = stats.shootingLevel;
-            player.xp = stats.xp;
+          // Sync updated state from ER
+          const state = await gameState.magicBlock.getPlayerState(walletAddress);
+          if (state) {
+            gameState.playerCache.set(walletAddress, state);
+            const bubble = gameState.battleBubbles.get(walletAddress);
+            if (bubble) {
+              bubble.healthLevel = state.healthLevel;
+              bubble.attackLevel = state.attackLevel;
+              bubble.attackPower = state.attackPower;
+              bubble.maxHealth = state.maxHealth;
+              bubble.xp = state.xp;
+            }
           }
         }
         socket.emit('upgradeResult', { success });
@@ -90,13 +95,13 @@ app.prepare().then(() => {
       }
     });
 
-    // MagicBlock: Get player stats from onchain
+    // MagicBlock ER: Get player stats from ER
     socket.on('getOnchainStats', async ({ walletAddress }) => {
       if (!gameState.magicBlockReady) {
         socket.emit('onchainStats', null);
         return;
       }
-      const stats = await gameState.magicBlock.getPlayerStats(walletAddress);
+      const stats = await gameState.magicBlock.getPlayerState(walletAddress);
       socket.emit('onchainStats', stats);
     });
 

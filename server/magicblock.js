@@ -1,72 +1,85 @@
-// MagicBlock BOLT integration layer
-// Replaces PostgreSQL with onchain state via BOLT ECS on Solana devnet
+// MagicBlock Ephemeral Rollups integration layer
+// Dual connection: base layer (Solana devnet) + Ephemeral Rollup (MagicBlock)
+// Combat logic runs ON the ER — the server sends process_attack txs, reads state from ER
 
 const anchor = require('@coral-xyz/anchor');
-const { PublicKey, Connection, Keypair } = require('@solana/web3.js');
-const {
-  InitializeNewWorld,
-  AddEntity,
-  InitializeComponent,
-  ApplySystem,
-  FindComponentPda,
-  FindEntityPda,
-  FindWorldPda,
-} = require('@magicblock-labs/bolt-sdk');
+const { PublicKey, Connection, Keypair, SystemProgram } = require('@solana/web3.js');
 const fs = require('fs');
 const path = require('path');
 
-// Program IDs (deployed to devnet)
-const WORLD_PROGRAM_ID = new PublicKey('WorLD15A7CrDwLcLy4fRqtaTb9fbd8o8iqiEMUDse2n');
-const PLAYER_STATS_COMPONENT_ID = new PublicKey('9keor8BL7FDNrb16o7tT7nqo37hE9M5LtuZc6vvVeDqz');
-const INIT_PLAYER_SYSTEM_ID = new PublicKey('Fyd3jGqzimv14JWwDHMqJNSN968xVRkzj1Myer7W8viM');
-const RECORD_KILL_SYSTEM_ID = new PublicKey('HZuiYWHV2K8v4uaGbG41BheXzkeWi4ePGtvV49WnaozA');
-const UPGRADE_STAT_SYSTEM_ID = new PublicKey('52uWfPzp8rzReBkyP5XoXHR8yWoZkY7kgmKxvPCZvY6S');
+// Program ID (deployed to devnet)
+const COMBAT_PROGRAM_ID = new PublicKey('HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio');
 
-// Devnet RPC
-const DEVNET_RPC = 'https://api.devnet.solana.com';
+// Delegation program
+const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
+
+// ER Validator for devnet Asia
+const ER_VALIDATOR = new PublicKey('MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57');
+
+// RPC Endpoints
+const BASE_RPC = 'https://api.devnet.solana.com';
+const ER_RPC = 'https://devnet.magicblock.app';
+const ER_WS = 'wss://devnet.magicblock.app';
+
+// PDA Seeds (must match Rust program)
+const ARENA_SEED = Buffer.from('arena');
+const PLAYER_SEED = Buffer.from('player');
 
 // Load IDL
-const playerStatsIdl = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'onchain', 'idl', 'player_stats.json'), 'utf-8')
+const combatIdl = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'hodlwarz_combat.json'), 'utf-8')
 );
 
 class MagicBlockService {
   constructor() {
-    this.connection = new Connection(DEVNET_RPC, 'confirmed');
-    this.worldPda = null;
-    this.entityMap = new Map(); // walletAddress -> { entityPda, entityId, componentPda }
+    // Dual connections
+    this.baseConnection = new Connection(BASE_RPC, 'confirmed');
+    this.erConnection = new Connection(ER_RPC, {
+      commitment: 'confirmed',
+      wsEndpoint: ER_WS,
+    });
+
     this.ready = false;
-    this.playerStatsProgram = null;
-    this.nextEntityId = 0;
-    this.initQueue = []; // Queue for player init to avoid rate limits
-    this.isProcessingQueue = false;
-    this.pendingInits = new Set(); // Addresses currently being initialized
+    this.arenaDelegated = false;
+    this.playerDelegated = new Set(); // Set of wallet addresses delegated to ER
 
-    // Kill batching — accumulate kills, settle every 60 seconds
-    this.killBuffer = []; // Array of { killer, victim, timestamp }
-    this.isSettling = false;
-    this.settlementInterval = null;
-    this.batchStats = { queued: 0, settled: 0, skipped: 0, lastSettleTime: 0 };
-    this.MAX_BATCH_TX = 20; // Max transactions per settlement (cap RPC load)
+    // Track registered players: walletAddress -> { playerPda, playerBump }
+    this.playerMap = new Map();
 
-    // Onchain event log — rolling buffer of recent tx events for frontend display
-    this.eventLog = []; // { type, message, tx, time, explorer, status }
+    // Arena PDA (derived deterministically)
+    this.arenaPda = null;
+    this.arenaBump = null;
+
+    // Anchor programs (base layer and ER)
+    this.baseProgram = null;
+    this.erProgram = null;
+
+    // State commit timer
+    this.commitInterval = null;
+
+    // Onchain event log for frontend
+    this.eventLog = [];
     this.MAX_EVENT_LOG = 200;
 
-    // Load server keypair for signing transactions
-    // Supports: SOLANA_PRIVATE_KEY (JSON array string) > ANCHOR_WALLET (file path) > default path
+    // Stats
+    this.stats = {
+      attacksSent: 0,
+      attacksConfirmed: 0,
+      attacksFailed: 0,
+      commits: 0,
+      lastCommitTime: 0,
+      erLatencyMs: 0,
+    };
+
+    // Load server keypair
     try {
       let keypairData;
-
       if (process.env.SOLANA_PRIVATE_KEY) {
-        // Production: keypair provided as JSON array in env var (e.g. "[1,2,3,...]")
         keypairData = JSON.parse(process.env.SOLANA_PRIVATE_KEY);
-        // Write to a temp file so Anchor SDK can find it via ANCHOR_WALLET
         const tmpKeypath = path.join(require('os').tmpdir(), 'solana-keypair.json');
         fs.writeFileSync(tmpKeypath, JSON.stringify(keypairData));
         process.env.ANCHOR_WALLET = tmpKeypath;
       } else {
-        // Local dev: load from file
         const keypairPath = process.env.ANCHOR_WALLET ||
           process.env.SOLANA_KEYPAIR_PATH ||
           path.join(require('os').homedir(), '.config', 'solana', 'id.json');
@@ -86,16 +99,17 @@ class MagicBlockService {
     }
   }
 
-  // Push an event to the rolling onchain log
+  // ─── Event Logging ───────────────────────────────────────────────
+
   _logEvent(type, message, tx = null, extra = {}) {
     const event = {
-      type,       // 'world' | 'entity' | 'component' | 'init' | 'kill' | 'kill_pending' | 'upgrade' | 'batch' | 'error'
+      type,
       message,
       tx: tx ? tx.slice(0, 20) + '...' : null,
       txFull: tx || null,
       explorer: tx ? `https://explorer.solana.com/tx/${tx}?cluster=devnet` : null,
       time: Date.now(),
-      status: tx ? 'confirmed' : (type === 'kill_pending' ? 'pending' : null),
+      status: tx ? 'confirmed' : (type.includes('pending') ? 'pending' : null),
       ...extra,
     };
     this.eventLog.unshift(event);
@@ -104,350 +118,458 @@ class MagicBlockService {
     }
   }
 
+  // ─── Initialization ──────────────────────────────────────────────
+
   async initialize() {
     if (!this.serverKeypair) {
-      console.warn('MagicBlock: No server keypair - onchain features disabled');
+      console.warn('MagicBlock: No server keypair - ER features disabled');
       return false;
     }
 
     try {
-      // Set up Anchor provider
-      this.provider = new anchor.AnchorProvider(
-        this.connection,
+      // Set up base layer provider + program
+      this.baseProvider = new anchor.AnchorProvider(
+        this.baseConnection,
         this.wallet,
         { commitment: 'confirmed', skipPreflight: true }
       );
-      anchor.setProvider(this.provider);
+      anchor.setProvider(this.baseProvider);
+      this.baseProgram = new anchor.Program(combatIdl, this.baseProvider);
 
-      // Initialize the PlayerStats program interface for reading
-      this.playerStatsProgram = new anchor.Program(playerStatsIdl, this.provider);
+      // Set up ER provider + program
+      this.erProvider = new anchor.AnchorProvider(
+        this.erConnection,
+        this.wallet,
+        { commitment: 'confirmed', skipPreflight: true }
+      );
+      this.erProgram = new anchor.Program(combatIdl, this.erProvider);
 
-      // Initialize a new World
-      console.log('MagicBlock: Initializing World on devnet...');
-      const initWorld = await InitializeNewWorld({
-        payer: this.serverKeypair.publicKey,
-        connection: this.connection,
-      });
+      // Derive arena PDA
+      [this.arenaPda, this.arenaBump] = PublicKey.findProgramAddressSync(
+        [ARENA_SEED],
+        COMBAT_PROGRAM_ID
+      );
+      console.log('MagicBlock: Arena PDA:', this.arenaPda.toBase58());
 
-      const txSign = await this.provider.sendAndConfirm(initWorld.transaction);
-      this.worldPda = initWorld.worldPda;
-      console.log('MagicBlock: World initialized!', this.worldPda.toBase58());
-      console.log('MagicBlock: World tx:', txSign);
-      this._logEvent('world', `World created: ${this.worldPda.toBase58().slice(0, 12)}...`, txSign, { worldPda: this.worldPda.toBase58() });
+      // Check if arena already exists on base layer
+      const arenaAccount = await this.baseConnection.getAccountInfo(this.arenaPda);
+      if (arenaAccount) {
+        console.log('MagicBlock: Arena already exists on base layer, reusing...');
+        this._logEvent('arena', `Arena found: ${this.arenaPda.toBase58().slice(0, 12)}...`);
+
+        // Check if already delegated
+        if (arenaAccount.owner.toBase58() === DELEGATION_PROGRAM_ID.toBase58()) {
+          console.log('MagicBlock: Arena already delegated to ER');
+          this.arenaDelegated = true;
+          this._logEvent('delegate', 'Arena already delegated to ER');
+        }
+      } else {
+        // Initialize arena on base layer
+        console.log('MagicBlock: Initializing Arena on base layer...');
+        const tx = await this.baseProgram.methods
+          .initArena()
+          .accounts({
+            arena: this.arenaPda,
+            authority: this.serverKeypair.publicKey,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+
+        console.log('MagicBlock: Arena initialized! tx:', tx);
+        this._logEvent('arena', `Arena created on Solana`, tx);
+      }
+
+      // Delegate arena to ER (if not already delegated)
+      if (!this.arenaDelegated) {
+        await this._delegateArena();
+      }
 
       this.ready = true;
+      console.log('MagicBlock: ER integration ready!');
+      this._logEvent('system', 'Ephemeral Rollup integration active');
       return true;
     } catch (err) {
       console.error('MagicBlock: Initialization failed:', err.message);
+      if (err.logs) console.error('Logs:', err.logs);
+      this._logEvent('error', `Init failed: ${err.message}`);
       this.ready = false;
       return false;
     }
   }
 
-  // Queue a player for initialization (rate-limited)
-  async initPlayer(walletAddress) {
+  // ─── Delegation ──────────────────────────────────────────────────
+
+  async _delegateArena() {
+    try {
+      console.log('MagicBlock: Delegating arena to ER...');
+
+      // Derive delegation PDAs
+      const [bufferPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('buffer'), this.arenaPda.toBuffer()],
+        COMBAT_PROGRAM_ID
+      );
+      const [delegationRecord] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation'), this.arenaPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+      const [delegationMetadata] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation-metadata'), this.arenaPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+
+      const tx = await this.baseProgram.methods
+        .delegateArena()
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          bufferArena: bufferPda,
+          delegationRecordArena: delegationRecord,
+          delegationMetadataArena: delegationMetadata,
+          arena: this.arenaPda,
+          ownerProgram: COMBAT_PROGRAM_ID,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .remainingAccounts([
+          { pubkey: ER_VALIDATOR, isSigner: false, isWritable: false },
+        ])
+        .rpc();
+
+      this.arenaDelegated = true;
+      console.log('MagicBlock: Arena delegated to ER! tx:', tx);
+      this._logEvent('delegate', 'Arena delegated to Ephemeral Rollup', tx);
+    } catch (err) {
+      console.error('MagicBlock: Arena delegation failed:', err.message);
+      if (err.logs) console.error('Logs:', err.logs);
+      this._logEvent('error', `Arena delegation failed: ${err.message}`);
+    }
+  }
+
+  async _delegatePlayer(wallet) {
+    try {
+      const walletPubkey = new PublicKey(wallet);
+      const [playerPda] = PublicKey.findProgramAddressSync(
+        [PLAYER_SEED, walletPubkey.toBuffer()],
+        COMBAT_PROGRAM_ID
+      );
+
+      const [bufferPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('buffer'), playerPda.toBuffer()],
+        COMBAT_PROGRAM_ID
+      );
+      const [delegationRecord] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation'), playerPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+      const [delegationMetadata] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation-metadata'), playerPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+
+      const tx = await this.baseProgram.methods
+        .delegatePlayer(walletPubkey)
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          bufferPlayerState: bufferPda,
+          delegationRecordPlayerState: delegationRecord,
+          delegationMetadataPlayerState: delegationMetadata,
+          playerState: playerPda,
+          ownerProgram: COMBAT_PROGRAM_ID,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .remainingAccounts([
+          { pubkey: ER_VALIDATOR, isSigner: false, isWritable: false },
+        ])
+        .rpc();
+
+      this.playerDelegated.add(wallet);
+      console.log(`MagicBlock: Player ${wallet.slice(0, 6)}... delegated to ER`);
+      this._logEvent('delegate', `Player ${wallet.slice(0, 6)}... delegated to ER`, tx, { wallet });
+    } catch (err) {
+      console.error(`MagicBlock: Player delegation failed for ${wallet.slice(0, 6)}:`, err.message);
+      this._logEvent('error', `Player delegation failed: ${wallet.slice(0, 6)}...`, null, { wallet, error: err.message });
+    }
+  }
+
+  // ─── Player Registration ─────────────────────────────────────────
+
+  async registerPlayer(walletAddress) {
     if (!this.ready) return null;
-    if (this.entityMap.has(walletAddress)) return this.entityMap.get(walletAddress);
-    if (this.pendingInits.has(walletAddress)) return null;
+    if (this.playerMap.has(walletAddress)) return this.playerMap.get(walletAddress);
 
-    this.pendingInits.add(walletAddress);
-    this.initQueue.push(walletAddress);
-    this.processQueue(); // Start processing if not already
-    return null;
-  }
-
-  // Process init queue with delays to avoid rate limits
-  async processQueue() {
-    if (this.isProcessingQueue) return;
-    this.isProcessingQueue = true;
-
-    while (this.initQueue.length > 0) {
-      const walletAddress = this.initQueue.shift();
-      if (!walletAddress || this.entityMap.has(walletAddress)) {
-        this.pendingInits.delete(walletAddress);
-        continue;
-      }
-
-      try {
-        await this._initPlayerOnchain(walletAddress);
-      } catch (err) {
-        console.error(`MagicBlock: initPlayer failed for ${walletAddress.slice(0, 8)}:`, err.message);
-      }
-
-      this.pendingInits.delete(walletAddress);
-      // Wait 2 seconds between inits to respect devnet rate limits
-      await new Promise(r => setTimeout(r, 2000));
-    }
-
-    this.isProcessingQueue = false;
-  }
-
-  // Actually create entity + component onchain
-  async _initPlayerOnchain(walletAddress) {
-    // Step 1: Add entity to world
-    const addEntity = await AddEntity({
-      payer: this.serverKeypair.publicKey,
-      world: this.worldPda,
-      connection: this.connection,
-    });
-    const entityTx = await this.provider.sendAndConfirm(addEntity.transaction);
-    const entityPda = addEntity.entityPda;
-    const entityId = addEntity.entityId;
-
-    console.log(`MagicBlock: Entity created for ${walletAddress.slice(0, 8)}... entityPda=${entityPda.toBase58().slice(0, 12)}`);
-    this._logEvent('entity', `Entity created for ${walletAddress.slice(0, 8)}...`, entityTx, { wallet: walletAddress, entityPda: entityPda.toBase58() });
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Step 2: Attach PlayerStats component
-    let componentPda;
     try {
-      const initComponent = await InitializeComponent({
-        payer: this.serverKeypair.publicKey,
-        entity: entityPda,
-        componentId: PLAYER_STATS_COMPONENT_ID,
-      });
-      const componentTx = await this.provider.sendAndConfirm(initComponent.transaction);
-      componentPda = initComponent.componentPda;
-      console.log(`MagicBlock: Component attached for ${walletAddress.slice(0, 8)}, PDA=${componentPda.toBase58().slice(0, 12)}`);
-      this._logEvent('component', `PlayerStats attached to ${walletAddress.slice(0, 8)}...`, componentTx, { wallet: walletAddress, componentPda: componentPda.toBase58() });
-    } catch (compErr) {
-      console.error(`MagicBlock: Component attach failed for ${walletAddress.slice(0, 8)}:`, compErr.message);
-      // Still save entity even without component
-      const playerInfo = { entityPda, entityId, componentPda: null, walletAddress };
-      this.entityMap.set(walletAddress, playerInfo);
+      const walletPubkey = new PublicKey(walletAddress);
+      const [playerPda, playerBump] = PublicKey.findProgramAddressSync(
+        [PLAYER_SEED, walletPubkey.toBuffer()],
+        COMBAT_PROGRAM_ID
+      );
+
+      // Check if already registered on base layer
+      const existing = await this.baseConnection.getAccountInfo(playerPda);
+      if (existing) {
+        console.log(`MagicBlock: Player ${walletAddress.slice(0, 6)}... already registered`);
+        const playerInfo = { playerPda, playerBump, walletAddress };
+        this.playerMap.set(walletAddress, playerInfo);
+
+        // Check if delegated
+        if (existing.owner.toBase58() === DELEGATION_PROGRAM_ID.toBase58()) {
+          this.playerDelegated.add(walletAddress);
+        } else if (!this.playerDelegated.has(walletAddress)) {
+          await this._delegatePlayer(walletAddress);
+        }
+        return playerInfo;
+      }
+
+      // Register player on base layer (no arena needed)
+      const tx = await this.baseProgram.methods
+        .registerPlayer(walletPubkey)
+        .accounts({
+          playerState: playerPda,
+          authority: this.serverKeypair.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log(`MagicBlock: Player ${walletAddress.slice(0, 6)}... registered on base layer`);
+      this._logEvent('register', `Player ${walletAddress.slice(0, 6)}... registered`, tx, { wallet: walletAddress });
+
+      const playerInfo = { playerPda, playerBump, walletAddress };
+      this.playerMap.set(walletAddress, playerInfo);
+
+      // Delegate to ER after registration
+      await new Promise(r => setTimeout(r, 1500));
+      await this._delegatePlayer(walletAddress);
+
       return playerInfo;
+    } catch (err) {
+      console.error(`MagicBlock: registerPlayer failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      this._logEvent('error', `Register failed: ${walletAddress.slice(0, 6)}...`, null, { error: err.message });
+      return null;
     }
-    await new Promise(r => setTimeout(r, 1500));
-
-    // Step 3: Apply init_player system
-    try {
-      const applyInit = await ApplySystem({
-        authority: this.serverKeypair.publicKey,
-        systemId: INIT_PLAYER_SYSTEM_ID,
-        world: this.worldPda,
-        entities: [{
-          entity: entityPda,
-          components: [{ componentId: PLAYER_STATS_COMPONENT_ID }],
-        }],
-      });
-      const initTx = await this.provider.sendAndConfirm(applyInit.transaction);
-      console.log(`MagicBlock: Player ${walletAddress.slice(0, 8)} initialized onchain! tx: ${initTx.slice(0, 16)}...`);
-      this._logEvent('init', `Player ${walletAddress.slice(0, 8)}... initialized`, initTx, { wallet: walletAddress });
-    } catch (sysErr) {
-      console.error(`MagicBlock: System apply failed for ${walletAddress.slice(0, 8)}:`, sysErr.message);
-    }
-
-    const playerInfo = { entityPda, entityId, componentPda, walletAddress };
-    this.entityMap.set(walletAddress, playerInfo);
-    return playerInfo;
   }
 
-  // Queue a kill for batched settlement (instead of sending immediately)
-  queueKill(killerAddress, victimAddress) {
-    if (!this.ready) return;
-    this.killBuffer.push({ killer: killerAddress, victim: victimAddress, timestamp: Date.now() });
-    this.batchStats.queued++;
+  // ─── Combat (runs on ER) ─────────────────────────────────────────
 
-    // Log each kill immediately so the frontend can display it in real-time
-    this._logEvent('kill_pending', `${killerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, null, {
-      killer: killerAddress,
+  async processAttack(attackerAddress, victimAddress, damage) {
+    if (!this.ready || !this.arenaDelegated) return null;
+
+    const attacker = this.playerMap.get(attackerAddress);
+    const victim = this.playerMap.get(victimAddress);
+    if (!attacker || !victim) return null;
+    if (!this.playerDelegated.has(attackerAddress) || !this.playerDelegated.has(victimAddress)) return null;
+
+    this.stats.attacksSent++;
+    this._logEvent('attack_pending', `${attackerAddress.slice(0, 6)}... → ${victimAddress.slice(0, 6)}...`, null, {
+      attacker: attackerAddress,
       victim: victimAddress,
+      damage,
       status: 'pending',
     });
-  }
-
-  // Start the batch settlement timer (call once after initialize)
-  startBatchSettlement(intervalMs = 60000) {
-    if (this.settlementInterval) clearInterval(this.settlementInterval);
-    this.settlementInterval = setInterval(() => this.settleKillBatch(), intervalMs);
-    console.log(`MagicBlock: Batch settlement started (every ${intervalMs / 1000}s, max ${this.MAX_BATCH_TX} tx/batch)`);
-  }
-
-  // Stop the settlement timer
-  stopBatchSettlement() {
-    if (this.settlementInterval) {
-      clearInterval(this.settlementInterval);
-      this.settlementInterval = null;
-    }
-  }
-
-  // Settle accumulated kills onchain — each kill is its own transaction (no dedup)
-  async settleKillBatch() {
-    if (this.isSettling || !this.ready || this.killBuffer.length === 0) return;
-    this.isSettling = true;
-
-    // Take up to MAX_BATCH_TX kills from the buffer
-    const batch = this.killBuffer.splice(0, this.MAX_BATCH_TX);
-    const remaining = this.killBuffer.length;
-    const batchSize = batch.length;
-
-    // Filter out kills where either entity isn't initialized onchain yet
-    const txList = [];
-    for (const kill of batch) {
-      const killerEntity = this.entityMap.get(kill.killer);
-      const victimEntity = this.entityMap.get(kill.victim);
-      if (!killerEntity || !victimEntity) {
-        this.batchStats.skipped++;
-        continue;
-      }
-      txList.push(kill);
-    }
-
-    console.log(`MagicBlock: Settling ${txList.length} kills onchain (${remaining} still queued)`);
-    this._logEvent('batch', `Settling ${txList.length} kills onchain...`, null, { batchSize, txCount: txList.length, remaining });
-
-    // Send each kill as its own transaction
-    let successCount = 0;
-    for (const kill of txList) {
-      try {
-        const killerEntity = this.entityMap.get(kill.killer);
-        const victimEntity = this.entityMap.get(kill.victim);
-
-        const applySystem = await ApplySystem({
-          authority: this.serverKeypair.publicKey,
-          systemId: RECORD_KILL_SYSTEM_ID,
-          world: this.worldPda,
-          entities: [
-            {
-              entity: killerEntity.entityPda,
-              components: [{ componentId: PLAYER_STATS_COMPONENT_ID }],
-            },
-            {
-              entity: victimEntity.entityPda,
-              components: [{ componentId: PLAYER_STATS_COMPONENT_ID }],
-            },
-          ],
-          args: Buffer.from([1]),
-        });
-
-        const tx = await this.provider.sendAndConfirm(applySystem.transaction);
-        successCount++;
-        this._logEvent('kill', `${kill.killer.slice(0, 6)}... → ${kill.victim.slice(0, 6)}...`, tx, {
-          killer: kill.killer,
-          victim: kill.victim,
-          status: 'confirmed',
-        });
-      } catch (err) {
-        console.error(`MagicBlock: Kill tx failed (${kill.killer.slice(0, 6)} -> ${kill.victim.slice(0, 6)}):`, err.message);
-        this._logEvent('error', `Kill tx failed: ${kill.killer.slice(0, 6)}→${kill.victim.slice(0, 6)}`, null, { error: err.message });
-      }
-      // Small delay between transactions to avoid rate limits
-      await new Promise(r => setTimeout(r, 400));
-    }
-
-    this.batchStats.settled += successCount;
-    this.batchStats.lastSettleTime = Date.now();
-    console.log(`MagicBlock: Batch done — ${successCount}/${txList.length} confirmed (${remaining} still queued)`);
-    this._logEvent('batch', `${successCount}/${txList.length} kills confirmed onchain`, null, { success: successCount, total: txList.length, remaining });
-
-    // After settlement, sync onchain state back to inform the game
-    if (successCount > 0 && this.onBatchSettled) {
-      try {
-        await this.onBatchSettled();
-      } catch (err) {
-        console.error('MagicBlock: onBatchSettled callback error:', err.message);
-      }
-    }
-
-    this.isSettling = false;
-  }
-
-  // Register a callback to run after each successful batch settlement
-  setOnBatchSettled(callback) {
-    this.onBatchSettled = callback;
-  }
-
-  // Upgrade a player stat onchain (called from frontend when player chooses to upgrade)
-  async upgradeStat(walletAddress, statType) {
-    if (!this.ready) return false;
 
     try {
-      const player = this.entityMap.get(walletAddress);
-      if (!player) return false;
+      const start = Date.now();
 
-      const applySystem = await ApplySystem({
-        authority: this.serverKeypair.publicKey,
-        systemId: UPGRADE_STAT_SYSTEM_ID,
-        world: this.worldPda,
-        entities: [{
-          entity: player.entityPda,
-          components: [{ componentId: PLAYER_STATS_COMPONENT_ID }],
-        }],
-        args: Buffer.from([statType]), // 0=health, 1=shooting
+      const tx = await this.erProgram.methods
+        .processAttack(damage)
+        .accounts({
+          attacker: attacker.playerPda,
+          victim: victim.playerPda,
+          arena: this.arenaPda,
+        })
+        .rpc();
+
+      this.stats.erLatencyMs = Date.now() - start;
+      this.stats.attacksConfirmed++;
+
+      this._logEvent('attack', `${attackerAddress.slice(0, 6)}... → ${victimAddress.slice(0, 6)}... (${damage}dmg)`, tx, {
+        attacker: attackerAddress,
+        victim: victimAddress,
+        damage,
+        latencyMs: this.stats.erLatencyMs,
+        status: 'confirmed',
       });
 
-      const tx = await this.provider.sendAndConfirm(applySystem.transaction);
+      return tx;
+    } catch (err) {
+      this.stats.attacksFailed++;
+      // Don't spam error logs for common ER issues
+      if (!err.message.includes('blockhash')) {
+        console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, err.message);
+      }
+      return null;
+    }
+  }
+
+  async respawnPlayer(walletAddress) {
+    if (!this.ready) return null;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return null;
+
+    try {
+      const tx = await this.erProgram.methods
+        .respawnPlayer()
+        .accounts({
+          playerState: player.playerPda,
+        })
+        .rpc();
+
+      this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress });
+      return tx;
+    } catch (err) {
+      console.error(`MagicBlock: Respawn failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      return null;
+    }
+  }
+
+  async upgradeStat(walletAddress, statType) {
+    if (!this.ready) return false;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return false;
+
+    try {
+      const tx = await this.erProgram.methods
+        .upgradeStat(statType)
+        .accounts({
+          playerState: player.playerPda,
+        })
+        .rpc();
+
       const statName = statType === 0 ? 'Health' : 'Attack';
-      console.log(`MagicBlock: Stat upgraded onchain! ${walletAddress.slice(0, 6)} type=${statType}`);
-      this._logEvent('upgrade', `${walletAddress.slice(0, 8)}... upgraded ${statName}`, tx, { wallet: walletAddress, statType, statName });
+      this._logEvent('upgrade', `${walletAddress.slice(0, 6)}... upgraded ${statName} on ER`, tx, {
+        wallet: walletAddress,
+        statType,
+        statName,
+      });
       return true;
     } catch (err) {
-      console.error('MagicBlock: upgradeStat failed:', err.message);
+      console.error(`MagicBlock: Upgrade failed for ${walletAddress.slice(0, 6)}:`, err.message);
       this._logEvent('error', `Upgrade failed: ${err.message}`, null, { wallet: walletAddress });
       return false;
     }
   }
 
-  // Read player stats from onchain
-  async getPlayerStats(walletAddress) {
-    if (!this.ready || !this.playerStatsProgram) return null;
+  // ─── State Reading (from ER) ─────────────────────────────────────
+
+  async getPlayerState(walletAddress) {
+    if (!this.ready) return null;
+    const player = this.playerMap.get(walletAddress);
+    if (!player) return null;
 
     try {
-      const player = this.entityMap.get(walletAddress);
-      if (!player) return null;
-
-      const account = await this.playerStatsProgram.account.playerStats.fetch(player.componentPda);
+      // Read from ER if delegated, otherwise base layer
+      const program = this.playerDelegated.has(walletAddress) ? this.erProgram : this.baseProgram;
+      const account = await program.account.playerState.fetch(player.playerPda);
       return {
         walletAddress,
-        xp: account.xp.toNumber(),
-        kills: account.kills.toNumber(),
-        deaths: account.deaths.toNumber(),
+        wallet: account.wallet.toBase58(),
+        health: account.health,
+        maxHealth: account.maxHealth,
+        attackPower: account.attackPower,
+        xp: typeof account.xp === 'object' ? account.xp.toNumber() : account.xp,
+        kills: typeof account.kills === 'object' ? account.kills.toNumber() : account.kills,
+        deaths: typeof account.deaths === 'object' ? account.deaths.toNumber() : account.deaths,
         healthLevel: account.healthLevel,
-        shootingLevel: account.shootingLevel,
-        holdStreakDays: account.holdStreakDays,
-        totalBuys: account.totalBuys,
-        totalSells: account.totalSells,
+        attackLevel: account.attackLevel,
+        isAlive: account.isAlive,
+        respawnAt: typeof account.respawnAt === 'object' ? account.respawnAt.toNumber() : account.respawnAt,
         initialized: account.initialized,
-        lastUpdated: account.lastUpdated.toNumber(),
-        entityPda: player.entityPda.toBase58(),
-        componentPda: player.componentPda.toBase58(),
+        playerPda: player.playerPda.toBase58(),
       };
     } catch (err) {
-      console.error(`MagicBlock: getPlayerStats failed for ${walletAddress.slice(0, 8)}:`, err.message);
+      // Silently fail — account might not be initialized yet
       return null;
     }
   }
 
-  // Get all player stats (for the game state)
-  async getAllPlayerStats() {
-    if (!this.ready) return new Map();
+  async getArenaState() {
+    if (!this.ready) return null;
 
-    const stats = new Map();
-    for (const [walletAddress] of this.entityMap) {
-      const playerStats = await this.getPlayerStats(walletAddress);
-      if (playerStats) {
-        stats.set(walletAddress, playerStats);
-      }
+    try {
+      const program = this.arenaDelegated ? this.erProgram : this.baseProgram;
+      const account = await program.account.arena.fetch(this.arenaPda);
+      return {
+        authority: account.authority.toBase58(),
+        playerCount: account.playerCount,
+        totalKills: typeof account.totalKills === 'object' ? account.totalKills.toNumber() : account.totalKills,
+        isActive: account.isActive,
+      };
+    } catch (err) {
+      console.error('MagicBlock: getArenaState failed:', err.message);
+      return null;
     }
-    return stats;
   }
 
-  // Get status info for displaying in the UI
+  async getAllPlayerStates() {
+    if (!this.ready) return new Map();
+    const states = new Map();
+    for (const [walletAddress] of this.playerMap) {
+      const state = await this.getPlayerState(walletAddress);
+      if (state) {
+        states.set(walletAddress, state);
+      }
+    }
+    return states;
+  }
+
+  // ─── State Commit (ER → Base Layer) ──────────────────────────────
+
+  async commitState() {
+    if (!this.ready || !this.arenaDelegated) return;
+
+    try {
+      console.log('MagicBlock: Committing ER state to base layer...');
+      const tx = await this.erProgram.methods
+        .commitState()
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          arena: this.arenaPda,
+          magicProgram: new PublicKey('Magic11111111111111111111111111111111111111'),
+          magicContext: new PublicKey('MagicContext1111111111111111111111111111111'),
+        })
+        .rpc();
+
+      this.stats.commits++;
+      this.stats.lastCommitTime = Date.now();
+      console.log('MagicBlock: State committed! tx:', tx);
+      this._logEvent('commit', 'ER state committed to Solana base layer', tx);
+      return tx;
+    } catch (err) {
+      console.error('MagicBlock: Commit failed:', err.message);
+      this._logEvent('error', `Commit failed: ${err.message}`);
+      return null;
+    }
+  }
+
+  startCommitTimer(intervalMs = 30000) {
+    if (this.commitInterval) clearInterval(this.commitInterval);
+    this.commitInterval = setInterval(() => this.commitState(), intervalMs);
+    console.log(`MagicBlock: State commit timer started (every ${intervalMs / 1000}s)`);
+  }
+
+  stopCommitTimer() {
+    if (this.commitInterval) {
+      clearInterval(this.commitInterval);
+      this.commitInterval = null;
+    }
+  }
+
+  // ─── Status ──────────────────────────────────────────────────────
+
   getStatus() {
     return {
       ready: this.ready,
-      worldPda: this.worldPda?.toBase58() || null,
-      playersOnchain: this.entityMap.size,
-      killsPending: this.killBuffer.length,
-      batchStats: { ...this.batchStats },
-      eventLog: this.eventLog.slice(0, 100), // Last 100 events for the frontend
-      rpc: DEVNET_RPC,
-      programs: {
-        playerStats: PLAYER_STATS_COMPONENT_ID.toBase58(),
-        initPlayer: INIT_PLAYER_SYSTEM_ID.toBase58(),
-        recordKill: RECORD_KILL_SYSTEM_ID.toBase58(),
-        upgradeStat: UPGRADE_STAT_SYSTEM_ID.toBase58(),
+      arenaPda: this.arenaPda?.toBase58() || null,
+      arenaDelegated: this.arenaDelegated,
+      playersRegistered: this.playerMap.size,
+      playersDelegated: this.playerDelegated.size,
+      stats: { ...this.stats },
+      eventLog: this.eventLog.slice(0, 100),
+      rpc: {
+        baseLayer: BASE_RPC,
+        ephemeralRollup: ER_RPC,
       },
+      programId: COMBAT_PROGRAM_ID.toBase58(),
+      erValidator: ER_VALIDATOR.toBase58(),
     };
   }
 }

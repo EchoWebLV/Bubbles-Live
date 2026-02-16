@@ -1,16 +1,15 @@
 // Server-side game state management
-// This runs continuously and maintains the battle simulation
-// All player progression is stored onchain via MagicBlock (no database)
+// Physics + targeting run on the server
+// Combat resolution (damage, kills, XP) runs on MagicBlock Ephemeral Rollup
 
-const playerStore = require('./playerStore');
 const { MagicBlockService } = require('./magicblock');
 
 const BATTLE_CONFIG = {
-  maxHealth: 100,       // base — overridden per-player by progression
-  bulletDamage: 0.1,    // base — overridden per-player by progression
-  fireRate: 200, // ms between shots
+  maxHealth: 100,       // base — overridden by onchain PlayerState
+  bulletDamage: 10,     // base damage sent to ER (u16)
+  fireRate: 200,        // ms between shots
   bulletSpeed: 8,
-  ghostDuration: 60000, // 60 seconds
+  ghostDuration: 60000, // 60 seconds (visual only; ER has its own respawn timer)
   curveStrength: { min: 25, max: 60 },
 };
 
@@ -22,6 +21,27 @@ const PHYSICS_CONFIG = {
   wallBounce: 0.7,
 };
 
+// Progression formulas (mirror onchain but used for local preview)
+const PROGRESSION = {
+  xpPerKill: 25,
+  xpPerDeath: 5,
+  levelScale: 50,
+  healthPerLevel: 10,
+  damagePerLevel: 1,   // u16 damage per level
+  baseHealth: 100,
+  baseDamage: 10,       // u16 base attack
+};
+
+function calcLevel(xp) {
+  return 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
+}
+function calcMaxHealth(healthLevel) {
+  return PROGRESSION.baseHealth + (healthLevel - 1) * PROGRESSION.healthPerLevel;
+}
+function calcAttackPower(attackLevel) {
+  return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
+}
+
 class GameState {
   constructor() {
     this.holders = [];
@@ -31,7 +51,7 @@ class GameState {
     this.killFeed = [];
     this.eventLog = [];
     this.topKillers = [];
-    this.dimensions = { width: 3840, height: 2160 }; // Default dimensions (2x larger)
+    this.dimensions = { width: 3840, height: 2160 };
     this.lastUpdateTime = Date.now();
     this.bulletIdCounter = 0;
     this.isRunning = false;
@@ -47,14 +67,25 @@ class GameState {
     this.priceData = null;
     this.pendingRefresh = false;
     this.lastRefreshTime = 0;
-    this.minRefreshInterval = 5000; // Minimum 5 seconds between refreshes
+    this.minRefreshInterval = 5000;
     this.lastPriceUpdate = 0;
-    this.newHolders = new Set(); // Track newly added holders for spawn animation
-    this.popEffects = []; // Track pop effects for sold holders
-    this.missingHolderCounts = new Map(); // Track how many times a holder has been missing
-    this.playerCache = new Map();  // In-memory cache of player stats (wallet -> stats)
-    this.magicBlock = new MagicBlockService(); // MagicBlock onchain integration
+    this.newHolders = new Set();
+    this.popEffects = [];
+    this.missingHolderCounts = new Map();
+    this.playerCache = new Map();  // In-memory cache: wallet -> stats from ER
+    this.magicBlock = new MagicBlockService();
     this.magicBlockReady = false;
+
+    // Pending attack queue (for when ER is processing)
+    this.attackQueue = [];
+    this.isProcessingAttacks = false;
+
+    // Player registration queue
+    this.registerQueue = [];
+    this.isProcessingRegistration = false;
+
+    // ER state sync timer
+    this.erSyncInterval = null;
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -62,7 +93,6 @@ class GameState {
     try {
       const isPumpToken = this.tokenAddress.toLowerCase().endsWith('pump');
       
-      // Try multiple sources in parallel for fastest response
       const [dexResult, jupResult] = await Promise.allSettled([
         fetch(`https://api.dexscreener.com/latest/dex/tokens/${this.tokenAddress}`)
           .then(r => r.json())
@@ -76,12 +106,10 @@ class GameState {
       let priceChange1h = this.priceData?.priceChange1h || 0;
       let priceChange24h = this.priceData?.priceChange24h || 0;
 
-      // Try Jupiter first (usually faster and more accurate)
       if (jupResult.status === 'fulfilled' && jupResult.value?.data?.[this.tokenAddress]) {
         price = parseFloat(jupResult.value.data[this.tokenAddress].price) || 0;
       }
 
-      // Use DexScreener as backup or for additional data
       if (dexResult.status === 'fulfilled' && dexResult.value?.pairs?.[0]) {
         const pair = dexResult.value.pairs[0];
         if (!price) {
@@ -90,14 +118,12 @@ class GameState {
         priceChange1h = pair.priceChange?.h1 || 0;
         priceChange24h = pair.priceChange?.h24 || 0;
         
-        // Update logo if we don't have one
         if (!this.token.logoUri && pair.info?.imageUrl) {
           this.token.logoUri = pair.info.imageUrl;
         }
       }
 
       if (price > 0) {
-        // Calculate market cap (pump.fun tokens have 1B supply)
         const totalSupply = isPumpToken ? 1_000_000_000 : (this.token.totalSupply || 1_000_000_000);
         const marketCap = price * totalSupply;
 
@@ -116,7 +142,6 @@ class GameState {
     }
   }
 
-  // Fetch token metadata from DexScreener + Jupiter for accurate pricing
   async fetchTokenMetadata() {
     try {
       if (!this.tokenAddress) {
@@ -124,10 +149,8 @@ class GameState {
         return;
       }
 
-      // Check if this is a pump.fun token (address ends with "pump")
       const isPumpToken = this.tokenAddress.toLowerCase().endsWith('pump');
       
-      // Get DexScreener data for token info
       const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${this.tokenAddress}`);
       const dexData = await dexResponse.json();
       
@@ -142,20 +165,15 @@ class GameState {
           symbol: tokenInfo.symbol || 'UNKNOWN',
           name: tokenInfo.name || 'Unknown Token',
           decimals: isPumpToken ? 6 : 9,
-          totalSupply: isPumpToken ? 1_000_000_000 : 0, // pump.fun tokens have 1B supply
+          totalSupply: isPumpToken ? 1_000_000_000 : 0,
           logoUri: pair.info?.imageUrl || '',
         };
         
-        // For pump.fun tokens, calculate market cap from price * total supply
-        // pump.fun tokens have 1 billion total supply with 6 decimals
         let marketCap = parseFloat(pair.fdv) || parseFloat(pair.marketCap) || 0;
         const price = parseFloat(pair.priceUsd) || 0;
         
-        // If FDV seems off, calculate from price (pump.fun tokens = 1B supply)
         if (isPumpToken && price > 0) {
           const calculatedMcap = price * 1_000_000_000;
-          // Use the larger value as pump.fun shows circulating supply mcap
-          // which is close to fully diluted for most pump tokens
           if (Math.abs(calculatedMcap - marketCap) > marketCap * 0.1) {
             console.log(`Market cap mismatch - DexScreener: $${marketCap.toFixed(2)}, Calculated: $${calculatedMcap.toFixed(2)}`);
           }
@@ -173,11 +191,9 @@ class GameState {
         
         console.log('Token:', this.token.symbol, '-', this.token.name);
         console.log('Price: $' + price.toExponential(4), '| Market Cap: $' + marketCap.toFixed(2));
-        console.log('Token logo:', this.token.logoUri || 'none');
         return;
       }
 
-      // Fallback: Try Helius DAS API for metadata
       const apiKey = process.env.HELIUS_API_KEY;
       if (apiKey) {
         const heliusResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
@@ -203,8 +219,6 @@ class GameState {
             totalSupply: 0,
             logoUri: asset.content?.links?.image || asset.content?.files?.[0]?.uri || '',
           };
-          
-          console.log('Token metadata from Helius:', this.token.symbol, '-', this.token.name);
           return;
         }
       }
@@ -215,14 +229,13 @@ class GameState {
     }
   }
 
-  // Initialize holders from API
   async fetchHolders() {
     try {
       const apiKey = process.env.HELIUS_API_KEY;
       console.log('Fetching holders... API Key:', apiKey ? 'present' : 'MISSING', 'Token:', this.tokenAddress);
       
       if (!apiKey || !this.tokenAddress) {
-        console.error('ERROR: Missing HELIUS_API_KEY or TOKEN_ADDRESS - cannot fetch real holders');
+        console.error('ERROR: Missing HELIUS_API_KEY or TOKEN_ADDRESS');
         return [];
       }
 
@@ -250,9 +263,7 @@ class GameState {
 
       const accounts = data.result.token_accounts;
       const totalSupply = accounts.reduce((sum, acc) => sum + acc.amount, 0);
-      console.log('Processing', accounts.length, 'real holder accounts');
 
-      // Show all holders above minimum percentage threshold
       const maxHolders = parseInt(process.env.MAX_HOLDERS_DISPLAY) || 500;
       const minPercentage = parseFloat(process.env.MIN_HOLDER_PERCENTAGE) || 0.01;
       
@@ -272,7 +283,7 @@ class GameState {
             vy: (Math.random() - 0.5) * 2,
           };
         })
-        .filter(h => h.percentage > minPercentage) // Only show holders above 0.01%
+        .filter(h => h.percentage > minPercentage)
         .slice(0, maxHolders);
 
       return holders;
@@ -327,44 +338,43 @@ class GameState {
     return minRadius + normalized * (maxRadius - minRadius);
   }
 
-  // Initialize positions for holders
   initializePositions() {
     const { width, height } = this.dimensions;
-    const centerX = width / 2;
-    const centerY = height / 2;
     const margin = 150;
 
-    this.holders.forEach((holder, i) => {
+    this.holders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) {
-        // Random position within bounds - spread across the larger canvas
         holder.x = margin + Math.random() * (width - margin * 2);
         holder.y = margin + Math.random() * (height - margin * 2);
         holder.vx = (Math.random() - 0.5) * 2;
         holder.vy = (Math.random() - 0.5) * 2;
       }
 
-      // Initialize battle bubble if not exists — use onchain progression stats
       if (!this.battleBubbles.has(holder.address)) {
-        const playerStats = this.playerCache.get(holder.address);
-        const maxHealth = playerStats
-          ? playerStore.calcMaxHealth(playerStats.healthLevel)
-          : BATTLE_CONFIG.maxHealth;
+        const cached = this.playerCache.get(holder.address);
+        const maxHealth = cached ? cached.maxHealth : BATTLE_CONFIG.maxHealth;
 
         this.battleBubbles.set(holder.address, {
           address: holder.address,
           health: maxHealth,
           maxHealth: maxHealth,
+          attackPower: cached ? cached.attackPower : BATTLE_CONFIG.bulletDamage,
           isGhost: false,
           ghostUntil: null,
           lastShotTime: 0,
-          kills: playerStats ? playerStats.kills : 0,
-          deaths: playerStats ? playerStats.deaths : 0,
+          kills: cached ? cached.kills : 0,
+          deaths: cached ? cached.deaths : 0,
+          xp: cached ? cached.xp : 0,
+          healthLevel: cached ? cached.healthLevel : 1,
+          attackLevel: cached ? cached.attackLevel : 1,
+          isAlive: true,
         });
       }
     });
   }
 
-  // Main game loop tick
+  // ─── Main Game Loop ──────────────────────────────────────────────
+
   tick() {
     const now = Date.now();
     const deltaTime = Math.min((now - this.lastUpdateTime) / 16, 3);
@@ -374,38 +384,21 @@ class GameState {
 
     const { width, height } = this.dimensions;
 
-    // Update physics for each holder
+    // Update physics
     this.holders.forEach(holder => {
       if (holder.x === undefined || holder.y === undefined) return;
 
-      // Apply velocity
       holder.x += (holder.vx || 0) * deltaTime;
       holder.y += (holder.vy || 0) * deltaTime;
-
-      // Apply velocity decay
       holder.vx = (holder.vx || 0) * PHYSICS_CONFIG.velocityDecay;
       holder.vy = (holder.vy || 0) * PHYSICS_CONFIG.velocityDecay;
 
-      // Wall collisions
       const margin = holder.radius + 10;
-      if (holder.x < margin) {
-        holder.x = margin;
-        holder.vx = Math.abs(holder.vx) * PHYSICS_CONFIG.wallBounce;
-      }
-      if (holder.x > width - margin) {
-        holder.x = width - margin;
-        holder.vx = -Math.abs(holder.vx) * PHYSICS_CONFIG.wallBounce;
-      }
-      if (holder.y < margin) {
-        holder.y = margin;
-        holder.vy = Math.abs(holder.vy) * PHYSICS_CONFIG.wallBounce;
-      }
-      if (holder.y > height - margin) {
-        holder.y = height - margin;
-        holder.vy = -Math.abs(holder.vy) * PHYSICS_CONFIG.wallBounce;
-      }
+      if (holder.x < margin) { holder.x = margin; holder.vx = Math.abs(holder.vx) * PHYSICS_CONFIG.wallBounce; }
+      if (holder.x > width - margin) { holder.x = width - margin; holder.vx = -Math.abs(holder.vx) * PHYSICS_CONFIG.wallBounce; }
+      if (holder.y < margin) { holder.y = margin; holder.vy = Math.abs(holder.vy) * PHYSICS_CONFIG.wallBounce; }
+      if (holder.y > height - margin) { holder.y = height - margin; holder.vy = -Math.abs(holder.vy) * PHYSICS_CONFIG.wallBounce; }
 
-      // Maintain minimum speed
       const speed = Math.sqrt((holder.vx || 0) ** 2 + (holder.vy || 0) ** 2);
       if (speed < PHYSICS_CONFIG.minSpeed && speed > 0) {
         const scale = PHYSICS_CONFIG.minSpeed / speed;
@@ -416,8 +409,6 @@ class GameState {
         holder.vx = Math.cos(angle) * PHYSICS_CONFIG.minSpeed;
         holder.vy = Math.sin(angle) * PHYSICS_CONFIG.minSpeed;
       }
-
-      // Cap max speed
       if (speed > PHYSICS_CONFIG.maxSpeed) {
         const scale = PHYSICS_CONFIG.maxSpeed / speed;
         holder.vx *= scale;
@@ -425,12 +416,11 @@ class GameState {
       }
     });
 
-    // Bubble-to-bubble collisions
+    // Bubble collisions
     for (let i = 0; i < this.holders.length; i++) {
       for (let j = i + 1; j < this.holders.length; j++) {
         const a = this.holders[i];
         const b = this.holders[j];
-        
         if (a.x === undefined || b.x === undefined) continue;
 
         const dx = b.x - a.x;
@@ -442,15 +432,12 @@ class GameState {
           const overlap = minDist - dist;
           const nx = dx / dist;
           const ny = dy / dist;
-
-          // Separate bubbles
           const separation = overlap / 2 + 1;
           a.x -= nx * separation;
           a.y -= ny * separation;
           b.x += nx * separation;
           b.y += ny * separation;
 
-          // Elastic collision response
           const relVelX = (b.vx || 0) - (a.vx || 0);
           const relVelY = (b.vy || 0) - (a.vy || 0);
           const relVelDotNormal = relVelX * nx + relVelY * ny;
@@ -460,7 +447,6 @@ class GameState {
             const massB = b.radius * b.radius;
             const totalMass = massA + massB;
             const impulse = (2 * relVelDotNormal) / totalMass;
-
             a.vx += impulse * massB * nx * 0.8;
             a.vy += impulse * massB * ny * 0.8;
             b.vx -= impulse * massA * nx * 0.8;
@@ -470,13 +456,19 @@ class GameState {
       }
     }
 
-    // Check for ghost respawns — restore to player's max health (progression-based)
+    // Check ghost respawns (local visual timer + ER respawn)
     this.battleBubbles.forEach((bubble, address) => {
       if (bubble.isGhost && bubble.ghostUntil && now >= bubble.ghostUntil) {
         bubble.isGhost = false;
         bubble.ghostUntil = null;
-        bubble.health = bubble.maxHealth; // Use progression-based maxHealth
-        this.addEventLog(`👻 ${address.slice(0, 6)}... respawned!`);
+        bubble.health = bubble.maxHealth;
+        bubble.isAlive = true;
+        this.addEventLog(`${address.slice(0, 6)}... respawned!`);
+
+        // Also respawn on ER
+        if (this.magicBlockReady) {
+          this.magicBlock.respawnPlayer(address).catch(() => {});
+        }
       }
     });
 
@@ -486,23 +478,19 @@ class GameState {
       
       const battleBubble = this.battleBubbles.get(holder.address);
       if (!battleBubble || battleBubble.isGhost) return;
-
       if (now - battleBubble.lastShotTime < BATTLE_CONFIG.fireRate) return;
 
-      // Find closest non-ghost target
       let closest = null;
       let closestDist = Infinity;
 
       this.holders.forEach(target => {
         if (target.address === holder.address || target.x === undefined) return;
-        
         const targetBattle = this.battleBubbles.get(target.address);
         if (targetBattle?.isGhost) return;
 
         const dx = target.x - holder.x;
         const dy = target.y - holder.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-
         if (dist < closestDist) {
           closestDist = dist;
           closest = target;
@@ -515,11 +503,7 @@ class GameState {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const curveDir = Math.random() > 0.5 ? 1 : -1;
 
-        // Use shooter's progression-based damage
-        const shooterStats = this.playerCache.get(holder.address);
-        const damage = shooterStats
-          ? playerStore.calcBulletDamage(shooterStats.shootingLevel)
-          : BATTLE_CONFIG.bulletDamage;
+        const damage = battleBubble.attackPower || BATTLE_CONFIG.bulletDamage;
 
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
@@ -550,7 +534,6 @@ class GameState {
     const bulletsToRemove = new Set();
 
     this.bullets.forEach(bullet => {
-      // Update progress along curved path
       const totalDist = Math.sqrt(
         Math.pow(bullet.targetX - bullet.startX, 2) +
         Math.pow(bullet.targetY - bullet.startY, 2)
@@ -558,7 +541,6 @@ class GameState {
       const progressSpeed = BATTLE_CONFIG.bulletSpeed / totalDist;
       bullet.progress += progressSpeed;
 
-      // Calculate curved position
       const t = bullet.progress;
       const dx = bullet.targetX - bullet.startX;
       const dy = bullet.targetY - bullet.startY;
@@ -578,7 +560,6 @@ class GameState {
                  2 * oneMinusT * t * controlY +
                  t * t * bullet.targetY;
 
-      // Remove if completed path
       if (bullet.progress >= 1.1 ||
           bullet.x < -50 || bullet.x > width + 50 ||
           bullet.y < -50 || bullet.y > height + 50) {
@@ -599,9 +580,10 @@ class GameState {
 
         if (hitDist < target.radius + 3) {
           bulletsToRemove.add(bullet.id);
+
+          // Local damage preview (immediate visual feedback)
           targetBattle.health -= bullet.damage;
 
-          // Add damage number
           this.damageNumbers.push({
             id: `dmg-${now}-${Math.random()}`,
             x: target.x + (Math.random() - 0.5) * 20,
@@ -611,10 +593,16 @@ class GameState {
             alpha: 1,
           });
 
-          // Check for death
+          // Send attack to ER (fire-and-forget, ER is authoritative)
+          if (this.magicBlockReady) {
+            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage);
+          }
+
+          // Check for local death (preview — ER confirms)
           if (targetBattle.health <= 0) {
             targetBattle.health = 0;
             targetBattle.isGhost = true;
+            targetBattle.isAlive = false;
             targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
             targetBattle.deaths++;
 
@@ -623,17 +611,13 @@ class GameState {
               shooter.kills++;
             }
 
-            // Award XP and update player cache
-            this.awardKillXP(bullet.shooterAddress, target.address);
-
             this.killFeed.unshift({
               killer: bullet.shooterAddress,
               victim: target.address,
               time: now,
             });
             this.killFeed = this.killFeed.slice(0, 5);
-
-            this.addEventLog(`☠️ ${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
+            this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
             this.updateTopKillers();
           }
         }
@@ -642,281 +626,91 @@ class GameState {
 
     this.bullets = this.bullets.filter(b => !bulletsToRemove.has(b.id));
 
-    // Update damage numbers
     this.damageNumbers = this.damageNumbers
       .map(dn => ({ ...dn, y: dn.y - 0.5, alpha: dn.alpha - 0.02 }))
       .filter(dn => dn.alpha > 0);
+
+    // Process attack queue (send to ER)
+    this._processAttackQueue();
   }
 
-  addEventLog(message) {
-    this.eventLog.unshift(message);
-    this.eventLog = this.eventLog.slice(0, 10);
+  // ─── ER Attack Queue ─────────────────────────────────────────────
+
+  _queueAttack(attackerAddress, victimAddress, damage) {
+    this.attackQueue.push({ attacker: attackerAddress, victim: victimAddress, damage });
   }
 
-  // Handle incoming transaction - trigger throttled refresh
-  async handleTransaction(event) {
-    const now = Date.now();
-    
-    // Log the transaction
-    if (event.type === 'buy') {
-      this.addEventLog(`🟢 BUY tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
-    } else if (event.type === 'sell') {
-      this.addEventLog(`🔴 SELL tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
-    } else {
-      this.addEventLog(`💫 TX: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+  async _processAttackQueue() {
+    if (this.isProcessingAttacks || this.attackQueue.length === 0) return;
+    this.isProcessingAttacks = true;
+
+    // Process up to 5 attacks per tick
+    const batch = this.attackQueue.splice(0, 5);
+    for (const attack of batch) {
+      this.magicBlock.processAttack(attack.attacker, attack.victim, attack.damage).catch(() => {});
     }
 
-    // Always update price immediately on any transaction
-    this.updatePrice();
-
-    // Throttle holder refreshes - don't refresh more than once per minRefreshInterval
-    if (now - this.lastRefreshTime < this.minRefreshInterval) {
-      // Schedule a pending refresh if not already scheduled
-      if (!this.pendingRefresh) {
-        this.pendingRefresh = true;
-        const delay = this.minRefreshInterval - (now - this.lastRefreshTime);
-        setTimeout(() => this.refreshHoldersNow(), delay);
-      }
-      return;
-    }
-
-    // Refresh holders immediately
-    await this.refreshHoldersNow();
+    this.isProcessingAttacks = false;
   }
 
-  // Refresh holders immediately (with change detection)
-  async refreshHoldersNow() {
-    this.pendingRefresh = false;
-    this.lastRefreshTime = Date.now();
-    const now = Date.now();
-    
-    const oldHolders = new Map(this.holders.map(h => [h.address, h]));
-    const newHolders = await this.fetchHolders();
-    
-    // Track changes
-    const newAddresses = new Set(newHolders.map(h => h.address));
-    const oldAddresses = new Set(this.holders.map(h => h.address));
-    
-    // Clear old new holder markers (after 3 seconds)
-    this.newHolders = new Set([...this.newHolders].filter(addr => {
-      const holder = newHolders.find(h => h.address === addr);
-      return holder && holder.spawnTime && (now - holder.spawnTime) < 3000;
-    }));
-    
-    // Clean up old pop effects (after 1 second)
-    this.popEffects = this.popEffects.filter(p => (now - p.time) < 1000);
-    
-    // Find removed holders (sold everything - bubble pops!)
-    // Only consider truly removed after missing 3+ consecutive refreshes
-    for (const [address, holder] of oldHolders) {
-      if (!newAddresses.has(address) && holder.x !== undefined) {
-        // Increment missing counter
-        const missingCount = (this.missingHolderCounts.get(address) || 0) + 1;
-        this.missingHolderCounts.set(address, missingCount);
-        
-        // Only remove after 3 consecutive misses (prevents API glitches from resetting health)
-        if (missingCount >= 3) {
-          // This holder truly sold everything - create pop effect
-          this.addEventLog(`💥 ${address.slice(0, 6)}... sold everything!`);
-          
-          // Create pop effect at holder's position
-          this.popEffects.push({
-            id: `pop-${now}-${address}`,
-            x: holder.x,
-            y: holder.y,
-            radius: holder.radius,
-            color: holder.color,
-            time: now,
-          });
-          
-          // Remove their battle bubble
-          this.battleBubbles.delete(address);
-          this.missingHolderCounts.delete(address);
-          
-          console.log(`Holder removed (sold all): ${address.slice(0, 8)}...`);
-        } else {
-          console.log(`Holder missing (${missingCount}/3): ${address.slice(0, 8)}...`);
-        }
-      }
+  // ─── Player Registration Queue ───────────────────────────────────
+
+  _queueRegistration(walletAddress) {
+    if (!this.registerQueue.includes(walletAddress)) {
+      this.registerQueue.push(walletAddress);
     }
-    
-    // Reset missing count for holders that are present
-    for (const holder of newHolders) {
-      if (this.missingHolderCounts.has(holder.address)) {
-        this.missingHolderCounts.delete(holder.address);
-      }
-    }
-    
-    // Find new holders
-    for (const holder of newHolders) {
-      if (!oldAddresses.has(holder.address)) {
-        // New holder appeared - mark for spawn animation
-        this.newHolders.add(holder.address);
-        holder.spawnTime = now;
-        this.addEventLog(`🆕 ${holder.address.slice(0, 6)}... joined! (${holder.percentage.toFixed(2)}%)`);
-        console.log(`New holder: ${holder.address.slice(0, 8)}... with ${holder.percentage.toFixed(2)}%`);
-      }
-    }
-    
-    // Find holders with significant balance changes
-    for (const newHolder of newHolders) {
-      const oldHolder = oldHolders.get(newHolder.address);
-      if (oldHolder) {
-        const pctChange = newHolder.percentage - oldHolder.percentage;
-        
-        // Preserve position and velocity from old holder
-        newHolder.x = oldHolder.x;
-        newHolder.y = oldHolder.y;
-        newHolder.vx = oldHolder.vx;
-        newHolder.vy = oldHolder.vy;
-        newHolder.spawnTime = oldHolder.spawnTime; // Preserve spawn time
-        
-        // Log significant changes (more than 0.1% change)
-        if (Math.abs(pctChange) > 0.1) {
-          if (pctChange > 0) {
-            this.addEventLog(`📈 ${newHolder.address.slice(0, 6)}... +${pctChange.toFixed(2)}%`);
-          } else {
-            this.addEventLog(`📉 ${newHolder.address.slice(0, 6)}... ${pctChange.toFixed(2)}%`);
-          }
-        }
-      }
-    }
-    
-    this.holders = newHolders;
-    this.initializePositions();
-    console.log(`Live refresh: ${this.holders.length} holders`);
+    this._processRegistrationQueue();
   }
 
-  // ─── Player Progression Methods ─────────────────────────────────
+  async _processRegistrationQueue() {
+    if (this.isProcessingRegistration || this.registerQueue.length === 0) return;
+    this.isProcessingRegistration = true;
 
-  /**
-   * Ensure a player exists in the in-memory cache.
-   * Creates a default entry if the wallet is new.
-   */
-  ensurePlayerCached(walletAddress) {
-    if (!this.playerCache.has(walletAddress)) {
-      this.playerCache.set(walletAddress, {
-        walletAddress,
-        xp: 0,
-        kills: 0,
-        deaths: 0,
-        holdStreakDays: 0,
-        totalTransactions: 0,
-        totalBuys: 0,
-        totalSells: 0,
-        firstSeen: new Date(),
-        lastSeen: new Date(),
-        ...playerStore.deriveStats(0),
-      });
-
-      // Initialize player onchain (async, fire-and-forget via queue)
-      if (this.magicBlockReady) {
-        this.magicBlock.initPlayer(walletAddress).catch(err => {
-          console.error('MagicBlock initPlayer background error:', err.message);
-        });
+    while (this.registerQueue.length > 0) {
+      const wallet = this.registerQueue.shift();
+      try {
+        await this.magicBlock.registerPlayer(wallet);
+      } catch (err) {
+        console.error(`Registration failed for ${wallet.slice(0, 6)}:`, err.message);
       }
+      await new Promise(r => setTimeout(r, 2000));
     }
-    return this.playerCache.get(walletAddress);
+
+    this.isProcessingRegistration = false;
   }
 
-  /**
-   * Award XP for a kill (to killer) and death (to victim).
-   * Recalculates levels and updates battle bubble stats.
-   */
-  awardKillXP(killerAddress, victimAddress) {
-    // Queue kill for batched onchain settlement (every 60s instead of per-kill)
-    if (this.magicBlockReady) {
-      this.magicBlock.queueKill(killerAddress, victimAddress);
-    }
+  // ─── ER State Sync ───────────────────────────────────────────────
 
-    // Update killer
-    const killer = this.ensurePlayerCached(killerAddress);
-    killer.xp += playerStore.PROGRESSION.xpPerKill;
-    killer.kills++;
-    const killerStats = playerStore.deriveStats(killer.xp);
-    Object.assign(killer, killerStats);
-
-    // Update killer's battle bubble max health (level up mid-game!)
-    const killerBubble = this.battleBubbles.get(killerAddress);
-    if (killerBubble) {
-      const oldMax = killerBubble.maxHealth;
-      killerBubble.maxHealth = killerStats.maxHealth;
-      // Heal the difference (reward for leveling up)
-      if (killerStats.maxHealth > oldMax) {
-        killerBubble.health = Math.min(
-          killerBubble.health + (killerStats.maxHealth - oldMax),
-          killerStats.maxHealth
-        );
-      }
-    }
-
-    // Update victim
-    const victim = this.ensurePlayerCached(victimAddress);
-    victim.xp += playerStore.PROGRESSION.xpPerDeath;
-    victim.deaths++;
-    const victimStats = playerStore.deriveStats(victim.xp);
-    Object.assign(victim, victimStats);
-
-    // Update victim's battle bubble max health for next respawn
-    const victimBubble = this.battleBubbles.get(victimAddress);
-    if (victimBubble) {
-      victimBubble.maxHealth = victimStats.maxHealth;
-    }
-  }
-
-  /**
-   * Award XP for a transaction (buy/sell).
-   */
-  awardTransactionXP(type) {
-    // We don't know the exact wallet from a Helius tx event,
-    // so we award XP to all current holders when a tx happens.
-    // In the future, parse the tx to find the exact wallet.
-    // For now, this is a placeholder — the main XP comes from kills and holding.
-  }
-
-  /**
-   * Sync onchain stats back to in-memory cache after batch settlement.
-   * This makes MagicBlock the source of truth for kills/deaths/XP.
-   */
-  async syncFromOnchain() {
+  async syncFromER() {
     if (!this.magicBlockReady) return;
 
     try {
-      const onchainStats = await this.magicBlock.getAllPlayerStats();
+      const erStates = await this.magicBlock.getAllPlayerStates();
       let synced = 0;
 
-      for (const [walletAddress, stats] of onchainStats) {
-        const cached = this.playerCache.get(walletAddress);
-        if (!cached) continue;
+      for (const [walletAddress, state] of erStates) {
+        // Update player cache
+        this.playerCache.set(walletAddress, state);
 
-        // Log if onchain and in-memory diverge significantly
-        if (Math.abs(cached.kills - stats.kills) > 5) {
-          console.log(`Onchain sync: ${walletAddress.slice(0, 6)} kills ${cached.kills} → ${stats.kills}`);
-        }
-
-        // Onchain is source of truth for these fields
-        cached.xp = stats.xp;
-        cached.kills = stats.kills;
-        cached.deaths = stats.deaths;
-        cached.healthLevel = stats.healthLevel;
-        cached.shootingLevel = stats.shootingLevel;
-        cached.holdStreakDays = stats.holdStreakDays;
-
-        // Recalculate derived stats from onchain XP
-        const derived = playerStore.deriveStats(stats.xp);
-        Object.assign(cached, derived);
-
-        // Update battle bubble to match onchain
+        // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          bubble.kills = stats.kills;
-          bubble.deaths = stats.deaths;
-          const newMaxHealth = playerStore.calcMaxHealth(stats.healthLevel);
-          if (newMaxHealth !== bubble.maxHealth) {
-            const oldMax = bubble.maxHealth;
-            bubble.maxHealth = newMaxHealth;
-            if (newMaxHealth > oldMax && !bubble.isGhost) {
-              bubble.health = Math.min(bubble.health + (newMaxHealth - oldMax), newMaxHealth);
+          bubble.kills = state.kills;
+          bubble.deaths = state.deaths;
+          bubble.xp = state.xp;
+          bubble.healthLevel = state.healthLevel;
+          bubble.attackLevel = state.attackLevel;
+          bubble.attackPower = state.attackPower;
+
+          // Sync health from ER (ER is authoritative)
+          if (!bubble.isGhost) {
+            bubble.maxHealth = state.maxHealth;
+            bubble.health = state.health;
+            bubble.isAlive = state.isAlive;
+
+            if (!state.isAlive && !bubble.isGhost) {
+              bubble.isGhost = true;
+              bubble.ghostUntil = Date.now() + BATTLE_CONFIG.ghostDuration;
             }
           }
         }
@@ -925,12 +719,41 @@ class GameState {
       }
 
       if (synced > 0) {
-        console.log(`Onchain sync: ${synced} players updated from Solana`);
         this.updateTopKillers();
       }
     } catch (err) {
-      console.error('Onchain sync error:', err.message);
+      console.error('ER sync error:', err.message);
     }
+  }
+
+  // ─── Event & Player Management ───────────────────────────────────
+
+  addEventLog(message) {
+    this.eventLog.unshift(message);
+    this.eventLog = this.eventLog.slice(0, 10);
+  }
+
+  ensurePlayerCached(walletAddress) {
+    if (!this.playerCache.has(walletAddress)) {
+      this.playerCache.set(walletAddress, {
+        walletAddress,
+        health: BATTLE_CONFIG.maxHealth,
+        maxHealth: BATTLE_CONFIG.maxHealth,
+        attackPower: BATTLE_CONFIG.bulletDamage,
+        xp: 0,
+        kills: 0,
+        deaths: 0,
+        healthLevel: 1,
+        attackLevel: 1,
+        isAlive: true,
+      });
+
+      // Queue for ER registration
+      if (this.magicBlockReady) {
+        this._queueRegistration(walletAddress);
+      }
+    }
+    return this.playerCache.get(walletAddress);
   }
 
   updateTopKillers() {
@@ -941,7 +764,111 @@ class GameState {
       .map(b => ({ address: b.address, kills: b.kills }));
   }
 
-  // Get serializable state for clients
+  async handleTransaction(event) {
+    const now = Date.now();
+    
+    if (event.type === 'buy') {
+      this.addEventLog(`BUY tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    } else if (event.type === 'sell') {
+      this.addEventLog(`SELL tx: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    } else {
+      this.addEventLog(`TX: ${event.signature?.slice(0, 8) || 'unknown'}...`);
+    }
+
+    this.updatePrice();
+
+    if (now - this.lastRefreshTime < this.minRefreshInterval) {
+      if (!this.pendingRefresh) {
+        this.pendingRefresh = true;
+        const delay = this.minRefreshInterval - (now - this.lastRefreshTime);
+        setTimeout(() => this.refreshHoldersNow(), delay);
+      }
+      return;
+    }
+
+    await this.refreshHoldersNow();
+  }
+
+  async refreshHoldersNow() {
+    this.pendingRefresh = false;
+    this.lastRefreshTime = Date.now();
+    const now = Date.now();
+    
+    const oldHolders = new Map(this.holders.map(h => [h.address, h]));
+    const newHolders = await this.fetchHolders();
+    
+    const newAddresses = new Set(newHolders.map(h => h.address));
+    const oldAddresses = new Set(this.holders.map(h => h.address));
+    
+    this.newHolders = new Set([...this.newHolders].filter(addr => {
+      const holder = newHolders.find(h => h.address === addr);
+      return holder && holder.spawnTime && (now - holder.spawnTime) < 3000;
+    }));
+    
+    this.popEffects = this.popEffects.filter(p => (now - p.time) < 1000);
+    
+    for (const [address, holder] of oldHolders) {
+      if (!newAddresses.has(address) && holder.x !== undefined) {
+        const missingCount = (this.missingHolderCounts.get(address) || 0) + 1;
+        this.missingHolderCounts.set(address, missingCount);
+        
+        if (missingCount >= 3) {
+          this.addEventLog(`${address.slice(0, 6)}... sold everything!`);
+          this.popEffects.push({
+            id: `pop-${now}-${address}`,
+            x: holder.x,
+            y: holder.y,
+            radius: holder.radius,
+            color: holder.color,
+            time: now,
+          });
+          this.battleBubbles.delete(address);
+          this.missingHolderCounts.delete(address);
+        }
+      }
+    }
+    
+    for (const holder of newHolders) {
+      if (this.missingHolderCounts.has(holder.address)) {
+        this.missingHolderCounts.delete(holder.address);
+      }
+    }
+    
+    for (const holder of newHolders) {
+      if (!oldAddresses.has(holder.address)) {
+        this.newHolders.add(holder.address);
+        holder.spawnTime = now;
+        this.addEventLog(`${holder.address.slice(0, 6)}... joined! (${holder.percentage.toFixed(2)}%)`);
+      }
+    }
+    
+    for (const newHolder of newHolders) {
+      const oldHolder = oldHolders.get(newHolder.address);
+      if (oldHolder) {
+        newHolder.x = oldHolder.x;
+        newHolder.y = oldHolder.y;
+        newHolder.vx = oldHolder.vx;
+        newHolder.vy = oldHolder.vy;
+        newHolder.spawnTime = oldHolder.spawnTime;
+        
+        const pctChange = newHolder.percentage - oldHolder.percentage;
+        if (Math.abs(pctChange) > 0.1) {
+          if (pctChange > 0) {
+            this.addEventLog(`${newHolder.address.slice(0, 6)}... +${pctChange.toFixed(2)}%`);
+          } else {
+            this.addEventLog(`${newHolder.address.slice(0, 6)}... ${pctChange.toFixed(2)}%`);
+          }
+        }
+      }
+    }
+    
+    this.holders = newHolders;
+    this.initializePositions();
+    console.log(`Live refresh: ${this.holders.length} holders`);
+  }
+
+  // ─── Client State ────────────────────────────────────────────────
+
   getState() {
     const now = Date.now();
     return {
@@ -958,26 +885,23 @@ class GameState {
       })),
       popEffects: this.popEffects.map(p => ({
         ...p,
-        progress: Math.min(1, (now - p.time) / 1000), // 0 to 1 over 1 second
+        progress: Math.min(1, (now - p.time) / 1000),
       })),
-      battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => {
-        const playerStats = this.playerCache.get(addr);
-        return {
-          address: addr,
-          health: b.health,
-          maxHealth: b.maxHealth,
-          isGhost: b.isGhost,
-          ghostUntil: b.ghostUntil,
-          kills: b.kills,
-          deaths: b.deaths,
-          // Progression data
-          level: playerStats ? playerStats.level : 1,
-          xp: playerStats ? playerStats.xp : 0,
-          healthLevel: playerStats ? playerStats.healthLevel : 1,
-          shootingLevel: playerStats ? playerStats.shootingLevel : 1,
-          holdStreakDays: playerStats ? playerStats.holdStreakDays : 0,
-        };
-      }),
+      battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => ({
+        address: addr,
+        health: b.health,
+        maxHealth: b.maxHealth,
+        isGhost: b.isGhost,
+        ghostUntil: b.ghostUntil,
+        kills: b.kills,
+        deaths: b.deaths,
+        level: calcLevel(b.xp || 0),
+        xp: b.xp || 0,
+        healthLevel: b.healthLevel || 1,
+        attackLevel: b.attackLevel || 1,
+        attackPower: b.attackPower || BATTLE_CONFIG.bulletDamage,
+        isAlive: b.isAlive !== false,
+      })),
       bullets: this.bullets.map(b => ({
         id: b.id,
         shooterAddress: b.shooterAddress,
@@ -1004,54 +928,48 @@ class GameState {
     };
   }
 
-  // Start the game loop
+  // ─── Lifecycle ───────────────────────────────────────────────────
+
   async start() {
     if (this.isRunning) return;
     
     console.log('Starting game state...');
     this.isRunning = true;
 
-    // Initialize MagicBlock (onchain state — source of truth)
-    console.log('Initializing MagicBlock onchain state...');
+    // Initialize MagicBlock Ephemeral Rollup integration
+    console.log('Initializing MagicBlock Ephemeral Rollup...');
     this.magicBlockReady = await this.magicBlock.initialize();
     if (this.magicBlockReady) {
-      console.log('✅ MagicBlock World initialized on Solana devnet!');
-      console.log('   World:', this.magicBlock.worldPda.toBase58());
+      console.log('MagicBlock ER integration active!');
+      console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
+      console.log('   Delegated:', this.magicBlock.arenaDelegated);
 
-      // After each batch settlement, sync onchain stats back to in-memory cache
-      this.magicBlock.setOnBatchSettled(async () => {
-        await this.syncFromOnchain();
-      });
+      // Commit ER state to base layer every 30 seconds
+      this.magicBlock.startCommitTimer(30000);
 
-      // Start batched kill settlement (every 60 seconds)
-      this.magicBlock.startBatchSettlement(60000);
+      // Sync ER state back to in-memory cache every 10 seconds
+      this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
     } else {
-      console.warn('⚠️  MagicBlock not available — kills will only be tracked in memory');
+      console.warn('MagicBlock ER not available — game runs locally only');
     }
 
-    // Fetch token metadata (name, symbol, logo)
     await this.fetchTokenMetadata();
 
-    // Fetch initial holders
     this.holders = await this.fetchHolders();
     this.initializePositions();
     
     console.log(`Loaded ${this.holders.length} holders`);
 
-    // Ensure all current holders are in the player cache (fresh stats, no DB)
     for (const holder of this.holders) {
       this.ensurePlayerCached(holder.address);
     }
 
-    // Run game loop at 60fps
     this.gameLoop = setInterval(() => {
       this.tick();
     }, 1000 / 60);
 
-    // Refresh holders every 2 minutes
     this.holderRefresh = setInterval(async () => {
       const newHolders = await this.fetchHolders();
-      // Preserve positions for existing holders
       newHolders.forEach(newHolder => {
         const existing = this.holders.find(h => h.address === newHolder.address);
         if (existing) {
@@ -1064,7 +982,6 @@ class GameState {
       this.holders = newHolders;
       this.initializePositions();
 
-      // Ensure new holders are cached
       for (const holder of newHolders) {
         this.ensurePlayerCached(holder.address);
       }
@@ -1072,12 +989,10 @@ class GameState {
       console.log(`Refreshed holders: ${this.holders.length}`);
     }, 120000);
 
-    // Fast price refresh every 5 seconds
     this.priceRefresh = setInterval(async () => {
       await this.updatePrice();
     }, 5000);
 
-    // Full metadata refresh every 60 seconds (for logo, name updates)
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
@@ -1089,11 +1004,12 @@ class GameState {
     if (this.holderRefresh) clearInterval(this.holderRefresh);
     if (this.priceRefresh) clearInterval(this.priceRefresh);
     if (this.metadataRefresh) clearInterval(this.metadataRefresh);
+    if (this.erSyncInterval) clearInterval(this.erSyncInterval);
 
-    // Final batch settlement before shutdown — flush all pending kills onchain
     if (this.magicBlockReady) {
-      this.magicBlock.stopBatchSettlement();
-      await this.magicBlock.settleKillBatch();
+      this.magicBlock.stopCommitTimer();
+      // Final commit before shutdown
+      await this.magicBlock.commitState();
     }
   }
 }

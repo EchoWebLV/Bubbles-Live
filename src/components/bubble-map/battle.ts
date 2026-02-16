@@ -9,12 +9,15 @@ export interface BattleBubble {
   lastShotTime: number;
   kills: number;
   deaths: number;
-  // Progression (from DB, via server)
+  // Progression (from Ephemeral Rollup)
   level?: number;
   xp?: number;
   healthLevel?: number;
-  shootingLevel?: number;
+  attackLevel?: number;
+  attackPower?: number;
+  shootingLevel?: number; // legacy alias
   holdStreakDays?: number;
+  isAlive?: boolean;
 }
 
 export interface Bullet {

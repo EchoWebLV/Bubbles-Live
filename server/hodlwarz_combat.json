@@ -1,0 +1,888 @@
+{
+  "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio",
+  "metadata": {
+    "name": "hodlwarz_combat",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "commit_state",
+      "docs": [
+        "Commit ER state back to base layer (keeps delegation active)."
+      ],
+      "discriminator": [
+        201,
+        80,
+        148,
+        145,
+        9,
+        196,
+        225,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegate_arena",
+      "docs": [
+        "Delegate the arena account to an Ephemeral Rollup."
+      ],
+      "discriminator": [
+        216,
+        55,
+        214,
+        212,
+        195,
+        162,
+        39,
+        100
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "buffer_arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                241,
+                83,
+                98,
+                161,
+                191,
+                95,
+                141,
+                187,
+                189,
+                65,
+                160,
+                171,
+                46,
+                56,
+                119,
+                248,
+                178,
+                5,
+                46,
+                36,
+                221,
+                96,
+                215,
+                16,
+                9,
+                109,
+                217,
+                149,
+                236,
+                117,
+                111,
+                60
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "arena"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delegate_player",
+      "docs": [
+        "Delegate a player account to an Ephemeral Rollup."
+      ],
+      "discriminator": [
+        235,
+        159,
+        245,
+        102,
+        161,
+        199,
+        254,
+        89
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "signer": true
+        },
+        {
+          "name": "buffer_player_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_state"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                241,
+                83,
+                98,
+                161,
+                191,
+                95,
+                141,
+                187,
+                189,
+                65,
+                160,
+                171,
+                46,
+                56,
+                119,
+                248,
+                178,
+                5,
+                46,
+                36,
+                221,
+                96,
+                215,
+                16,
+                9,
+                109,
+                217,
+                149,
+                236,
+                117,
+                111,
+                60
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_player_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_player_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_state"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "player_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "end_session",
+      "docs": [
+        "Commit and undelegate - returns accounts to base layer."
+      ],
+      "discriminator": [
+        11,
+        244,
+        61,
+        154,
+        212,
+        249,
+        15,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "init_arena",
+      "docs": [
+        "Initialize the arena on the base layer."
+      ],
+      "discriminator": [
+        24,
+        246,
+        252,
+        176,
+        155,
+        175,
+        123,
+        124
+      ],
+      "accounts": [
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "process_attack",
+      "docs": [
+        "Process an attack: attacker deals damage to victim. Runs on ER."
+      ],
+      "discriminator": [
+        109,
+        137,
+        169,
+        15,
+        252,
+        107,
+        171,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "attacker",
+          "writable": true
+        },
+        {
+          "name": "victim",
+          "writable": true
+        },
+        {
+          "name": "arena",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  114,
+                  101,
+                  110,
+                  97
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "damage",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer"
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "register_player",
+      "docs": [
+        "Register a new player on the base layer (no arena needed)."
+      ],
+      "discriminator": [
+        242,
+        146,
+        194,
+        234,
+        234,
+        145,
+        228,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "wallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "wallet",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "respawn_player",
+      "docs": [
+        "Respawn a dead player after the respawn timer has elapsed. Runs on ER."
+      ],
+      "discriminator": [
+        93,
+        210,
+        196,
+        21,
+        134,
+        131,
+        118,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "upgrade_stat",
+      "docs": [
+        "Upgrade a player stat. stat_type: 0 = health, 1 = attack. Runs on ER."
+      ],
+      "discriminator": [
+        2,
+        15,
+        245,
+        53,
+        237,
+        250,
+        206,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "stat_type",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Arena",
+      "discriminator": [
+        243,
+        215,
+        44,
+        44,
+        231,
+        211,
+        232,
+        168
+      ]
+    },
+    {
+      "name": "PlayerState",
+      "discriminator": [
+        56,
+        3,
+        60,
+        86,
+        174,
+        16,
+        244,
+        195
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "NotInitialized",
+      "msg": "Player not initialized"
+    },
+    {
+      "code": 6001,
+      "name": "AttackerDead",
+      "msg": "Attacker is dead"
+    },
+    {
+      "code": 6002,
+      "name": "VictimDead",
+      "msg": "Victim is already dead"
+    },
+    {
+      "code": 6003,
+      "name": "ArenaInactive",
+      "msg": "Arena is not active"
+    },
+    {
+      "code": 6004,
+      "name": "AlreadyAlive",
+      "msg": "Player is already alive"
+    },
+    {
+      "code": 6005,
+      "name": "RespawnCooldown",
+      "msg": "Respawn cooldown not elapsed"
+    },
+    {
+      "code": 6006,
+      "name": "InsufficientXP",
+      "msg": "Not enough XP to upgrade"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidStatType",
+      "msg": "Invalid stat type (0=health, 1=attack)"
+    },
+    {
+      "code": 6008,
+      "name": "MaxLevel",
+      "msg": "Stat already at max level"
+    }
+  ],
+  "types": [
+    {
+      "name": "Arena",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "player_count",
+            "type": "u32"
+          },
+          {
+            "name": "total_kills",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "health",
+            "type": "u16"
+          },
+          {
+            "name": "max_health",
+            "type": "u16"
+          },
+          {
+            "name": "attack_power",
+            "type": "u16"
+          },
+          {
+            "name": "xp",
+            "type": "u64"
+          },
+          {
+            "name": "kills",
+            "type": "u64"
+          },
+          {
+            "name": "deaths",
+            "type": "u64"
+          },
+          {
+            "name": "health_level",
+            "type": "u8"
+          },
+          {
+            "name": "attack_level",
+            "type": "u8"
+          },
+          {
+            "name": "is_alive",
+            "type": "bool"
+          },
+          {
+            "name": "respawn_at",
+            "type": "i64"
+          },
+          {
+            "name": "initialized",
+            "type": "bool"
+          }
+        ]
+      }
+    }
+  ]
+}

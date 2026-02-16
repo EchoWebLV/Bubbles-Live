@@ -24,12 +24,15 @@ export interface GameBattleBubble {
   ghostUntil: number | null;
   kills: number;
   deaths: number;
-  // Progression data from DB
+  // Progression data from Ephemeral Rollup
   level: number;
   xp: number;
   healthLevel: number;
-  shootingLevel: number;
-  holdStreakDays: number;
+  attackLevel: number;
+  attackPower: number;
+  shootingLevel?: number; // legacy alias
+  holdStreakDays?: number;
+  isAlive: boolean;
 }
 
 export interface GameBullet {
@@ -101,53 +104,59 @@ export interface GameState {
   timestamp: number;
   magicBlock?: {
     ready: boolean;
-    worldPda: string | null;
-    playersOnchain: number;
-    killsPending: number;
-    batchStats: {
-      queued: number;
-      settled: number;
-      skipped: number;
-      lastSettleTime: number;
+    arenaPda: string | null;
+    arenaDelegated: boolean;
+    playersRegistered: number;
+    playersDelegated: number;
+    stats: {
+      attacksSent: number;
+      attacksConfirmed: number;
+      attacksFailed: number;
+      commits: number;
+      lastCommitTime: number;
+      erLatencyMs: number;
     };
     eventLog: OnchainEvent[];
-    rpc: string;
-    programs: {
-      playerStats: string;
-      initPlayer: string;
-      recordKill: string;
-      upgradeStat: string;
+    rpc: {
+      baseLayer: string;
+      ephemeralRollup: string;
     };
+    programId: string;
+    erValidator: string;
   };
 }
 
 export interface OnchainEvent {
-  type: 'world' | 'entity' | 'component' | 'init' | 'kill' | 'kill_pending' | 'upgrade' | 'batch' | 'error';
+  type: 'arena' | 'register' | 'delegate' | 'attack' | 'attack_pending' | 'respawn' | 'upgrade' | 'commit' | 'system' | 'error';
   message: string;
   tx: string | null;
   txFull: string | null;
   explorer: string | null;
   time: number;
   status?: 'pending' | 'confirmed' | null;
-  killer?: string;
+  attacker?: string;
   victim?: string;
+  wallet?: string;
+  damage?: number;
+  latencyMs?: number;
   [key: string]: unknown;
 }
 
 export interface OnchainPlayerStats {
   walletAddress: string;
+  wallet: string;
+  health: number;
+  maxHealth: number;
+  attackPower: number;
   xp: number;
   kills: number;
   deaths: number;
   healthLevel: number;
-  shootingLevel: number;
-  holdStreakDays: number;
-  totalBuys: number;
-  totalSells: number;
+  attackLevel: number;
+  isAlive: boolean;
+  respawnAt: number;
   initialized: boolean;
-  lastUpdated: number;
-  entityPda: string;
-  componentPda: string;
+  playerPda: string;
 }
 
 interface UseGameSocketOptions {
