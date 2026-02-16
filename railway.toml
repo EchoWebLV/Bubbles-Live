@@ -1,9 +1,6 @@
 [build]
-builder = "NIXPACKS"
-buildCommand = "npm install && npm run build"
-
-[build.nixpacksConfig]
-nixPkgs = ["nodejs_22"]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "npm start"
