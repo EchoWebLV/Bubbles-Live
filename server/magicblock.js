@@ -65,6 +65,10 @@ class MagicBlockService {
     this.eventLog = [];
     this.MAX_EVENT_LOG = 200;
 
+    // Track players whose death has been logged to avoid duplicate entries.
+    // Cleared when the player respawns.
+    this.deathLogged = new Set();
+
     // Stats
     this.stats = {
       attacksSent: 0,
@@ -368,7 +372,7 @@ class MagicBlockService {
 
   // ─── Combat (runs on ER) ─────────────────────────────────────────
 
-  async processAttack(attackerAddress, victimAddress, damage, isLocalKill = false) {
+  async processAttack(attackerAddress, victimAddress, damage) {
     if (!this.ready || !this.arenaDelegated) return null;
 
     const attacker = this.playerMap.get(attackerAddress);
@@ -376,13 +380,16 @@ class MagicBlockService {
     if (!attacker || !victim) return null;
     if (!this.playerDelegated.has(attackerAddress) || !this.playerDelegated.has(victimAddress)) return null;
 
+    // Skip if victim already confirmed dead on-chain (avoid VictimDead errors)
+    if (this.deathLogged.has(victimAddress)) return null;
+
     this.stats.attacksSent++;
 
     try {
       const start = Date.now();
 
       // Scale local float damage (0.1) → on-chain u16 (10)
-      const onchainDamage = Math.round(damage * DAMAGE_SCALE);
+      const onchainDamage = Math.max(1, Math.round(damage * DAMAGE_SCALE));
 
       const tx = await this.erProgram.methods
         .processAttack(onchainDamage)
@@ -396,24 +403,11 @@ class MagicBlockService {
       this.stats.erLatencyMs = Date.now() - start;
       this.stats.attacksConfirmed++;
 
-      // When the local game predicted a kill, verify on ER and log with tx proof
-      if (isLocalKill) {
-        try {
-          const victimState = await this.erProgram.account.playerState.fetch(victim.playerPda);
-          if (!victimState.isAlive) {
-            this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
-              killer: attackerAddress,
-              victim: victimAddress,
-              _er: true,
-            });
-            this._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated`, tx, {
-              victim: victimAddress,
-              killer: attackerAddress,
-              _er: true,
-            });
-          }
-        } catch (_) {
-          // State fetch failed — still log with tx as best-effort proof
+      // After every successful attack, check if victim died on-chain
+      try {
+        const victimState = await this.erProgram.account.playerState.fetch(victim.playerPda);
+        if (!victimState.isAlive && !this.deathLogged.has(victimAddress)) {
+          this.deathLogged.add(victimAddress);
           this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
             killer: attackerAddress,
             victim: victimAddress,
@@ -425,12 +419,14 @@ class MagicBlockService {
             _er: true,
           });
         }
+      } catch (_) {
+        // State fetch failed — not critical, will catch on next cycle
       }
 
       return tx;
     } catch (err) {
       this.stats.attacksFailed++;
-      if (!err.message.includes('blockhash')) {
+      if (!err.message.includes('blockhash') && !err.message.includes('VictimDead')) {
         console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, err.message);
       }
       return null;
@@ -450,6 +446,7 @@ class MagicBlockService {
         })
         .rpc();
 
+      this.deathLogged.delete(walletAddress); // allow future death detection
       this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress, _er: true });
       return tx;
     } catch (err) {

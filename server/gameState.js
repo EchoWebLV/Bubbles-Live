@@ -599,15 +599,13 @@ class GameState {
             alpha: 1,
           });
 
-          // Check for local death (preview — ER confirms with tx proof)
-          const isLocalKill = targetBattle.health <= 0;
-
-          // Send attack to ER; flag lethal hits so ER can verify and log with tx hash
+          // Send damage to ER (aggregated and flushed every few seconds)
           if (this.magicBlockReady) {
-            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage, isLocalKill);
+            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage);
           }
 
-          if (isLocalKill) {
+          // Check for local death (preview — ER detects & logs with tx proof)
+          if (targetBattle.health <= 0) {
             targetBattle.health = 0;
             targetBattle.isGhost = true;
             targetBattle.isAlive = false;
@@ -651,18 +649,16 @@ class GameState {
   // we accumulate damage per attacker→victim pair and flush every few
   // seconds.  This keeps ER tx count manageable (~1-5 txs per flush).
 
-  _queueAttack(attackerAddress, victimAddress, damage, isLocalKill = false) {
+  _queueAttack(attackerAddress, victimAddress, damage) {
     const key = `${attackerAddress}|${victimAddress}`;
     const existing = this.damageBuffer.get(key);
     if (existing) {
       existing.damage += damage;
-      if (isLocalKill) existing.isLocalKill = true;
     } else {
       this.damageBuffer.set(key, {
         attacker: attackerAddress,
         victim: victimAddress,
         damage,
-        isLocalKill,
       });
     }
   }
@@ -689,7 +685,7 @@ class GameState {
     await Promise.allSettled(
       toSend.map(attack =>
         this.magicBlock.processAttack(
-          attack.attacker, attack.victim, attack.damage, attack.isLocalKill
+          attack.attacker, attack.victim, attack.damage
         ).catch(() => {})
       )
     );
@@ -697,7 +693,7 @@ class GameState {
     // Send overflow sequentially with a small gap
     for (const attack of overflow) {
       await this.magicBlock.processAttack(
-        attack.attacker, attack.victim, attack.damage, attack.isLocalKill
+        attack.attacker, attack.victim, attack.damage
       ).catch(() => {});
     }
 
