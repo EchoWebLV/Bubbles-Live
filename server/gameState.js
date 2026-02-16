@@ -6,7 +6,7 @@ const { MagicBlockService } = require('./magicblock');
 
 const BATTLE_CONFIG = {
   maxHealth: 100,       // base — overridden by onchain PlayerState
-  bulletDamage: 10,     // base damage sent to ER (u16)
+  bulletDamage: 0.1,    // base damage per bullet
   fireRate: 200,        // ms between shots
   bulletSpeed: 8,
   ghostDuration: 60000, // 60 seconds (visual only; ER has its own respawn timer)
@@ -27,9 +27,9 @@ const PROGRESSION = {
   xpPerDeath: 5,
   levelScale: 50,
   healthPerLevel: 10,
-  damagePerLevel: 1,   // u16 damage per level
+  damagePerLevel: 0.01, // +0.01 bullet damage per level
   baseHealth: 100,
-  baseDamage: 10,       // u16 base attack
+  baseDamage: 0.1,      // base attack per bullet
 };
 
 function calcLevel(xp) {
@@ -618,6 +618,15 @@ class GameState {
             });
             this.killFeed = this.killFeed.slice(0, 5);
             this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
+
+            // Log kill to on-chain records panel
+            if (this.magicBlockReady) {
+              this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
+                killer: bullet.shooterAddress,
+                victim: target.address,
+              });
+            }
+
             this.updateTopKillers();
           }
         }

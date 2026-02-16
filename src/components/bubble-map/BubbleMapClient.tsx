@@ -658,7 +658,7 @@ export function BubbleMapClient() {
         </motion.div>
       )}
 
-      {/* Ephemeral Rollup Activity Panel */}
+      {/* On-Chain Records Panel */}
       <AnimatePresence>
         {showOnchainPanel && gameState?.magicBlock && (
           <motion.div
@@ -674,7 +674,7 @@ export function BubbleMapClient() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-bold text-amber-400">Ephemeral Rollup Activity</span>
+                    <span className="text-sm font-bold text-amber-400">On-Chain Records</span>
                   </div>
                   <button
                     onClick={() => setShowOnchainPanel(false)}
@@ -703,15 +703,15 @@ export function BubbleMapClient() {
 
               {/* ER Metrics */}
               <div className="px-4 py-2 border-b border-slate-800/50 bg-slate-900/50">
-                <div className="text-[10px] text-slate-500 mb-1 uppercase tracking-wider">Ephemeral Rollup Metrics</div>
+                <div className="text-[10px] text-slate-500 mb-1 uppercase tracking-wider">On-Chain Metrics</div>
                 <div className="grid grid-cols-3 gap-2 text-[10px]">
                   <div className="text-center">
                     <div className="text-green-400 font-bold text-sm">{gameState.magicBlock.stats?.attacksConfirmed ?? 0}</div>
-                    <div className="text-slate-500">Attacks (ER)</div>
+                    <div className="text-slate-500">Attacks</div>
                   </div>
                   <div className="text-center">
                     <div className="text-amber-400 font-bold text-sm">{gameState.magicBlock.stats?.erLatencyMs ?? 0}ms</div>
-                    <div className="text-slate-500">ER Latency</div>
+                    <div className="text-slate-500">Latency</div>
                   </div>
                   <div className="text-center">
                     <div className="text-blue-400 font-bold text-sm">{gameState.magicBlock.stats?.commits ?? 0}</div>
@@ -734,22 +734,20 @@ export function BubbleMapClient() {
               <div className="max-h-[28rem] overflow-y-auto scrollbar-thin">
                 {(!gameState.magicBlock.eventLog || gameState.magicBlock.eventLog.length === 0) ? (
                   <div className="px-4 py-6 text-center text-xs text-slate-500">
-                    Waiting for Ephemeral Rollup events...
+                    Waiting for on-chain events...
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-800/20">
-                    {gameState.magicBlock.eventLog.map((event: OnchainEvent, i: number) => {
-                      const isAttackPending = event.type === 'attack_pending';
-                      const isAttackConfirmed = event.type === 'attack';
-                      const isAttack = isAttackPending || isAttackConfirmed;
+                    {gameState.magicBlock.eventLog
+                      .filter((event: OnchainEvent) => event.type !== 'attack' && event.type !== 'attack_pending')
+                      .map((event: OnchainEvent, i: number) => {
 
                       const iconMap: Record<string, string> = {
                         arena: '🏟️',
-                        register: '📝',
+                        register: '👤',
                         delegate: '🔗',
-                        attack: '⚔️',
-                        attack_pending: '⚔️',
                         respawn: '💫',
+                        kill: '💀',
                         upgrade: '⬆️',
                         commit: '📤',
                         system: '⚙️',
@@ -759,9 +757,8 @@ export function BubbleMapClient() {
                         arena: 'text-blue-400',
                         register: 'text-cyan-400',
                         delegate: 'text-purple-400',
-                        attack: 'text-green-400',
-                        attack_pending: 'text-red-400',
                         respawn: 'text-teal-400',
+                        kill: 'text-red-400',
                         upgrade: 'text-amber-400',
                         commit: 'text-orange-400',
                         system: 'text-slate-400',
@@ -773,45 +770,17 @@ export function BubbleMapClient() {
                       return (
                         <div
                           key={`${event.time}-${i}`}
-                          className={`px-3 py-1.5 hover:bg-slate-800/30 transition-colors group ${isAttack && i < 3 ? 'bg-slate-800/15' : ''}`}
+                          className={`px-3 py-1.5 hover:bg-slate-800/30 transition-colors group ${i < 3 ? 'bg-slate-800/15' : ''}`}
                           style={{ opacity: Math.max(0.35, 1 - i * 0.015) }}
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-xs leading-none">{iconMap[event.type] || '📝'}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
-                                {isAttack ? (
-                                  <span className="text-[11px] font-medium flex items-center gap-1">
-                                    <span className="text-red-400 font-mono">{(event.attacker as string)?.slice(0, 6) || '???'}</span>
-                                    <span className="text-slate-500">→</span>
-                                    <span className="text-slate-300 font-mono">{(event.victim as string)?.slice(0, 6) || '???'}</span>
-                                    {isAttackConfirmed && event.latencyMs && (
-                                      <span className="text-[9px] text-green-500/60">{event.latencyMs}ms</span>
-                                    )}
-                                  </span>
-                                ) : (
-                                  <span className={`text-[11px] font-medium truncate ${colorMap[event.type] || 'text-slate-300'}`}>
-                                    {event.message}
-                                  </span>
-                                )}
-                                {isAttackPending && (
-                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-yellow-500/15 text-yellow-400 border border-yellow-500/20">
-                                    <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                                    sending
-                                  </span>
-                                )}
-                                {isAttackConfirmed && event.tx && (
-                                  <a
-                                    href={event.explorer || '#'}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-green-500/15 text-green-400 border border-green-500/20 hover:bg-green-500/25 transition-colors"
-                                  >
-                                    <span className="w-1 h-1 bg-green-400 rounded-full" />
-                                    on ER
-                                  </a>
-                                )}
-                                {!isAttack && event.tx && (
+                                <span className={`text-[11px] font-medium truncate ${colorMap[event.type] || 'text-slate-300'}`}>
+                                  {event.message}
+                                </span>
+                                {event.tx && (
                                   <a
                                     href={event.explorer || '#'}
                                     target="_blank"
@@ -869,7 +838,7 @@ export function BubbleMapClient() {
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs text-purple-400 font-medium flex items-center gap-2">
                 <Zap className="w-3 h-3" />
-                YOUR STATS (Ephemeral Rollup)
+                YOUR STATS (On-Chain)
               </div>
               <button
                 onClick={() => setShowUpgradePanel(!showUpgradePanel)}
@@ -965,7 +934,7 @@ export function BubbleMapClient() {
                   {onchainStats && (
                     <div className="text-[10px] text-amber-500/50 flex items-center gap-1 pt-1">
                       <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                      Verified on MagicBlock Ephemeral Rollup
+                      Verified on-chain
                     </div>
                   )}
                 </div>
