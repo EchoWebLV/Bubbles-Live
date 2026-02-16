@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
-import { useGameSocket, GameState, GameHolder, GameBattleBubble } from "@/hooks/useGameSocket";
+import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent } from "@/hooks/useGameSocket";
 import { useHolderWebSocket } from "@/hooks/useHolderWebSocket";
 import type { Holder, TokenInfo } from "./types";
 import type { BattleState } from "./battle";
@@ -117,7 +117,11 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, setDimensions: sendDimensions, sendTransaction } = useGameSocket();
+  const { connected, gameState, setDimensions: sendDimensions, sendTransaction, upgradeStat, getOnchainStats } = useGameSocket();
+  const [upgrading, setUpgrading] = useState<number | null>(null); // 0=health, 1=shooting
+  const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
+  const [showUpgradePanel, setShowUpgradePanel] = useState(false);
+  const [showOnchainPanel, setShowOnchainPanel] = useState(false);
 
   // WebSocket for real-time transactions (forwards to server)
   const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "";
@@ -132,6 +136,38 @@ export function BubbleMapClient() {
       sendTransaction(event);
     }, [sendTransaction]),
   });
+
+  // Fetch onchain stats when wallet is connected
+  useEffect(() => {
+    if (!connectedWalletAddress || !connected || !gameState?.magicBlock?.ready) {
+      setOnchainStats(null);
+      return;
+    }
+    // Fetch every 10 seconds
+    const fetchStats = async () => {
+      const stats = await getOnchainStats(connectedWalletAddress);
+      if (stats) setOnchainStats(stats);
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 10000);
+    return () => clearInterval(interval);
+  }, [connectedWalletAddress, connected, gameState?.magicBlock?.ready, getOnchainStats]);
+
+  // Handle upgrade request
+  const handleUpgrade = useCallback(async (statType: number) => {
+    if (!connectedWalletAddress || upgrading !== null) return;
+    setUpgrading(statType);
+    try {
+      const result = await upgradeStat(connectedWalletAddress, statType);
+      if (result.success) {
+        // Refresh stats after successful upgrade
+        const stats = await getOnchainStats(connectedWalletAddress);
+        if (stats) setOnchainStats(stats);
+      }
+    } finally {
+      setUpgrading(null);
+    }
+  }, [connectedWalletAddress, upgrading, upgradeStat, getOnchainStats]);
 
   // Handle resize
   useEffect(() => {
@@ -214,8 +250,10 @@ export function BubbleMapClient() {
     lastMousePos.current = null;
   }, []);
 
-  // Scroll wheel zoom
+  // Scroll wheel zoom — only when scrolling over the canvas, not UI panels
   const handleWheel = useCallback((e: React.WheelEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'CANVAS') return;
     e.preventDefault();
     const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
     setCamera(prev => ({
@@ -498,6 +536,18 @@ export function BubbleMapClient() {
             </div>
           )}
 
+          {/* MagicBlock Onchain indicator — click to open activity panel */}
+          {gameState?.magicBlock?.ready && (
+            <button
+              onClick={() => setShowOnchainPanel(!showOnchainPanel)}
+              className="bg-slate-900/80 backdrop-blur-md rounded-xl px-3 py-2 border border-amber-500/30 flex items-center gap-2 hover:border-amber-400/60 transition-colors"
+            >
+              <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              <span className="text-xs text-amber-400">ONCHAIN</span>
+              <span className="text-[10px] text-amber-500/60">{gameState.magicBlock.playersOnchain}</span>
+            </button>
+          )}
+
           {/* Wallet Connect Button */}
           {walletConnected && connectedWalletAddress ? (
             <button
@@ -603,6 +653,272 @@ export function BubbleMapClient() {
                 </div>
               ))}
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Onchain Activity Panel */}
+      <AnimatePresence>
+        {showOnchainPanel && gameState?.magicBlock && (
+          <motion.div
+            initial={{ opacity: 0, x: 300 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 300 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute top-24 right-4 z-30 w-96"
+          >
+            <div className="bg-slate-950/95 backdrop-blur-xl rounded-xl border border-amber-500/30 shadow-2xl shadow-amber-500/10 overflow-hidden" onWheel={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
+                    <span className="text-sm font-bold text-amber-400">Solana Devnet Activity</span>
+                  </div>
+                  <button
+                    onClick={() => setShowOnchainPanel(false)}
+                    className="text-slate-500 hover:text-white transition-colors text-lg leading-none"
+                  >
+                    &times;
+                  </button>
+                </div>
+                {/* Stats row */}
+                <div className="flex items-center gap-4 mt-2 text-[10px]">
+                  <div className="text-slate-400">
+                    World: <span className="text-amber-400 font-mono">{gameState.magicBlock.worldPda?.slice(0, 8)}...</span>
+                  </div>
+                  <div className="text-slate-400">
+                    Players: <span className="text-green-400 font-bold">{gameState.magicBlock.playersOnchain}</span>
+                  </div>
+                  <div className="text-slate-400">
+                    Pending: <span className="text-yellow-400">{gameState.magicBlock.killsPending ?? 0}</span>
+                  </div>
+                  <div className="text-slate-400">
+                    Settled: <span className="text-green-400">{gameState.magicBlock.batchStats?.settled ?? 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Program IDs */}
+              <div className="px-4 py-2 border-b border-slate-800/50 bg-slate-900/50">
+                <div className="text-[10px] text-slate-500 mb-1 uppercase tracking-wider">Programs Deployed</div>
+                <div className="grid grid-cols-2 gap-1 text-[10px]">
+                  {[
+                    { label: 'PlayerStats', id: gameState.magicBlock.programs.playerStats },
+                    { label: 'InitPlayer', id: gameState.magicBlock.programs.initPlayer },
+                    { label: 'RecordKill', id: gameState.magicBlock.programs.recordKill },
+                    { label: 'UpgradeStat', id: gameState.magicBlock.programs.upgradeStat },
+                  ].map(p => (
+                    <a
+                      key={p.label}
+                      href={`https://explorer.solana.com/address/${p.id}?cluster=devnet`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-slate-400 hover:text-amber-400 transition-colors truncate"
+                    >
+                      <span className="text-slate-600">{p.label}:</span>
+                      <span className="font-mono">{p.id.slice(0, 8)}...</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Event Log */}
+              <div className="max-h-80 overflow-y-auto">
+                {(!gameState.magicBlock.eventLog || gameState.magicBlock.eventLog.length === 0) ? (
+                  <div className="px-4 py-6 text-center text-xs text-slate-500">
+                    Waiting for onchain events...
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/30">
+                    {gameState.magicBlock.eventLog.map((event: OnchainEvent, i: number) => {
+                      const iconMap: Record<string, string> = {
+                        world: '🌐',
+                        entity: '📦',
+                        component: '🧩',
+                        init: '🚀',
+                        kill: '☠️',
+                        upgrade: '⬆️',
+                        batch: '📦',
+                        error: '❌',
+                      };
+                      const colorMap: Record<string, string> = {
+                        world: 'text-blue-400',
+                        entity: 'text-cyan-400',
+                        component: 'text-purple-400',
+                        init: 'text-green-400',
+                        kill: 'text-red-400',
+                        upgrade: 'text-amber-400',
+                        batch: 'text-orange-400',
+                        error: 'text-red-500',
+                      };
+                      const age = Math.floor((Date.now() - event.time) / 1000);
+                      const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.floor(age / 60)}m ago` : `${Math.floor(age / 3600)}h ago`;
+
+                      return (
+                        <div
+                          key={`${event.time}-${i}`}
+                          className="px-4 py-2 hover:bg-slate-800/30 transition-colors group"
+                          style={{ opacity: Math.max(0.4, 1 - i * 0.03) }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm leading-none mt-0.5">{iconMap[event.type] || '📝'}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`text-xs font-medium ${colorMap[event.type] || 'text-slate-300'}`}>
+                                  {event.message}
+                                </span>
+                                <span className="text-[10px] text-slate-600 shrink-0">{ageStr}</span>
+                              </div>
+                              {event.tx && (
+                                <a
+                                  href={event.explorer || '#'}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-slate-600 hover:text-amber-400 transition-colors font-mono block truncate"
+                                >
+                                  tx: {event.tx}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-4 py-2 border-t border-slate-800/50 bg-slate-900/30 flex items-center justify-between">
+                <span className="text-[10px] text-slate-600">Batching: every 60s, max 20 tx/batch</span>
+                <a
+                  href={`https://explorer.solana.com/address/${gameState.magicBlock.worldPda}?cluster=devnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-amber-500/60 hover:text-amber-400 transition-colors"
+                >
+                  View on Explorer →
+                </a>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Player Stats & Upgrade Panel (connected wallet) */}
+      {walletConnected && connectedWalletAddress && gameState?.magicBlock?.ready && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute bottom-16 left-4 z-10 w-64"
+        >
+          <div className="bg-slate-900/90 backdrop-blur-md rounded-xl p-3 border border-purple-500/30">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-purple-400 font-medium flex items-center gap-2">
+                <Zap className="w-3 h-3" />
+                YOUR STATS (Onchain)
+              </div>
+              <button
+                onClick={() => setShowUpgradePanel(!showUpgradePanel)}
+                className="text-[10px] text-purple-400/60 hover:text-purple-300 transition-colors"
+              >
+                {showUpgradePanel ? 'Hide' : 'Upgrades'}
+              </button>
+            </div>
+
+            {(() => {
+              const myBubble = battleState.bubbles.get(connectedWalletAddress);
+              if (!myBubble) return <div className="text-xs text-slate-500">Not a holder of this token</div>;
+
+              const xp = myBubble.xp ?? onchainStats?.xp ?? 0;
+              const level = myBubble.level ?? 1;
+              const healthLvl = myBubble.healthLevel ?? onchainStats?.healthLevel ?? 1;
+              const shootingLvl = myBubble.shootingLevel ?? onchainStats?.shootingLevel ?? 1;
+              const kills = myBubble.kills;
+              const deaths = myBubble.deaths;
+
+              // Upgrade cost formula matches onchain: base 100 + level * 50
+              const healthUpgradeCost = 100 + healthLvl * 50;
+              const shootingUpgradeCost = 100 + shootingLvl * 50;
+
+              return (
+                <div className="space-y-2">
+                  {/* Level & XP bar */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Star className="w-3 h-3 text-yellow-400" />
+                      <span className="text-sm font-bold text-white">Level {level}</span>
+                    </div>
+                    <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
+                  </div>
+
+                  {/* K/D */}
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-green-400">Kills: {kills}</span>
+                    <span className="text-red-400">Deaths: {deaths}</span>
+                    <span className="text-slate-400">KD: {deaths > 0 ? (kills / deaths).toFixed(1) : kills.toFixed(0)}</span>
+                  </div>
+
+                  {/* Stat levels */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 bg-slate-800/50 rounded-lg px-2 py-1.5">
+                      <Shield className="w-3 h-3 text-green-400" />
+                      <span className="text-slate-300">HP Lv.{healthLvl}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-slate-800/50 rounded-lg px-2 py-1.5">
+                      <Crosshair className="w-3 h-3 text-red-400" />
+                      <span className="text-slate-300">ATK Lv.{shootingLvl}</span>
+                    </div>
+                  </div>
+
+                  {/* Upgrade buttons */}
+                  {showUpgradePanel && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-1.5 pt-2 border-t border-slate-700/50"
+                    >
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider">Spend XP to Upgrade</div>
+                      <button
+                        onClick={() => handleUpgrade(0)}
+                        disabled={upgrading !== null || xp < healthUpgradeCost}
+                        className="w-full flex items-center justify-between bg-green-900/30 hover:bg-green-900/50 disabled:opacity-40 disabled:hover:bg-green-900/30 rounded-lg px-3 py-2 text-xs transition-colors border border-green-500/20"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-3.5 h-3.5 text-green-400" />
+                          <span className="text-green-300">Health Lv.{healthLvl} → {healthLvl + 1}</span>
+                        </div>
+                        <span className={`font-mono ${xp >= healthUpgradeCost ? 'text-amber-400' : 'text-slate-500'}`}>
+                          {upgrading === 0 ? '...' : `${healthUpgradeCost} XP`}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => handleUpgrade(1)}
+                        disabled={upgrading !== null || xp < shootingUpgradeCost}
+                        className="w-full flex items-center justify-between bg-red-900/30 hover:bg-red-900/50 disabled:opacity-40 disabled:hover:bg-red-900/30 rounded-lg px-3 py-2 text-xs transition-colors border border-red-500/20"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Crosshair className="w-3.5 h-3.5 text-red-400" />
+                          <span className="text-red-300">Attack Lv.{shootingLvl} → {shootingLvl + 1}</span>
+                        </div>
+                        <span className={`font-mono ${xp >= shootingUpgradeCost ? 'text-amber-400' : 'text-slate-500'}`}>
+                          {upgrading === 1 ? '...' : `${shootingUpgradeCost} XP`}
+                        </span>
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {/* Onchain verification */}
+                  {onchainStats && (
+                    <div className="text-[10px] text-amber-500/50 flex items-center gap-1 pt-1">
+                      <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+                      Verified on Solana devnet
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </motion.div>
       )}

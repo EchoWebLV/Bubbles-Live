@@ -3,6 +3,7 @@
 
 const db = require('./db');
 const playerStore = require('./playerStore');
+const { MagicBlockService } = require('./magicblock');
 
 const BATTLE_CONFIG = {
   maxHealth: 100,       // base — overridden per-player by progression
@@ -54,6 +55,8 @@ class GameState {
     this.playerCache = new Map();  // In-memory cache of player stats (wallet -> stats)
     this.dirtyPlayers = new Set(); // Players that need to be saved to DB
     this.dbReady = false;          // Whether database is available
+    this.magicBlock = new MagicBlockService(); // MagicBlock onchain integration
+    this.magicBlockReady = false;
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -809,6 +812,13 @@ class GameState {
         lastSeen: new Date(),
         ...playerStore.deriveStats(0),
       });
+
+      // Initialize player onchain (async, fire-and-forget via queue)
+      if (this.magicBlockReady) {
+        this.magicBlock.initPlayer(walletAddress).catch(err => {
+          console.error('MagicBlock initPlayer background error:', err.message);
+        });
+      }
     }
     return this.playerCache.get(walletAddress);
   }
@@ -818,6 +828,11 @@ class GameState {
    * Recalculates levels and updates battle bubble stats.
    */
   awardKillXP(killerAddress, victimAddress) {
+    // Queue kill for batched onchain settlement (every 60s instead of per-kill)
+    if (this.magicBlockReady) {
+      this.magicBlock.queueKill(killerAddress, victimAddress);
+    }
+
     // Update killer
     const killer = this.ensurePlayerCached(killerAddress);
     killer.xp += playerStore.PROGRESSION.xpPerKill;
@@ -957,6 +972,7 @@ class GameState {
       priceData: this.priceData,
       dimensions: this.dimensions,
       timestamp: Date.now(),
+      magicBlock: this.magicBlock.getStatus(),
     };
   }
 
@@ -967,7 +983,19 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
-    // Initialize database (creates tables if needed)
+    // Initialize MagicBlock (onchain state)
+    console.log('Initializing MagicBlock onchain state...');
+    this.magicBlockReady = await this.magicBlock.initialize();
+    if (this.magicBlockReady) {
+      console.log('✅ MagicBlock World initialized on Solana devnet!');
+      console.log('   World:', this.magicBlock.worldPda.toBase58());
+      // Start batched kill settlement (every 60 seconds)
+      this.magicBlock.startBatchSettlement(60000);
+    } else {
+      console.warn('⚠️  MagicBlock not available - falling back to DB');
+    }
+
+    // Initialize database as fallback (creates tables if needed)
     this.dbReady = await db.migrate();
     if (this.dbReady) {
       console.log('Loading player stats from database...');
@@ -1066,6 +1094,12 @@ class GameState {
     if (this.metadataRefresh) clearInterval(this.metadataRefresh);
     if (this.dbFlushInterval) clearInterval(this.dbFlushInterval);
     if (this.holdStreakInterval) clearInterval(this.holdStreakInterval);
+
+    // Final batch settlement before shutdown
+    if (this.magicBlockReady) {
+      this.magicBlock.stopBatchSettlement();
+      await this.magicBlock.settleKillBatch(); // Flush remaining kills
+    }
 
     // Final flush of player stats before shutdown
     await this.flushPlayersToDB();

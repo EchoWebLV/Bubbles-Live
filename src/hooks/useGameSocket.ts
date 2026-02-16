@@ -99,6 +99,52 @@ export interface GameState {
   } | null;
   dimensions: { width: number; height: number };
   timestamp: number;
+  magicBlock?: {
+    ready: boolean;
+    worldPda: string | null;
+    playersOnchain: number;
+    killsPending: number;
+    batchStats: {
+      queued: number;
+      settled: number;
+      skipped: number;
+      lastSettleTime: number;
+    };
+    eventLog: OnchainEvent[];
+    rpc: string;
+    programs: {
+      playerStats: string;
+      initPlayer: string;
+      recordKill: string;
+      upgradeStat: string;
+    };
+  };
+}
+
+export interface OnchainEvent {
+  type: 'world' | 'entity' | 'component' | 'init' | 'kill' | 'upgrade' | 'batch' | 'error';
+  message: string;
+  tx: string | null;
+  txFull: string | null;
+  explorer: string | null;
+  time: number;
+  [key: string]: unknown;
+}
+
+export interface OnchainPlayerStats {
+  walletAddress: string;
+  xp: number;
+  kills: number;
+  deaths: number;
+  healthLevel: number;
+  shootingLevel: number;
+  holdStreakDays: number;
+  totalBuys: number;
+  totalSells: number;
+  initialized: boolean;
+  lastUpdated: number;
+  entityPda: string;
+  componentPda: string;
 }
 
 interface UseGameSocketOptions {
@@ -124,6 +170,37 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     if (socketRef.current?.connected) {
       socketRef.current.emit("transaction", event);
     }
+  }, []);
+
+  // Request onchain stat upgrade (0=health, 1=shooting)
+  const upgradeStat = useCallback((walletAddress: string, statType: number): Promise<{ success: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("upgradeStat", { walletAddress, statType });
+      socketRef.current.once("upgradeResult", (result: { success: boolean; error?: string }) => {
+        resolve(result);
+      });
+      // Timeout after 15s
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 15000);
+    });
+  }, []);
+
+  // Fetch onchain stats for a player
+  const getOnchainStats = useCallback((walletAddress: string): Promise<OnchainPlayerStats | null> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve(null);
+        return;
+      }
+      socketRef.current.emit("getOnchainStats", { walletAddress });
+      socketRef.current.once("onchainStats", (stats: OnchainPlayerStats | null) => {
+        resolve(stats);
+      });
+      setTimeout(() => resolve(null), 10000);
+    });
   }, []);
 
   useEffect(() => {
@@ -167,5 +244,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     gameState,
     setDimensions,
     sendTransaction,
+    upgradeStat,
+    getOnchainStats,
   };
 }

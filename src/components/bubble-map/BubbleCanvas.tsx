@@ -293,6 +293,33 @@ export function BubbleCanvas({
         }
       }
 
+      // Draw level badge (top-right of bubble)
+      if (battleBubble && (battleBubble.level ?? 1) > 1 && !isGhost) {
+        const lvl = battleBubble.level ?? 1;
+        const badgeX = x + radius * 0.7;
+        const badgeY = y - radius * 0.7;
+        const badgeR = Math.max(8, radius * 0.3);
+
+        // Badge background
+        const badgeGrad = ctx.createRadialGradient(badgeX, badgeY, 0, badgeX, badgeY, badgeR);
+        badgeGrad.addColorStop(0, "#a855f7");
+        badgeGrad.addColorStop(1, "#7c3aed");
+        ctx.beginPath();
+        ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+        ctx.fillStyle = badgeGrad;
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Level number
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.max(7, badgeR * 0.9)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${lvl}`, badgeX, badgeY);
+      }
+
       // Draw kill count if any
       if (battleBubble && battleBubble.kills > 0 && !isGhost) {
         ctx.fillStyle = "#fbbf24";

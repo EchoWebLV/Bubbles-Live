@@ -66,6 +66,40 @@ app.prepare().then(() => {
       gameState.handleTransaction(event);
     });
 
+    // MagicBlock: Upgrade stat (player sends from frontend)
+    socket.on('upgradeStat', async ({ walletAddress, statType }) => {
+      if (!gameState.magicBlockReady) {
+        socket.emit('upgradeResult', { success: false, error: 'MagicBlock not ready' });
+        return;
+      }
+      try {
+        const success = await gameState.magicBlock.upgradeStat(walletAddress, statType);
+        if (success) {
+          // Also update local cache
+          const player = gameState.ensurePlayerCached(walletAddress);
+          const stats = await gameState.magicBlock.getPlayerStats(walletAddress);
+          if (stats) {
+            player.healthLevel = stats.healthLevel;
+            player.shootingLevel = stats.shootingLevel;
+            player.xp = stats.xp;
+          }
+        }
+        socket.emit('upgradeResult', { success });
+      } catch (err) {
+        socket.emit('upgradeResult', { success: false, error: err.message });
+      }
+    });
+
+    // MagicBlock: Get player stats from onchain
+    socket.on('getOnchainStats', async ({ walletAddress }) => {
+      if (!gameState.magicBlockReady) {
+        socket.emit('onchainStats', null);
+        return;
+      }
+      const stats = await gameState.magicBlock.getPlayerStats(walletAddress);
+      socket.emit('onchainStats', stats);
+    });
+
     socket.on('disconnect', () => {
       connectedClients--;
       console.log(`Client disconnected. Total: ${connectedClients}`);
