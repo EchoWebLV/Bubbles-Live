@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet } from "lucide-react";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
@@ -57,6 +59,11 @@ export function BubbleMapClient() {
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
+
+  // Wallet connection
+  const { publicKey, connected: walletConnected, disconnect: disconnectWallet } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const connectedWalletAddress = publicKey?.toBase58() || null;
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
 
   // Initialize audio element and autoplay
@@ -491,6 +498,30 @@ export function BubbleMapClient() {
             </div>
           )}
 
+          {/* Wallet Connect Button */}
+          {walletConnected && connectedWalletAddress ? (
+            <button
+              onClick={() => disconnectWallet()}
+              className="bg-slate-900/80 backdrop-blur-md rounded-xl px-3 py-2 border border-purple-500/50 flex items-center gap-2 hover:border-purple-400/70 transition-colors"
+            >
+              <Wallet className="w-3 h-3 text-purple-400" />
+              <span className="text-xs text-purple-300 font-mono">
+                {connectedWalletAddress.slice(0, 4)}...{connectedWalletAddress.slice(-4)}
+              </span>
+              {holders.some(h => h.address === connectedWalletAddress) && (
+                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={() => setWalletModalVisible(true)}
+              className="bg-purple-600/80 backdrop-blur-md rounded-xl px-4 py-2 border border-purple-500/50 flex items-center gap-2 hover:bg-purple-500/80 transition-colors"
+            >
+              <Wallet className="w-3 h-3 text-white" />
+              <span className="text-xs text-white font-medium">Connect Wallet</span>
+            </button>
+          )}
+
           {/* Music toggle */}
           <button
             onClick={toggleMusic}
@@ -609,6 +640,7 @@ export function BubbleMapClient() {
           battleState={battleState}
           popEffects={popEffects}
           camera={camera}
+          connectedWallet={connectedWalletAddress}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />

@@ -24,6 +24,7 @@ interface BubbleCanvasProps {
   battleState: BattleState;
   popEffects: PopEffect[];
   camera?: Camera;
+  connectedWallet?: string | null;
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -37,6 +38,7 @@ export function BubbleCanvas({
   battleState,
   popEffects,
   camera = DEFAULT_CAMERA,
+  connectedWallet,
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -110,6 +112,7 @@ export function BubbleCanvas({
       const maxHealth = battleBubble?.maxHealth ?? BATTLE_CONFIG.maxHealth;
 
       const isHovered = hoveredHolder?.address === holder.address;
+      const isConnectedWallet = connectedWallet === holder.address;
       const x = holder.x;
       const y = holder.y;
       
@@ -149,6 +152,40 @@ export function BubbleCanvas({
         ctx.arc(x, y, spawnGlowRadius, 0, Math.PI * 2);
         ctx.fillStyle = spawnGlow;
         ctx.fill();
+      }
+
+      // Draw connected wallet glow (pulsing purple/gold aura)
+      if (isConnectedWallet && !isGhost) {
+        const pulsePhase = (now % 2000) / 2000; // 2-second pulse cycle
+        const pulseIntensity = 0.5 + Math.sin(pulsePhase * Math.PI * 2) * 0.3;
+        const glowSize = radius + 20 + Math.sin(pulsePhase * Math.PI * 2) * 8;
+        
+        // Outer pulsing glow
+        const walletGlow = ctx.createRadialGradient(x, y, radius * 0.8, x, y, glowSize);
+        walletGlow.addColorStop(0, `rgba(168, 85, 247, ${pulseIntensity * 0.6})`);
+        walletGlow.addColorStop(0.5, `rgba(168, 85, 247, ${pulseIntensity * 0.3})`);
+        walletGlow.addColorStop(0.75, `rgba(250, 204, 21, ${pulseIntensity * 0.15})`);
+        walletGlow.addColorStop(1, `rgba(168, 85, 247, 0)`);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+        ctx.fillStyle = walletGlow;
+        ctx.fill();
+        
+        // Rotating ring
+        const ringAngle = (now % 4000) / 4000 * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 8, ringAngle, ringAngle + Math.PI * 1.5);
+        ctx.strokeStyle = `rgba(168, 85, 247, ${0.4 + pulseIntensity * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Second ring (opposite direction)
+        ctx.beginPath();
+        ctx.arc(x, y, radius + 12, -ringAngle, -ringAngle + Math.PI);
+        ctx.strokeStyle = `rgba(250, 204, 21, ${0.3 + pulseIntensity * 0.3})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
       }
 
       // Draw effect glow if present (and not ghost)
@@ -263,6 +300,18 @@ export function BubbleCanvas({
         ctx.textAlign = "center";
         ctx.fillText(`☠${battleBubble.kills}`, x, y + radius + 12);
       }
+
+      // Draw "YOU" label for connected wallet
+      if (isConnectedWallet) {
+        const youPulse = 0.8 + Math.sin((now % 1500) / 1500 * Math.PI * 2) * 0.2;
+        ctx.globalAlpha = youPulse;
+        ctx.fillStyle = "#a855f7";
+        ctx.font = `bold ${Math.max(11, radius / 2.5)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("⭐ YOU", x, y + radius + (battleBubble?.kills ? 24 : 14));
+        ctx.globalAlpha = 1;
+      }
     });
 
     // Draw damage numbers on top
@@ -345,7 +394,7 @@ export function BubbleCanvas({
       }
     });
     
-  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera]);
+  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);

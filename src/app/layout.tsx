@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { WalletProvider } from "@/components/WalletProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950 antialiased">
-        {children}
+        <WalletProvider>{children}</WalletProvider>
       </body>
     </html>
   );
