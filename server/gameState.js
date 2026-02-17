@@ -14,11 +14,15 @@ const BATTLE_CONFIG = {
 };
 
 const PHYSICS_CONFIG = {
-  minSpeed: 0.3,
-  maxSpeed: 2.5,
-  velocityDecay: 0.998,
+  minSpeed: 0.4,
+  maxSpeed: 3.0,
+  velocityDecay: 0.997,
   collisionPadding: 5,
-  wallBounce: 0.7,
+  wallBounce: 0.75,
+  repulsionRange: 15,
+  repulsionStrength: 0.04,
+  nudgeInterval: 3000,
+  nudgeStrength: 0.35,
 };
 
 // Progression formulas (mirror onchain but used for local preview)
@@ -422,7 +426,7 @@ class GameState {
       }
     });
 
-    // Bubble collisions
+    // Bubble collisions + soft repulsion
     for (let i = 0; i < this.holders.length; i++) {
       for (let j = i + 1; j < this.holders.length; j++) {
         const a = this.holders[i];
@@ -432,12 +436,14 @@ class GameState {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist === 0) continue;
+
+        const nx = dx / dist;
+        const ny = dy / dist;
         const minDist = a.radius + b.radius + PHYSICS_CONFIG.collisionPadding;
 
-        if (dist < minDist && dist > 0) {
+        if (dist < minDist) {
           const overlap = minDist - dist;
-          const nx = dx / dist;
-          const ny = dy / dist;
           const separation = overlap / 2 + 1;
           a.x -= nx * separation;
           a.y -= ny * separation;
@@ -458,9 +464,29 @@ class GameState {
             b.vx -= impulse * massA * nx * 0.8;
             b.vy -= impulse * massA * ny * 0.8;
           }
+        } else if (dist < minDist + PHYSICS_CONFIG.repulsionRange) {
+          const gap = dist - minDist;
+          const t = 1 - gap / PHYSICS_CONFIG.repulsionRange;
+          const force = t * t * PHYSICS_CONFIG.repulsionStrength;
+          a.vx -= nx * force;
+          a.vy -= ny * force;
+          b.vx += nx * force;
+          b.vy += ny * force;
         }
       }
     }
+
+    // Random nudge to break up static clusters
+    this.holders.forEach(holder => {
+      if (holder.x === undefined) return;
+      if (!holder._lastNudge) holder._lastNudge = now - Math.random() * PHYSICS_CONFIG.nudgeInterval;
+      if (now - holder._lastNudge > PHYSICS_CONFIG.nudgeInterval) {
+        holder._lastNudge = now;
+        const angle = Math.random() * Math.PI * 2;
+        holder.vx += Math.cos(angle) * PHYSICS_CONFIG.nudgeStrength;
+        holder.vy += Math.sin(angle) * PHYSICS_CONFIG.nudgeStrength;
+      }
+    });
 
     // Check ghost respawns (local visual timer + ER respawn)
     this.battleBubbles.forEach((bubble, address) => {
