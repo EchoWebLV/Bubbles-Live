@@ -495,7 +495,15 @@ class GameState {
         bubble.ghostUntil = null;
         bubble.health = bubble.maxHealth;
         bubble.isAlive = true;
+        bubble.respawnedAt = now;
         this.addEventLog(`${address.slice(0, 6)}... respawned!`);
+
+        // Clear any stale queued damage targeting this bubble
+        for (const [key, entry] of this.damageBuffer) {
+          if (entry.victim === address) {
+            this.damageBuffer.delete(key);
+          }
+        }
 
         // Also respawn on ER
         if (this.magicBlockReady) {
@@ -535,7 +543,12 @@ class GameState {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const curveDir = Math.random() > 0.5 ? 1 : -1;
 
-        const damage = battleBubble.attackPower || BATTLE_CONFIG.bulletDamage;
+        let damage = battleBubble.attackPower || BATTLE_CONFIG.bulletDamage;
+        if (!isFinite(damage) || damage > 5) {
+          console.warn(`DAMAGE ANOMALY: ${holder.address.slice(0,6)} attackPower=${battleBubble.attackPower} attackLevel=${battleBubble.attackLevel} — clamping to base`);
+          damage = BATTLE_CONFIG.bulletDamage;
+          battleBubble.attackPower = BATTLE_CONFIG.bulletDamage;
+        }
 
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
@@ -566,6 +579,15 @@ class GameState {
     const bulletsToRemove = new Set();
 
     this.bullets.forEach(bullet => {
+      if (bulletsToRemove.has(bullet.id)) return;
+
+      // Remove bullets from dead/ghost shooters
+      const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
+      if (shooterBattle && (shooterBattle.isGhost || !shooterBattle.isAlive)) {
+        bulletsToRemove.add(bullet.id);
+        return;
+      }
+
       const totalDist = Math.sqrt(
         Math.pow(bullet.targetX - bullet.startX, 2) +
         Math.pow(bullet.targetY - bullet.startY, 2)
@@ -599,65 +621,59 @@ class GameState {
         return;
       }
 
-      // Check for hits
-      this.holders.forEach(target => {
-        if (target.x === undefined || target.address === bullet.shooterAddress) return;
+      // Check for hits — only the intended target
+      const target = this.holders.find(h => h.address === bullet.targetAddress);
+      if (!target || target.x === undefined) return;
 
-        const targetBattle = this.battleBubbles.get(target.address);
-        if (!targetBattle || targetBattle.isGhost) return;
+      const targetBattle = this.battleBubbles.get(target.address);
+      if (!targetBattle || targetBattle.isGhost) return;
 
-        const hitDx = bullet.x - target.x;
-        const hitDy = bullet.y - target.y;
-        const hitDist = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
+      const hitDx = bullet.x - target.x;
+      const hitDy = bullet.y - target.y;
+      const hitDist = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
 
-        if (hitDist < target.radius + 3) {
-          bulletsToRemove.add(bullet.id);
+      if (hitDist < target.radius + 3) {
+        bulletsToRemove.add(bullet.id);
 
-          // Local damage preview (immediate visual feedback)
-          targetBattle.health -= bullet.damage;
+        const actualDmg = Math.min(bullet.damage, 5);
+        targetBattle.health -= actualDmg;
 
-          this.damageNumbers.push({
-            id: `dmg-${now}-${Math.random()}`,
-            x: target.x + (Math.random() - 0.5) * 20,
-            y: target.y - 10,
-            damage: bullet.damage,
+        this.damageNumbers.push({
+          id: `dmg-${now}-${Math.random()}`,
+          x: target.x + (Math.random() - 0.5) * 20,
+          y: target.y - 10,
+          damage: actualDmg,
             createdAt: now,
             alpha: 1,
           });
 
-          // Send damage to ER (aggregated and flushed every few seconds)
-          if (this.magicBlockReady) {
-            this._queueAttack(bullet.shooterAddress, target.address, bullet.damage);
-          }
-
-          // Check for local death (preview — ER detects & logs with tx proof)
-          if (targetBattle.health <= 0) {
-            targetBattle.health = 0;
-            targetBattle.isGhost = true;
-            targetBattle.isAlive = false;
-            targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
-            targetBattle.deaths++;
-
-            const shooter = this.battleBubbles.get(bullet.shooterAddress);
-            if (shooter) {
-              shooter.kills++;
-            }
-
-            this.killFeed.unshift({
-              killer: bullet.shooterAddress,
-              victim: target.address,
-              time: now,
-            });
-            this.killFeed = this.killFeed.slice(0, 5);
-            this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
-
-            // Kill/death events are logged by magicBlock.processAttack()
-            // with the actual ER tx hash as on-chain proof.
-
-            this.updateTopKillers();
-          }
+        if (this.magicBlockReady) {
+          this._queueAttack(bullet.shooterAddress, target.address, actualDmg);
         }
-      });
+
+        if (targetBattle.health <= 0) {
+          targetBattle.health = 0;
+          targetBattle.isGhost = true;
+          targetBattle.isAlive = false;
+          targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
+          targetBattle.deaths++;
+
+          const shooter = this.battleBubbles.get(bullet.shooterAddress);
+          if (shooter) {
+            shooter.kills++;
+          }
+
+          this.killFeed.unshift({
+            killer: bullet.shooterAddress,
+            victim: target.address,
+            time: now,
+          });
+          this.killFeed = this.killFeed.slice(0, 5);
+          this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
+
+          this.updateTopKillers();
+        }
+      }
     });
 
     this.bullets = this.bullets.filter(b => !bulletsToRemove.has(b.id));
@@ -676,6 +692,10 @@ class GameState {
   // seconds.  This keeps ER tx count manageable (~1-5 txs per flush).
 
   _queueAttack(attackerAddress, victimAddress, damage) {
+    // Don't queue damage against bubbles that are dead or just respawned
+    const victimBubble = this.battleBubbles.get(victimAddress);
+    if (victimBubble && (victimBubble.isGhost || !victimBubble.isAlive)) return;
+
     const key = `${attackerAddress}|${victimAddress}`;
     const existing = this.damageBuffer.get(key);
     if (existing) {
@@ -773,12 +793,24 @@ class GameState {
           bubble.xp = state.xp;
           bubble.healthLevel = state.healthLevel;
           bubble.attackLevel = state.attackLevel;
-          bubble.attackPower = state.attackPower;
+          const syncedAttack = state.attackPower;
+          if (isFinite(syncedAttack) && syncedAttack > 0 && syncedAttack <= 5) {
+            bubble.attackPower = syncedAttack;
+          } else if (syncedAttack > 5) {
+            console.warn(`ER SYNC: ${walletAddress.slice(0,6)} has attackPower=${syncedAttack} — clamping to base`);
+            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+          }
 
-          // Sync health from ER (ER is authoritative)
-          if (!bubble.isGhost) {
-            bubble.maxHealth = state.maxHealth;
-            bubble.health = state.health;
+          bubble.maxHealth = state.maxHealth;
+
+          // Don't let ER sync override a bubble that just respawned locally
+          // (the ER might still have stale dead state for ~5s after respawn)
+          const recentlyRespawned = bubble.respawnedAt && (Date.now() - bubble.respawnedAt < 10000);
+
+          if (!bubble.isGhost && !recentlyRespawned) {
+            if (state.health < bubble.health || state.health >= state.maxHealth) {
+              bubble.health = state.health;
+            }
             bubble.isAlive = state.isAlive;
 
             if (!state.isAlive && !bubble.isGhost) {
