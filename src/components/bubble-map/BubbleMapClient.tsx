@@ -65,6 +65,8 @@ export function BubbleMapClient() {
   const { setVisible: setWalletModalVisible } = useWalletModal();
   const connectedWalletAddress = publicKey?.toBase58() || null;
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
+  const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
+  const lastPinchDist = useRef<number | null>(null);
 
   // Initialize audio element and autoplay
   useEffect(() => {
@@ -250,6 +252,52 @@ export function BubbleMapClient() {
     lastMousePos.current = null;
   }, []);
 
+  // Touch handlers for mobile pan (one finger) and pinch zoom (two fingers)
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.tagName !== 'CANVAS') return;
+
+    if (e.touches.length === 1) {
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      lastPinchDist.current = null;
+    } else if (e.touches.length === 2) {
+      lastTouchPos.current = null;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist.current = Math.sqrt(dx * dx + dy * dy);
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1 && lastTouchPos.current) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - lastTouchPos.current.x;
+      const dy = e.touches[0].clientY - lastTouchPos.current.y;
+      setCamera(prev => ({
+        ...prev,
+        x: prev.x + dx / prev.zoom,
+        y: prev.y + dy / prev.zoom,
+      }));
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2 && lastPinchDist.current !== null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const delta = (dist - lastPinchDist.current) * 0.005;
+      setCamera(prev => ({
+        ...prev,
+        zoom: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + delta)),
+      }));
+      lastPinchDist.current = dist;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchPos.current = null;
+    lastPinchDist.current = null;
+  }, []);
+
   // Scroll wheel zoom — only when scrolling over the canvas, not UI panels
   const handleWheel = useCallback((e: React.WheelEvent) => {
     const target = e.target as HTMLElement;
@@ -391,13 +439,16 @@ export function BubbleMapClient() {
 
   return (
     <div 
-      className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} touch-none`}
       ref={containerRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
       onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Background gradient effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
