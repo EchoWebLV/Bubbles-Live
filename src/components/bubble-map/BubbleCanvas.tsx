@@ -29,6 +29,17 @@ interface BubbleCanvasProps {
   onHolderHover: (holder: Holder | null) => void;
 }
 
+interface Spark {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  size: number;
+}
+
 export function BubbleCanvas({
   holders,
   width,
@@ -44,6 +55,8 @@ export function BubbleCanvas({
 }: BubbleCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const holdersRef = useRef<Holder[]>(holders);
+  const sparksRef = useRef<Spark[]>([]);
+  const prevDamageCountRef = useRef(0);
 
   // Keep holdersRef updated for click detection
   useEffect(() => {
@@ -343,6 +356,56 @@ export function BubbleCanvas({
 
     // Draw damage numbers on top
     drawDamageNumbers(ctx, battleState.damageNumbers);
+
+    // Spawn sparks for new damage numbers (impact particles)
+    const currentDmgCount = battleState.damageNumbers.length;
+    if (currentDmgCount > prevDamageCountRef.current) {
+      const newHits = battleState.damageNumbers.slice(0, currentDmgCount - prevDamageCountRef.current);
+      for (const dn of newHits) {
+        const sparkCount = 4 + Math.floor(Math.random() * 4);
+        for (let i = 0; i < sparkCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.8 + Math.random() * 2.5;
+          sparksRef.current.push({
+            x: dn.x + (Math.random() - 0.5) * 6,
+            y: dn.y + (Math.random() - 0.5) * 6,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1,
+            maxLife: 0.6 + Math.random() * 0.4,
+            color: Math.random() > 0.4 ? '#fbbf24' : (Math.random() > 0.5 ? '#ff6b6b' : '#ffffff'),
+            size: 1 + Math.random() * 2,
+          });
+        }
+      }
+    }
+    prevDamageCountRef.current = currentDmgCount;
+
+    // Update and draw impact sparks
+    const sparks = sparksRef.current;
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.x += s.vx;
+      s.y += s.vy;
+      s.vy += 0.04; // slight gravity
+      s.vx *= 0.97; // drag
+      s.life -= 0.04;
+
+      if (s.life <= 0) {
+        sparks.splice(i, 1);
+        continue;
+      }
+
+      const alpha = s.life / s.maxLife;
+      const r = s.size * alpha;
+
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = s.color;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // Draw explosion particles on top
     effectsState.explosions.forEach(explosion => {
