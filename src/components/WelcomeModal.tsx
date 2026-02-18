@@ -53,7 +53,7 @@ export function WelcomeModal({ forceOpen, onClose }: WelcomeModalProps) {
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-lg overflow-hidden rounded-2xl"
+            className="relative w-full max-w-lg rounded-2xl max-h-[90vh] flex flex-col overflow-hidden"
             style={{
               background: "linear-gradient(135deg, #0a0015 0%, #1a0030 30%, #0d001a 60%, #0a0020 100%)",
             }}
@@ -94,23 +94,23 @@ export function WelcomeModal({ forceOpen, onClose }: WelcomeModalProps) {
               }}
             />
 
-            {/* Close button */}
+            {/* Close button — stays on top, never scrolls */}
             <button
               onClick={handleClose}
-              className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              className="absolute top-3 right-3 z-30 w-9 h-9 flex items-center justify-center rounded-full bg-black/60 hover:bg-white/10 border border-white/20 transition-colors"
             >
-              <X className="w-4 h-4 text-slate-400" />
+              <X className="w-5 h-5 text-white" />
             </button>
 
-            {/* Content */}
-            <div className="relative z-10 px-8 py-8">
+            {/* Scrollable content */}
+            <div className="relative z-10 px-5 py-6 sm:px-8 sm:py-8 overflow-y-auto">
               {/* Title */}
               <div className="text-center mb-6">
                 <motion.h1
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
-                  className="text-3xl font-black tracking-wider mb-1"
+                  className="text-2xl sm:text-3xl font-black tracking-wider mb-1"
                   style={{
                     background: "linear-gradient(90deg, #ff00ff, #00ffff, #ff00ff)",
                     backgroundSize: "200% auto",
@@ -121,7 +121,7 @@ export function WelcomeModal({ forceOpen, onClose }: WelcomeModalProps) {
                     textShadow: "0 0 40px rgba(255,0,255,0.5)",
                   }}
                 >
-                  HODLWARZ
+                  $WARZ
                 </motion.h1>
                 <motion.p
                   initial={{ opacity: 0 }}
