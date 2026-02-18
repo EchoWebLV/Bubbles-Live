@@ -383,6 +383,8 @@ class MagicBlockService {
     // Skip if victim already confirmed dead on-chain (avoid VictimDead errors)
     if (this.deathLogged.has(victimAddress)) return null;
 
+    if (typeof damage !== 'number' || !isFinite(damage) || damage <= 0) return null;
+
     this.stats.attacksSent++;
 
     try {
@@ -390,6 +392,7 @@ class MagicBlockService {
 
       // Scale local float damage (0.1) → on-chain u16 (10)
       const onchainDamage = Math.max(1, Math.round(damage * DAMAGE_SCALE));
+      if (!isFinite(onchainDamage) || onchainDamage <= 0) return null;
 
       const tx = await this.erProgram.methods
         .processAttack(onchainDamage)
