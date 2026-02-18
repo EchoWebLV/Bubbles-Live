@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Skull, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
@@ -121,7 +121,7 @@ export function BubbleMapClient() {
   const [upgrading, setUpgrading] = useState<number | null>(null); // 0=health, 1=shooting
   const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
-  const [showOnchainPanel, setShowOnchainPanel] = useState(false);
+  const [showOnchainPanel, setShowOnchainPanel] = useState(true);
 
   // WebSocket for real-time transactions (forwards to server)
   const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "";
@@ -383,7 +383,6 @@ export function BubbleMapClient() {
   const token: TokenInfo | null = gameState?.token || null;
   const priceData = gameState?.priceData || null;
   const eventLog = gameState?.eventLog || [];
-  const killFeed = gameState?.killFeed || [];
   const topKillers = gameState?.topKillers || [];
 
   const isLoading = !connected || !gameState;
@@ -537,15 +536,16 @@ export function BubbleMapClient() {
             </div>
           )}
 
-          {/* MagicBlock Onchain indicator — click to open activity panel */}
+          {/* On-chain records toggle */}
           {gameState?.magicBlock?.ready && (
             <button
               onClick={() => setShowOnchainPanel(!showOnchainPanel)}
-              className="bg-slate-900/80 backdrop-blur-md rounded-xl px-3 py-2 border border-amber-500/30 flex items-center gap-2 hover:border-amber-400/60 transition-colors"
+              className={`bg-slate-900/80 backdrop-blur-md rounded-xl px-3 py-2 border flex items-center gap-2 transition-colors ${
+                showOnchainPanel ? 'border-amber-500/50' : 'border-amber-500/30 hover:border-amber-400/60'
+              }`}
             >
               <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-              <span className="text-xs text-amber-400">ONCHAIN</span>
-              <span className="text-[10px] text-amber-500/60">{gameState.magicBlock.playersDelegated ?? gameState.magicBlock.playersRegistered}</span>
+              <span className="text-xs text-amber-400">{showOnchainPanel ? 'HIDE' : 'ONCHAIN'}</span>
             </button>
           )}
 
@@ -603,38 +603,6 @@ export function BubbleMapClient() {
         </div>
       </motion.div>
 
-      {/* Kill Feed */}
-      <AnimatePresence>
-        {killFeed.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="absolute top-24 right-4 z-10 w-72"
-          >
-            <div className="bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-red-500/30">
-              <div className="text-xs text-red-400 mb-2 font-medium flex items-center gap-2">
-                <Skull className="w-3 h-3" />
-                Kill Feed
-              </div>
-              <div className="space-y-1">
-                {killFeed.map((kill, i) => (
-                  <motion.div
-                    key={`${kill.killer}-${kill.victim}-${kill.time}`}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1 - i * 0.2, x: 0 }}
-                    className="text-xs flex items-center gap-1"
-                  >
-                    <span className="text-green-400 font-mono">{kill.killer.slice(0, 6)}</span>
-                    <span className="text-slate-500">☠️</span>
-                    <span className="text-red-400 font-mono">{kill.victim.slice(0, 6)}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Top Killers Leaderboard */}
       {topKillers.length > 0 && (
         <motion.div
@@ -658,99 +626,66 @@ export function BubbleMapClient() {
         </motion.div>
       )}
 
-      {/* On-Chain Records Panel */}
+      {/* On-Chain Records Top Bar */}
       <AnimatePresence>
         {showOnchainPanel && gameState?.magicBlock && (
           <motion.div
-            initial={{ opacity: 0, x: 300 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 300 }}
+            initial={{ opacity: 0, y: -40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -40 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="absolute top-24 right-4 z-30 w-96"
+            className="absolute top-[72px] right-4 z-20 w-80"
           >
-            <div className="bg-slate-950/95 backdrop-blur-xl rounded-xl border border-amber-500/30 shadow-2xl shadow-amber-500/10 overflow-hidden" onWheel={e => e.stopPropagation()}>
-              {/* Header */}
-              <div className="px-4 py-3 border-b border-amber-500/20 bg-gradient-to-r from-amber-500/10 to-orange-500/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
-                    <span className="text-sm font-bold text-amber-400">On-Chain Records</span>
-                  </div>
+            <div className="bg-slate-950/90 backdrop-blur-xl rounded-xl border border-amber-500/30 shadow-lg shadow-amber-500/5 overflow-hidden" onWheel={e => e.stopPropagation()}>
+              {/* Compact header row */}
+              <div className="px-3 py-1.5 flex items-center gap-3 border-b border-amber-500/15 bg-gradient-to-r from-amber-500/5 to-orange-500/5">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                  <span className="text-[11px] font-bold text-amber-400">On-Chain Records</span>
+                </div>
+                <div className="flex items-center gap-3 text-[9px] text-slate-500">
+                  <span>ER <span className="text-amber-400 font-bold">{gameState.magicBlock.stats?.erLatencyMs ?? 0}ms</span></span>
+                  <span>Players <span className="text-green-400 font-bold">{gameState.magicBlock.playersDelegated}/{gameState.magicBlock.playersRegistered}</span></span>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <a
+                    href={`https://explorer.solana.com/address/${gameState.magicBlock.programId}?cluster=devnet`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] text-slate-600 hover:text-amber-400 transition-colors font-mono"
+                  >
+                    {gameState.magicBlock.programId?.slice(0, 10)}...
+                  </a>
                   <button
                     onClick={() => setShowOnchainPanel(false)}
-                    className="text-slate-500 hover:text-white transition-colors text-lg leading-none"
+                    className="text-slate-500 hover:text-white transition-colors text-sm leading-none px-1"
                   >
                     &times;
                   </button>
                 </div>
-                {/* Stats row */}
-                <div className="flex items-center gap-3 mt-2 text-[10px] flex-wrap">
-                  <div className="text-slate-400">
-                    Arena: <span className="text-amber-400 font-mono">{gameState.magicBlock.arenaPda?.slice(0, 8)}...</span>
-                  </div>
-                  <div className="text-slate-400">
-                    Delegated: {gameState.magicBlock.arenaDelegated ? (
-                      <span className="text-green-400 font-bold">YES</span>
-                    ) : (
-                      <span className="text-red-400 font-bold">NO</span>
-                    )}
-                  </div>
-                  <div className="text-slate-400">
-                    Players: <span className="text-green-400 font-bold">{gameState.magicBlock.playersDelegated}/{gameState.magicBlock.playersRegistered}</span>
-                  </div>
-                </div>
               </div>
 
-              {/* ER Metrics */}
-              <div className="px-4 py-2 border-b border-slate-800/50 bg-slate-900/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">ER Latency</div>
-                  <div className="text-amber-400 font-bold text-sm">{gameState.magicBlock.stats?.erLatencyMs ?? 0}ms</div>
-                </div>
-                <a
-                  href={`https://explorer.solana.com/address/${gameState.magicBlock.programId}?cluster=devnet`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[9px] text-slate-500 hover:text-amber-400 transition-colors font-mono"
-                >
-                  Program: {gameState.magicBlock.programId?.slice(0, 12)}...
-                </a>
-              </div>
-
-              {/* Event Log */}
-              <div className="max-h-[28rem] overflow-y-auto scrollbar-thin">
+              {/* Scrollable event log */}
+              <div className="max-h-36 overflow-y-auto scrollbar-thin">
                 {(!gameState.magicBlock.eventLog || gameState.magicBlock.eventLog.length === 0) ? (
-                  <div className="px-4 py-6 text-center text-xs text-slate-500">
+                  <div className="px-4 py-3 text-center text-[10px] text-slate-500">
                     Waiting for on-chain events...
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-800/20">
+                  <div className="divide-y divide-slate-800/15">
                     {gameState.magicBlock.eventLog
                       .filter((event: OnchainEvent) => event.type !== 'attack' && event.type !== 'attack_pending')
                       .map((event: OnchainEvent, i: number) => {
 
                       const iconMap: Record<string, string> = {
-                        arena: '🏟️',
-                        register: '👤',
-                        delegate: '🔗',
-                        respawn: '💫',
-                        kill: '💀',
-                        death: '☠️',
-                        upgrade: '⬆️',
-                        commit: '📤',
-                        system: '⚙️',
-                        error: '❌',
+                        arena: '🏟️', register: '👤', delegate: '🔗', respawn: '💫',
+                        kill: '💀', death: '☠️', upgrade: '⬆️', commit: '📤',
+                        system: '⚙️', error: '❌',
                       };
                       const colorMap: Record<string, string> = {
-                        arena: 'text-blue-400',
-                        register: 'text-cyan-400',
-                        delegate: 'text-purple-400',
-                        respawn: 'text-teal-400',
-                        kill: 'text-red-400',
-                        death: 'text-rose-500',
-                        upgrade: 'text-amber-400',
-                        commit: 'text-orange-400',
-                        system: 'text-slate-400',
+                        arena: 'text-blue-400', register: 'text-cyan-400', delegate: 'text-purple-400',
+                        respawn: 'text-teal-400', kill: 'text-red-400', death: 'text-rose-500',
+                        upgrade: 'text-amber-400', commit: 'text-orange-400', system: 'text-slate-400',
                         error: 'text-red-500',
                       };
                       const age = Math.floor((Date.now() - event.time) / 1000);
@@ -759,57 +694,31 @@ export function BubbleMapClient() {
                       return (
                         <div
                           key={`${event.time}-${i}`}
-                          className={`px-3 py-1.5 hover:bg-slate-800/30 transition-colors group ${i < 3 ? 'bg-slate-800/15' : ''}`}
-                          style={{ opacity: Math.max(0.35, 1 - i * 0.015) }}
+                          className={`px-3 py-1 hover:bg-slate-800/30 transition-colors ${i < 2 ? 'bg-slate-800/10' : ''}`}
+                          style={{ opacity: Math.max(0.4, 1 - i * 0.02) }}
                         >
                           <div className="flex items-center gap-2">
-                            <span className="text-xs leading-none">{iconMap[event.type] || '📝'}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-[11px] font-medium truncate ${colorMap[event.type] || 'text-slate-300'}`}>
-                                  {event.message}
-                                </span>
-                                {event.tx && (
-                                  <a
-                                    href={event.explorer || '#'}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[9px] text-slate-600 hover:text-amber-400 transition-colors font-mono truncate max-w-[80px]"
-                                  >
-                                    {event.tx}
-                                  </a>
-                                )}
-                                <span className="text-[9px] text-slate-600 shrink-0 ml-auto">{ageStr}</span>
-                              </div>
-                            </div>
+                            <span className="text-[10px] leading-none shrink-0">{iconMap[event.type] || '📝'}</span>
+                            <span className={`text-[10px] font-medium truncate ${colorMap[event.type] || 'text-slate-300'}`}>
+                              {event.message}
+                            </span>
+                            {event.tx && (
+                              <a
+                                href={event.explorer || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[8px] text-slate-600 hover:text-amber-400 transition-colors font-mono truncate max-w-[70px] shrink-0"
+                              >
+                                {event.tx}
+                              </a>
+                            )}
+                            <span className="text-[8px] text-slate-600 shrink-0 ml-auto">{ageStr}</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-              </div>
-
-              {/* Footer */}
-              <div className="px-4 py-2 border-t border-slate-800/50 bg-slate-900/30 flex items-center justify-between">
-                <div className="flex items-center gap-3 text-[10px]">
-                  <span className="flex items-center gap-1 text-yellow-400/60">
-                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                    sending to ER
-                  </span>
-                  <span className="flex items-center gap-1 text-green-400/60">
-                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-                    confirmed on ER
-                  </span>
-                </div>
-                <a
-                  href={`https://explorer.solana.com/address/${gameState.magicBlock.arenaPda}?cluster=devnet`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-amber-500/60 hover:text-amber-400 transition-colors"
-                >
-                  Explorer
-                </a>
               </div>
             </div>
           </motion.div>
@@ -1121,30 +1030,34 @@ export function BubbleMapClient() {
         onClose={() => setSelectedHolder(null)}
       />
 
-      {/* Transaction Log */}
+      {/* Transaction Log — only buy/sell/tx entries */}
       <AnimatePresence>
-        {eventLog.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-slate-700/50 z-10 w-64"
-          >
-            <div className="text-xs text-slate-400 mb-2 font-medium">📊 Live Events</div>
-            <div className="space-y-1">
-              {eventLog.slice(0, 8).map((event, i) => (
-                <motion.div
-                  key={`${event}-${i}`}
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1 - i * 0.1, x: 0 }}
-                  className="text-xs text-slate-300 font-mono"
-                >
-                  {event}
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
+        {eventLog.length > 0 && (() => {
+          const txEvents = eventLog.filter(e => /^(BUY|SELL|TX)\s/i.test(e));
+          if (txEvents.length === 0) return null;
+          return (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur-md rounded-xl p-3 border border-slate-700/50 z-10 w-64"
+            >
+              <div className="text-xs text-slate-400 mb-2 font-medium">📊 Live Transactions</div>
+              <div className="space-y-1">
+                {txEvents.slice(0, 8).map((event, i) => (
+                  <motion.div
+                    key={`${event}-${i}`}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1 - i * 0.1, x: 0 }}
+                    className="text-xs text-slate-300 font-mono"
+                  >
+                    {event}
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* Info button — bottom left */}
