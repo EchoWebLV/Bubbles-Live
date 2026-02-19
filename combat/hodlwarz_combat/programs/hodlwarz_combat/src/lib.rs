@@ -191,6 +191,26 @@ pub mod hodlwarz_combat {
         Ok(())
     }
 
+    /// Reset a player's stats to base values (season reset). Runs on ER.
+    pub fn reset_player(ctx: Context<ResetPlayer>) -> Result<()> {
+        let player = &mut ctx.accounts.player_state;
+        require!(player.initialized, CombatError::NotInitialized);
+
+        player.health = BASE_HEALTH;
+        player.max_health = BASE_HEALTH;
+        player.attack_power = BASE_ATTACK;
+        player.xp = 0;
+        player.kills = 0;
+        player.deaths = 0;
+        player.health_level = 1;
+        player.attack_level = 1;
+        player.is_alive = true;
+        player.respawn_at = 0;
+
+        msg!("Player {} reset to base stats", player.wallet);
+        Ok(())
+    }
+
     /// Commit ER state back to base layer (keeps delegation active).
     pub fn commit_state(ctx: Context<CommitState>) -> Result<()> {
         commit_accounts(
@@ -312,6 +332,12 @@ pub struct RespawnPlayer<'info> {
 
 #[derive(Accounts)]
 pub struct UpgradeStat<'info> {
+    #[account(mut)]
+    pub player_state: Account<'info, PlayerState>,
+}
+
+#[derive(Accounts)]
+pub struct ResetPlayer<'info> {
     #[account(mut)]
     pub player_state: Account<'info, PlayerState>,
 }

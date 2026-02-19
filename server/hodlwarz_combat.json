@@ -677,6 +677,29 @@
       ]
     },
     {
+      "name": "reset_player",
+      "docs": [
+        "Reset a player's stats to base values (season reset). Runs on ER."
+      ],
+      "discriminator": [
+        173,
+        181,
+        112,
+        108,
+        27,
+        126,
+        225,
+        123
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "respawn_player",
       "docs": [
         "Respawn a dead player after the respawn timer has elapsed. Runs on ER."

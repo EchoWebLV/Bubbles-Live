@@ -49,8 +49,6 @@ function calcAttackPower(attackLevel) {
   return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
 }
 
-// When true, ALL players start fresh — ignores on-chain history
-const FRESH_SEASON = true;
 
 class GameState {
   constructor() {
@@ -366,7 +364,7 @@ class GameState {
       }
 
       if (!this.battleBubbles.has(holder.address)) {
-        const cached = FRESH_SEASON ? null : this.playerCache.get(holder.address);
+        const cached = this.playerCache.get(holder.address);
         const cachedXp = cached ? (cached.xp || 0) : 0;
         const lvl = Math.min(calcLevel(cachedXp), 20);
         const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
@@ -807,35 +805,23 @@ class GameState {
         // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          if (FRESH_SEASON) {
-            // Fresh season: don't overwrite local stats from stale on-chain data.
-            // Kills/deaths/xp accumulate locally from the game loop.
-            // Just keep level/stats consistent with local xp.
-            const lvl = calcLevel(bubble.xp);
-            bubble.healthLevel = lvl;
-            bubble.attackLevel = lvl;
-            bubble.attackPower = calcAttackPower(lvl);
-            bubble.maxHealth = calcMaxHealth(lvl);
-          } else {
-            bubble.kills = state.kills;
-            bubble.deaths = state.deaths;
-            bubble.xp = state.xp;
-            bubble.healthLevel = state.healthLevel;
-            bubble.attackLevel = state.attackLevel;
+          bubble.kills = state.kills;
+          bubble.deaths = state.deaths;
+          bubble.xp = state.xp;
+          bubble.healthLevel = state.healthLevel;
+          bubble.attackLevel = state.attackLevel;
 
-            const currentXp = state.xp || 0;
-            const expectedLevel = calcLevel(currentXp);
-            const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
-            const syncedAttack = state.attackPower;
-            if (isFinite(syncedAttack) && syncedAttack > 0) {
-              bubble.attackPower = Math.min(syncedAttack, maxAllowedAttack);
-            } else {
-              bubble.attackPower = BATTLE_CONFIG.bulletDamage;
-            }
+          const currentXp = state.xp || 0;
+          const expectedLevel = calcLevel(currentXp);
+          const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
+          const syncedAttack = state.attackPower;
+          if (isFinite(syncedAttack) && syncedAttack > 0) {
+            bubble.attackPower = Math.min(syncedAttack, maxAllowedAttack);
+          } else {
+            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
           }
 
-          const currentXpForHealth = FRESH_SEASON ? 0 : (state.xp || 0);
-          const expectedLevelForHealth = calcLevel(currentXpForHealth);
+          const expectedLevelForHealth = calcLevel(currentXp);
           const maxAllowedHealth = calcMaxHealth(Math.min(expectedLevelForHealth, 20));
           bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
 
@@ -868,6 +854,40 @@ class GameState {
     } catch (err) {
       console.error('ER sync error:', err.message);
     }
+  }
+
+  // ─── Season Reset ──────────────────────────────────────────────
+
+  async seasonReset() {
+    if (!this.magicBlockReady) {
+      return { success: false, error: 'MagicBlock ER not ready' };
+    }
+
+    console.log('SEASON RESET: resetting all players on-chain...');
+    const result = await this.magicBlock.resetAllPlayers();
+
+    for (const [address, bubble] of this.battleBubbles) {
+      bubble.kills = 0;
+      bubble.deaths = 0;
+      bubble.xp = 0;
+      bubble.healthLevel = 1;
+      bubble.attackLevel = 1;
+      bubble.health = BATTLE_CONFIG.maxHealth;
+      bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+      bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+      bubble.isAlive = true;
+      bubble.isGhost = false;
+      bubble.ghostUntil = null;
+    }
+
+    this.playerCache.clear();
+    this.killFeed = [];
+    this.topKillers = [];
+    this.damageBuffer.clear();
+    this.addEventLog('New season started — all stats reset!');
+
+    console.log('SEASON RESET: complete', result);
+    return { success: true, ...result };
   }
 
   // ─── Event & Player Management ───────────────────────────────────

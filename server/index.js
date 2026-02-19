@@ -81,9 +81,30 @@ const gameState = new GameState();
 
 app.prepare().then(async () => {
   console.log('Next.js ready, starting server...');
-  const httpServer = createServer((req, res) => {
+  const ADMIN_SECRET = process.env.ADMIN_SECRET || 'changeme';
+
+  const httpServer = createServer(async (req, res) => {
     if (!httpRateLimit(req, res)) return;
     const parsedUrl = parse(req.url, true);
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/season-reset') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      try {
+        const result = await gameState.seasonReset();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     handle(req, res, parsedUrl);
   });
 

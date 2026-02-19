@@ -501,6 +501,52 @@ class MagicBlockService {
     }
   }
 
+  // ─── Season Reset (runs on ER) ──────────────────────────────────
+
+  async resetPlayer(walletAddress) {
+    if (!this.ready) return null;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return null;
+
+    try {
+      const tx = await this.erProgram.methods
+        .resetPlayer()
+        .accounts({
+          playerState: player.playerPda,
+        })
+        .rpc();
+
+      this._logEvent('reset', `Player ${walletAddress.slice(0, 6)}... reset to base stats`, tx, { wallet: walletAddress, _er: true });
+      return tx;
+    } catch (err) {
+      console.error(`MagicBlock: Reset failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      return null;
+    }
+  }
+
+  async resetAllPlayers() {
+    if (!this.ready) return { success: 0, failed: 0 };
+
+    let success = 0;
+    let failed = 0;
+
+    const wallets = [...this.playerMap.keys()];
+    console.log(`MagicBlock: Season reset — resetting ${wallets.length} players...`);
+
+    for (const wallet of wallets) {
+      const tx = await this.resetPlayer(wallet);
+      if (tx) {
+        success++;
+      } else {
+        failed++;
+      }
+    }
+
+    console.log(`MagicBlock: Season reset complete — ${success} reset, ${failed} failed`);
+    this._logEvent('season', `Season reset: ${success} players reset to base stats`, null, { success, failed });
+    return { success, failed };
+  }
+
   // ─── State Reading (from ER) ─────────────────────────────────────
 
   async getPlayerState(walletAddress) {
