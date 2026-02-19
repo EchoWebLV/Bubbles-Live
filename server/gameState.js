@@ -808,14 +808,14 @@ class GameState {
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
           if (FRESH_SEASON) {
-            // Fresh season: ignore on-chain history, everyone at level 1
-            bubble.kills = 0;
-            bubble.deaths = 0;
-            bubble.xp = 0;
-            bubble.healthLevel = 1;
-            bubble.attackLevel = 1;
-            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
-            bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+            // Fresh season: don't overwrite local stats from stale on-chain data.
+            // Kills/deaths/xp accumulate locally from the game loop.
+            // Just keep level/stats consistent with local xp.
+            const lvl = calcLevel(bubble.xp);
+            bubble.healthLevel = lvl;
+            bubble.attackLevel = lvl;
+            bubble.attackPower = calcAttackPower(lvl);
+            bubble.maxHealth = calcMaxHealth(lvl);
           } else {
             bubble.kills = state.kills;
             bubble.deaths = state.deaths;
