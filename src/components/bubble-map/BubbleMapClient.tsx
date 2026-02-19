@@ -857,22 +857,23 @@ export function BubbleMapClient() {
       {/* Kill Feed */}
       {killFeed.length > 0 && (
         <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-10 w-44 sm:w-52">
-          <div className="flex flex-col gap-0.5">
-            {killFeed.slice(0, 5).map((kill, i) => {
-              const age = Date.now() - kill.time;
-              const opacity = Math.max(0.3, 1 - age / 15000);
-              return (
+          <div className="bg-slate-900/70 backdrop-blur-md rounded-lg border border-red-500/20 overflow-hidden">
+            <div className="px-2 py-1 border-b border-red-500/10">
+              <span className="text-[9px] sm:text-[10px] text-red-400 font-medium">Recent Kills</span>
+            </div>
+            <div className="flex flex-col">
+              {killFeed.slice(0, 6).map((kill, i) => (
                 <div
                   key={`${kill.killer}-${kill.victim}-${kill.time}`}
-                  className="flex items-center gap-1 px-2 py-0.5 bg-slate-900/60 backdrop-blur-sm rounded text-[9px] sm:text-[10px]"
-                  style={{ opacity }}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[9px] sm:text-[10px]"
+                  style={{ opacity: 1 - i * 0.12 }}
                 >
                   <span className="text-red-400 font-bold font-mono truncate max-w-[60px]">{kill.killer.slice(0, 6)}</span>
                   <span className="text-slate-500 shrink-0">killed</span>
                   <span className="text-slate-300 font-mono truncate max-w-[60px]">{kill.victim.slice(0, 6)}</span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         </div>
       )}
