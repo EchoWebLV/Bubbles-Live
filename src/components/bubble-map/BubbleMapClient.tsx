@@ -605,6 +605,7 @@ export function BubbleMapClient() {
   const eventLogKey = rawEventLog.slice(0, 8).join('|');
   const eventLog = useMemo(() => rawEventLog, [eventLogKey]);
   const topKillers = gameState?.topKillers || [];
+  const killFeed = gameState?.killFeed || [];
 
   const isLoading = !connected || !gameState;
 
@@ -851,6 +852,29 @@ export function BubbleMapClient() {
             </div>
           </div>
         </motion.div>
+      )}
+
+      {/* Kill Feed */}
+      {killFeed.length > 0 && (
+        <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-10 w-44 sm:w-52">
+          <div className="flex flex-col gap-0.5">
+            {killFeed.slice(0, 5).map((kill, i) => {
+              const age = Date.now() - kill.time;
+              const opacity = Math.max(0.3, 1 - age / 15000);
+              return (
+                <div
+                  key={`${kill.killer}-${kill.victim}-${kill.time}`}
+                  className="flex items-center gap-1 px-2 py-0.5 bg-slate-900/60 backdrop-blur-sm rounded text-[9px] sm:text-[10px]"
+                  style={{ opacity }}
+                >
+                  <span className="text-red-400 font-bold font-mono truncate max-w-[60px]">{kill.killer.slice(0, 6)}</span>
+                  <span className="text-slate-500 shrink-0">killed</span>
+                  <span className="text-slate-300 font-mono truncate max-w-[60px]">{kill.victim.slice(0, 6)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* On-Chain Records Top Bar */}
