@@ -515,9 +515,13 @@ class GameState {
           }
         }
 
-        // Also respawn on ER
+        // Also respawn on ER (the ER logs the event with a tx on success)
         if (this.magicBlockReady) {
-          this.magicBlock.respawnPlayer(address).catch(() => {});
+          this.magicBlock.deathLogged.delete(address);
+          this.magicBlock.respawnPlayer(address).catch(() => {
+            // ER respawn failed — still log locally so it shows in on-chain records
+            this.magicBlock._logEvent('respawn', `Player ${address.slice(0, 6)}... respawned`, null, { wallet: address });
+          });
         }
       }
     });
@@ -666,7 +670,6 @@ class GameState {
           targetBattle.isGhost = true;
           targetBattle.isAlive = false;
           targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
-          // kills/deaths/xp are tracked on-chain only — ER sync is the source of truth
 
           this.killFeed.unshift({
             killer: bullet.shooterAddress,
@@ -675,6 +678,20 @@ class GameState {
           });
           this.killFeed = this.killFeed.slice(0, 5);
           this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
+
+          // Log kill/death to on-chain records so they always appear in the feed.
+          // Also mark deathLogged so the ER won't create a duplicate entry.
+          if (this.magicBlockReady && this.magicBlock) {
+            this.magicBlock.deathLogged.add(target.address);
+            this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
+              killer: bullet.shooterAddress,
+              victim: target.address,
+            });
+            this.magicBlock._logEvent('death', `${target.address.slice(0, 6)}... was eliminated`, null, {
+              victim: target.address,
+              killer: bullet.shooterAddress,
+            });
+          }
 
           this.updateTopKillers();
         }
@@ -833,14 +850,17 @@ class GameState {
           const recentlyRespawned = bubble.respawnedAt && (Date.now() - bubble.respawnedAt < 10000);
 
           if (!bubble.isGhost && !recentlyRespawned) {
-            if (state.health < bubble.health || state.health >= state.maxHealth) {
-              bubble.health = state.health;
+            // Only sync health if the ER shows full health (respawn) — 
+            // never pull health DOWN from ER because batched damage in the ER
+            // would cause "phantom damage" (health drops without visible bullets).
+            // Local bullet hits are the visual authority for health reduction.
+            if (state.health >= state.maxHealth && bubble.health < state.maxHealth) {
+              bubble.health = state.maxHealth;
             }
-            bubble.isAlive = state.isAlive;
-
-            if (!state.isAlive && !bubble.isGhost) {
-              bubble.isGhost = true;
-              bubble.ghostUntil = Date.now() + BATTLE_CONFIG.ghostDuration;
+            // Do NOT sync isAlive=false from ER — local bullet kills handle that.
+            // Only sync isAlive=true (e.g. ER respawn)
+            if (state.isAlive && !bubble.isAlive) {
+              bubble.isAlive = true;
             }
           }
         }
