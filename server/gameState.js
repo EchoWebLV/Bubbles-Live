@@ -48,6 +48,11 @@ function calcAttackPower(attackLevel) {
   return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
 }
 
+// Wallets with stale on-chain stats from previous tokens — force reset to level 1
+const RESET_WALLETS = new Set([
+  'BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu',
+]);
+
 class GameState {
   constructor() {
     this.holders = [];
@@ -362,19 +367,22 @@ class GameState {
 
       if (!this.battleBubbles.has(holder.address)) {
         const cached = this.playerCache.get(holder.address);
-        const maxHealth = cached ? cached.maxHealth : BATTLE_CONFIG.maxHealth;
+        const cachedXp = cached ? (cached.xp || 0) : 0;
+        const lvl = Math.min(calcLevel(cachedXp), 20);
+        const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
+        const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : BATTLE_CONFIG.bulletDamage;
 
         this.battleBubbles.set(holder.address, {
           address: holder.address,
-          health: maxHealth,
-          maxHealth: maxHealth,
-          attackPower: cached ? cached.attackPower : BATTLE_CONFIG.bulletDamage,
+          health: cappedMaxHealth,
+          maxHealth: cappedMaxHealth,
+          attackPower: cappedAttack,
           isGhost: false,
           ghostUntil: null,
           lastShotTime: 0,
           kills: cached ? cached.kills : 0,
           deaths: cached ? cached.deaths : 0,
-          xp: cached ? cached.xp : 0,
+          xp: cachedXp,
           healthLevel: cached ? cached.healthLevel : 1,
           attackLevel: cached ? cached.attackLevel : 1,
           isAlive: true,
@@ -656,12 +664,7 @@ class GameState {
           targetBattle.isGhost = true;
           targetBattle.isAlive = false;
           targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
-          targetBattle.deaths++;
-
-          const shooter = this.battleBubbles.get(bullet.shooterAddress);
-          if (shooter) {
-            shooter.kills++;
-          }
+          // kills/deaths/xp are tracked on-chain only — ER sync is the source of truth
 
           this.killFeed.unshift({
             killer: bullet.shooterAddress,
@@ -788,20 +791,40 @@ class GameState {
         // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          bubble.kills = state.kills;
-          bubble.deaths = state.deaths;
-          bubble.xp = state.xp;
-          bubble.healthLevel = state.healthLevel;
-          bubble.attackLevel = state.attackLevel;
-          const syncedAttack = state.attackPower;
-          if (isFinite(syncedAttack) && syncedAttack > 0 && syncedAttack <= 5) {
-            bubble.attackPower = syncedAttack;
-          } else if (syncedAttack > 5) {
-            console.warn(`ER SYNC: ${walletAddress.slice(0,6)} has attackPower=${syncedAttack} — clamping to base`);
+          // Force-reset wallets with stale stats from old tokens
+          if (RESET_WALLETS.has(walletAddress)) {
+            bubble.kills = 0;
+            bubble.deaths = 0;
+            bubble.xp = 0;
+            bubble.healthLevel = 1;
+            bubble.attackLevel = 1;
             bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+            bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+          } else {
+            bubble.kills = state.kills;
+            bubble.deaths = state.deaths;
+            bubble.xp = state.xp;
+            bubble.healthLevel = state.healthLevel;
+            bubble.attackLevel = state.attackLevel;
           }
 
-          bubble.maxHealth = state.maxHealth;
+          // Cap attackPower to what the player's CURRENT kills/xp warrant
+          if (!RESET_WALLETS.has(walletAddress)) {
+            const currentXp = state.xp || 0;
+            const expectedLevel = calcLevel(currentXp);
+            const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
+            const syncedAttack = state.attackPower;
+            if (isFinite(syncedAttack) && syncedAttack > 0) {
+              bubble.attackPower = Math.min(syncedAttack, maxAllowedAttack);
+            } else {
+              bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+            }
+          }
+
+          const currentXpForHealth = RESET_WALLETS.has(walletAddress) ? 0 : (state.xp || 0);
+          const expectedLevelForHealth = calcLevel(currentXpForHealth);
+          const maxAllowedHealth = calcMaxHealth(Math.min(expectedLevelForHealth, 20));
+          bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
 
           // Don't let ER sync override a bubble that just respawned locally
           // (the ER might still have stale dead state for ~5s after respawn)
@@ -865,7 +888,7 @@ class GameState {
     this.topKillers = Array.from(this.battleBubbles.values())
       .filter(b => b.kills > 0)
       .sort((a, b) => b.kills - a.kills)
-      .slice(0, 5)
+      .slice(0, 20)
       .map(b => ({ address: b.address, kills: b.kills }));
   }
 
@@ -1053,7 +1076,7 @@ class GameState {
       this.magicBlock.startCommitTimer(30000);
 
       // Sync ER state back to in-memory cache every 10 seconds
-      this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
+      this.erSyncInterval = setInterval(() => this.syncFromER(), 5000);
     } else {
       console.warn('MagicBlock ER not available — game runs locally only');
     }

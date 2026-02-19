@@ -56,6 +56,7 @@ export function BubbleMapClient() {
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [musicStarted, setMusicStarted] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [followingAddress, setFollowingAddress] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
@@ -218,9 +219,9 @@ export function BubbleMapClient() {
 
   // Mouse drag handlers for camera panning
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only start drag on left click and not on UI elements
     if (e.button === 0 && e.target === containerRef.current?.querySelector('canvas')) {
       setIsDragging(true);
+      setFollowingAddress(null);
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       e.preventDefault();
     }
@@ -258,6 +259,7 @@ export function BubbleMapClient() {
     if (target.tagName !== 'CANVAS') return;
 
     if (e.touches.length === 1) {
+      setFollowingAddress(null);
       lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       lastPinchDist.current = null;
     } else if (e.touches.length === 2) {
@@ -334,7 +336,7 @@ export function BubbleMapClient() {
     };
   }, []);
 
-  // Effects animation loop + camera movement
+  // Effects animation loop + camera movement + follow target
   useEffect(() => {
     let animationId: number;
     
@@ -343,23 +345,28 @@ export function BubbleMapClient() {
       
       // Handle continuous key presses for smooth camera movement
       const keys = keysPressed.current;
+      let manualMove = false;
       if (keys.has('ArrowUp') || keys.has('w') || keys.has('W')) {
-        moveCamera(0, CAMERA_SPEED);
+        moveCamera(0, CAMERA_SPEED); manualMove = true;
       }
       if (keys.has('ArrowDown') || keys.has('s') || keys.has('S')) {
-        moveCamera(0, -CAMERA_SPEED);
+        moveCamera(0, -CAMERA_SPEED); manualMove = true;
       }
       if (keys.has('ArrowLeft') || keys.has('a') || keys.has('A')) {
-        moveCamera(CAMERA_SPEED, 0);
+        moveCamera(CAMERA_SPEED, 0); manualMove = true;
       }
       if (keys.has('ArrowRight') || keys.has('d') || keys.has('D')) {
-        moveCamera(-CAMERA_SPEED, 0);
+        moveCamera(-CAMERA_SPEED, 0); manualMove = true;
       }
       if (keys.has('+') || keys.has('=')) {
         zoomCamera(0.02);
       }
       if (keys.has('-') || keys.has('_')) {
         zoomCamera(-0.02);
+      }
+
+      if (manualMove) {
+        setFollowingAddress(null);
       }
       
       animationId = requestAnimationFrame(animate);
@@ -368,6 +375,23 @@ export function BubbleMapClient() {
     animationId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationId);
   }, [moveCamera, zoomCamera]);
+
+  // Follow target: smoothly track the followed bubble
+  useEffect(() => {
+    if (!followingAddress || !gameState) return;
+    const holder = gameState.holders.find((h: { address: string }) => h.address === followingAddress);
+    if (!holder || holder.x === undefined) {
+      setFollowingAddress(null);
+      return;
+    }
+    const cw = dimensions.width / 2;
+    const ch = dimensions.height / 2;
+    setCamera(prev => ({
+      ...prev,
+      x: prev.x + ((-holder.x + cw) - prev.x) * 0.1,
+      y: prev.y + ((-holder.y + ch) - prev.y) * 0.1,
+    }));
+  }, [followingAddress, gameState, dimensions]);
 
   // Convert game state to component formats
   const holders: Holder[] = gameState?.holders.map(h => ({
@@ -607,23 +631,44 @@ export function BubbleMapClient() {
         </div>
       </motion.div>
 
-      {/* Top Killers Leaderboard */}
+      {/* Top Killers Leaderboard — scrollable, click to follow */}
       {topKillers.length > 0 && (
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="absolute top-14 sm:top-20 left-2 sm:left-4 z-10 w-36 sm:w-44"
+          className="absolute top-14 sm:top-20 left-2 sm:left-4 z-10 w-40 sm:w-48"
         >
-          <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl p-2 sm:p-3 border border-yellow-500/30">
-            <div className="text-[10px] sm:text-xs text-yellow-400 mb-1.5 font-medium">🏆 Top Killers</div>
-            <div className="space-y-0.5 sm:space-y-1">
-              {topKillers.slice(0, 3).map((killer, i) => (
-                <div key={killer.address} className="text-[10px] sm:text-xs flex items-center justify-between">
-                  <span className="text-slate-300 font-mono">
-                    {i + 1}. {killer.address.slice(0, 4)}..
+          <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl border border-yellow-500/30 overflow-hidden">
+            <div className="px-2 sm:px-3 py-1.5 border-b border-yellow-500/15 flex items-center justify-between">
+              <span className="text-[10px] sm:text-xs text-yellow-400 font-medium">Top Killers</span>
+              {followingAddress && (
+                <button
+                  onClick={() => setFollowingAddress(null)}
+                  className="text-[9px] text-red-400 hover:text-red-300 transition-colors"
+                >
+                  UNFOLLOW
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 sm:max-h-80 overflow-y-auto scrollbar-thin" onWheel={e => e.stopPropagation()}>
+              {topKillers.map((killer: { address: string; kills: number }, i: number) => (
+                <button
+                  key={killer.address}
+                  onClick={() => setFollowingAddress(followingAddress === killer.address ? null : killer.address)}
+                  className={`w-full text-[10px] sm:text-xs flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 transition-colors ${
+                    followingAddress === killer.address
+                      ? 'bg-yellow-500/20 border-l-2 border-yellow-400'
+                      : 'hover:bg-slate-800/50 border-l-2 border-transparent'
+                  }`}
+                >
+                  <span className={`w-4 text-right font-bold shrink-0 ${i < 3 ? 'text-yellow-400' : 'text-slate-500'}`}>
+                    {i + 1}
                   </span>
-                  <span className="text-yellow-400 font-bold">{killer.kills}</span>
-                </div>
+                  <span className="text-slate-300 font-mono truncate">
+                    {killer.address.slice(0, 6)}..
+                  </span>
+                  <span className="text-yellow-400 font-bold ml-auto shrink-0">{killer.kills}</span>
+                </button>
               ))}
             </div>
           </div>
