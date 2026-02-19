@@ -50,7 +50,9 @@ function calcAttackPower(attackLevel) {
 }
 
 // Wallets with stale on-chain stats from previous tokens — force reset to level 1
-const RESET_WALLETS = new Set([]);
+const RESET_WALLETS = new Set([
+  'BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu',
+]);
 
 // Wallets with a guaranteed minimum XP boost (level 5 = 800 XP)
 const BOOSTED_WALLETS = new Map([
@@ -814,15 +816,17 @@ class GameState {
         // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          // Force-reset wallets with stale stats from old tokens
+          // Force-reset wallets with stale stats from old tokens (but apply boost if any)
           if (RESET_WALLETS.has(walletAddress)) {
+            const boostXp = BOOSTED_WALLETS.get(walletAddress) || 0;
+            const boostLevel = calcLevel(boostXp);
             bubble.kills = 0;
             bubble.deaths = 0;
-            bubble.xp = 0;
-            bubble.healthLevel = 1;
-            bubble.attackLevel = 1;
-            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
-            bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+            bubble.xp = boostXp;
+            bubble.healthLevel = boostLevel;
+            bubble.attackLevel = boostLevel;
+            bubble.attackPower = calcAttackPower(boostLevel);
+            bubble.maxHealth = calcMaxHealth(boostLevel);
           } else {
             const boostXp = BOOSTED_WALLETS.get(walletAddress) || 0;
             bubble.kills = state.kills;
