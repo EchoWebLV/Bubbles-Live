@@ -83,7 +83,7 @@ export interface GameState {
   damageNumbers: GameDamageNumber[];
   killFeed: GameKillFeed[];
   eventLog: string[];
-  topKillers: { address: string; kills: number }[];
+  topKillers: { address: string; kills: number; level: number }[];
   popEffects: GamePopEffect[];
   token: {
     address: string;

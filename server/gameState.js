@@ -925,7 +925,7 @@ class GameState {
       .filter(b => b.kills > 0)
       .sort((a, b) => b.kills - a.kills)
       .slice(0, 20)
-      .map(b => ({ address: b.address, kills: b.kills }));
+      .map(b => ({ address: b.address, kills: b.kills, level: calcLevel(b.xp) }));
   }
 
   async handleTransaction(event) {

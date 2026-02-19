@@ -822,7 +822,7 @@ export function BubbleMapClient() {
               )}
             </div>
             <div className="max-h-64 sm:max-h-80 overflow-y-auto scrollbar-thin" onWheel={e => e.stopPropagation()}>
-              {topKillers.map((killer: { address: string; kills: number }, i: number) => (
+              {topKillers.map((killer: { address: string; kills: number; level: number }, i: number) => (
                 <button
                   key={killer.address}
                   onClick={() => setFollowingAddress(followingAddress === killer.address ? null : killer.address)}
@@ -834,6 +834,13 @@ export function BubbleMapClient() {
                 >
                   <span className={`w-4 text-right font-bold shrink-0 ${i < 3 ? 'text-yellow-400' : 'text-slate-500'}`}>
                     {i + 1}
+                  </span>
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 ${
+                    killer.level >= 5 ? 'bg-purple-500/80 text-white' :
+                    killer.level >= 3 ? 'bg-blue-500/80 text-white' :
+                    'bg-slate-600/80 text-slate-200'
+                  }`}>
+                    {killer.level}
                   </span>
                   <span className="text-slate-300 font-mono truncate">
                     {killer.address.slice(0, 6)}..
