@@ -3,6 +3,7 @@
 // Combat resolution (damage, kills, XP) runs on MagicBlock Ephemeral Rollup
 
 const { MagicBlockService } = require('./magicblock');
+const { loadAllPhotos, savePhoto, deletePhoto } = require('./playerStore');
 
 const BATTLE_CONFIG = {
   maxHealth: 100,       // base — overridden by onchain PlayerState
@@ -83,6 +84,7 @@ class GameState {
     this.newHolders = new Set();
     this.popEffects = [];
     this.missingHolderCounts = new Map();
+    this.playerPhotos = new Map(); // wallet -> base64 data URL (max 50KB)
     this.playerCache = new Map();  // In-memory cache: wallet -> stats from ER
     this.magicBlock = new MagicBlockService();
     this.magicBlockReady = false;
@@ -995,6 +997,34 @@ class GameState {
     console.log(`Live refresh: ${this.holders.length} holders`);
   }
 
+  // ─── Player Photos ──────────────────────────────────────────────
+
+  setPlayerPhoto(walletAddress, dataUrl) {
+    if (!walletAddress || typeof dataUrl !== 'string') return false;
+    if (dataUrl.length > 1400000) return false; // ~1MB base64 limit
+    if (!dataUrl.startsWith('data:image/')) return false;
+    this.playerPhotos.set(walletAddress, dataUrl);
+    savePhoto(walletAddress, dataUrl).catch(err =>
+      console.warn('Failed to persist photo:', err.message)
+    );
+    return true;
+  }
+
+  removePlayerPhoto(walletAddress) {
+    this.playerPhotos.delete(walletAddress);
+    deletePhoto(walletAddress).catch(err =>
+      console.warn('Failed to delete photo from DB:', err.message)
+    );
+  }
+
+  getPlayerPhotos() {
+    const photos = {};
+    for (const [addr, data] of this.playerPhotos) {
+      photos[addr] = data;
+    }
+    return photos;
+  }
+
   // ─── Client State ────────────────────────────────────────────────
 
   getState() {
@@ -1010,6 +1040,7 @@ class GameState {
         y: h.y,
         isNew: this.newHolders.has(h.address),
         spawnTime: h.spawnTime,
+        hasPhoto: this.playerPhotos.has(h.address),
       })),
       popEffects: this.popEffects.map(p => ({
         ...p,
@@ -1087,6 +1118,18 @@ class GameState {
     this.initializePositions();
     
     console.log(`Loaded ${this.holders.length} holders`);
+
+    try {
+      const dbPhotos = await loadAllPhotos();
+      if (dbPhotos.size > 0) {
+        for (const [addr, data] of dbPhotos) {
+          this.playerPhotos.set(addr, data);
+        }
+        console.log(`Loaded ${dbPhotos.size} player photos from DB`);
+      }
+    } catch (err) {
+      console.warn('Failed to load photos from DB:', err.message);
+    }
 
     for (const holder of this.holders) {
       this.ensurePlayerCached(holder.address);

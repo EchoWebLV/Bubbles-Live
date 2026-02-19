@@ -78,6 +78,12 @@ async function migrate() {
       -- Index for leaderboard queries
       CREATE INDEX IF NOT EXISTS idx_players_kills ON players (kills DESC);
       CREATE INDEX IF NOT EXISTS idx_players_xp ON players (xp DESC);
+
+      CREATE TABLE IF NOT EXISTS player_photos (
+        wallet_address TEXT PRIMARY KEY,
+        photo          TEXT NOT NULL,
+        updated_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+      );
     `);
 
     console.log('✅ Database migrated successfully');

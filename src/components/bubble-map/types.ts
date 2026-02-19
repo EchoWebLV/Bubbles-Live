@@ -16,6 +16,8 @@ export interface Holder extends SimulationNodeDatum {
   // Animation properties
   isNew?: boolean;
   spawnTime?: number;
+  // Profile photo
+  photo?: string | null;
 }
 
 export interface PopEffect {

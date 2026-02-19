@@ -57,6 +57,8 @@ export function BubbleCanvas({
   const holdersRef = useRef<Holder[]>(holders);
   const sparksRef = useRef<Spark[]>([]);
   const prevDamageCountRef = useRef(0);
+  const imageCache = useRef<Map<string, HTMLImageElement | null>>(new Map());
+  const imageSrcCache = useRef<Map<string, string>>(new Map());
 
   // Keep holdersRef updated for click detection
   useEffect(() => {
@@ -253,6 +255,42 @@ export function BubbleCanvas({
       ctx.fillStyle = gradient;
       ctx.fill();
 
+      // Draw profile photo clipped to circle (if available)
+      const photoUrl = holder.photo;
+      if (photoUrl && !isGhost) {
+        let cachedImg = imageCache.current.get(holder.address);
+        const cachedSrc = imageSrcCache.current.get(holder.address);
+        if (cachedImg === undefined || cachedSrc !== photoUrl) {
+          imageCache.current.set(holder.address, null);
+          imageSrcCache.current.set(holder.address, photoUrl);
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => { imageCache.current.set(holder.address, img); };
+          img.onerror = () => { imageCache.current.set(holder.address, null); };
+          img.src = photoUrl;
+          cachedImg = null;
+        }
+        if (cachedImg) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(x, y, radius * 0.85, 0, Math.PI * 2);
+          ctx.clip();
+          const imgSize = radius * 1.7;
+          ctx.drawImage(cachedImg, x - imgSize / 2, y - imgSize / 2, imgSize, imgSize);
+          ctx.restore();
+          ctx.globalAlpha = ghostAlpha;
+        }
+        // Photo border ring
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 0.88, 0, Math.PI * 2);
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = Math.max(2, radius * 0.08);
+        ctx.stroke();
+      } else if (!photoUrl && imageCache.current.has(holder.address)) {
+        imageCache.current.delete(holder.address);
+        imageSrcCache.current.delete(holder.address);
+      }
+
       // Add highlight reflection
       ctx.beginPath();
       ctx.arc(x - radius * 0.25, y - radius * 0.25, radius * 0.25, 0, Math.PI * 2);
@@ -264,7 +302,7 @@ export function BubbleCanvas({
         y - radius * 0.25,
         radius * 0.25
       );
-      highlightGradient.addColorStop(0, "rgba(255, 255, 255, 0.5)");
+      highlightGradient.addColorStop(0, "rgba(255, 255, 255, 0.3)");
       highlightGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
       ctx.fillStyle = highlightGradient;
       ctx.fill();

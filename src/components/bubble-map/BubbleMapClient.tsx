@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star, Camera } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
@@ -57,9 +57,11 @@ export function BubbleMapClient() {
   const [musicStarted, setMusicStarted] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [followingAddress, setFollowingAddress] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const keysPressed = useRef<Set<string>>(new Set());
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Wallet connection
   const { publicKey, connected: walletConnected, disconnect: disconnectWallet } = useWallet();
@@ -120,7 +122,48 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, setDimensions: sendDimensions, sendTransaction, upgradeStat, getOnchainStats } = useGameSocket();
+  const { connected, gameState, playerPhotos, setDimensions: sendDimensions, sendTransaction, upgradeStat, getOnchainStats, uploadPhoto, removePhoto } = useGameSocket();
+
+  const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !connectedWalletAddress) return;
+    if (!file.type.startsWith('image/')) return;
+    
+    setPhotoUploading(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = url;
+      });
+      
+      const size = 128;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d')!;
+      
+      const minDim = Math.min(img.width, img.height);
+      const sx = (img.width - minDim) / 2;
+      const sy = (img.height - minDim) / 2;
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+      console.log(`Uploading photo: ${Math.round(dataUrl.length / 1024)}KB for ${connectedWalletAddress}`);
+      const ok = await uploadPhoto(connectedWalletAddress, dataUrl);
+      console.log(`Photo upload result: ${ok}`);
+      if (!ok) console.warn('Photo upload failed');
+    } catch (err) {
+      console.error('Photo upload error:', err);
+    } finally {
+      setPhotoUploading(false);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+    }
+  }, [connectedWalletAddress, uploadPhoto]);
   const [upgrading, setUpgrading] = useState<number | null>(null); // 0=health, 1=shooting
   const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
@@ -380,16 +423,18 @@ export function BubbleMapClient() {
   useEffect(() => {
     if (!followingAddress || !gameState) return;
     const holder = gameState.holders.find((h: { address: string }) => h.address === followingAddress);
-    if (!holder || holder.x === undefined) {
+    if (!holder || holder.x === undefined || holder.y === undefined) {
       setFollowingAddress(null);
       return;
     }
+    const hx = holder.x;
+    const hy = holder.y;
     const cw = dimensions.width / 2;
     const ch = dimensions.height / 2;
     setCamera(prev => ({
       ...prev,
-      x: prev.x + ((-holder.x + cw) - prev.x) * 0.1,
-      y: prev.y + ((-holder.y + ch) - prev.y) * 0.1,
+      x: prev.x + ((-hx + cw) - prev.x) * 0.1,
+      y: prev.y + ((-hy + ch) - prev.y) * 0.1,
     }));
   }, [followingAddress, gameState, dimensions]);
 
@@ -404,6 +449,7 @@ export function BubbleMapClient() {
     y: h.y,
     isNew: h.isNew,
     spawnTime: h.spawnTime,
+    photo: playerPhotos[h.address] || null,
   })) || [];
 
   // Pop effects for holders who sold
@@ -612,6 +658,30 @@ export function BubbleMapClient() {
               <Wallet className="w-3 h-3 text-white" />
               <span className="text-[10px] sm:text-xs text-white font-medium">Connect</span>
             </button>
+          )}
+
+          {/* Photo Upload */}
+          {walletConnected && connectedWalletAddress && (
+            <>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoUploading}
+                className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-cyan-500/50 flex items-center gap-1.5 hover:border-cyan-400/70 transition-colors disabled:opacity-50"
+                title="Upload profile photo"
+              >
+                <Camera className="w-3 h-3 text-cyan-400" />
+                <span className="text-[10px] sm:text-xs text-cyan-300 hidden sm:inline">
+                  {photoUploading ? '...' : 'Photo'}
+                </span>
+              </button>
+            </>
           )}
 
           {/* Music toggle — compact on mobile */}

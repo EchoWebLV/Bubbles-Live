@@ -96,6 +96,7 @@ app.prepare().then(() => {
       methods: ['GET', 'POST'],
     },
     transports: ['websocket', 'polling'],
+    maxHttpBufferSize: 2e6,
   });
 
   let connectedClients = 0;
@@ -202,6 +203,39 @@ app.prepare().then(() => {
       }
       const stats = await gameState.magicBlock.getPlayerState(data.walletAddress);
       socket.emit('onchainStats', stats);
+    });
+
+    socket.on('uploadPhoto', (data) => {
+      if (!data || typeof data.walletAddress !== 'string' || typeof data.photo !== 'string') {
+        console.warn('Photo upload: invalid data');
+        socket.emit('photoUploaded', { success: false });
+        return;
+      }
+      console.log(`Photo upload from ${data.walletAddress.slice(0, 8)}... (${Math.round(data.photo.length / 1024)}KB)`);
+      if (data.photo.length > 1400000) {
+        console.warn('Photo upload: too large');
+        socket.emit('photoUploaded', { success: false });
+        return;
+      }
+      const ok = gameState.setPlayerPhoto(data.walletAddress, data.photo);
+      if (ok) {
+        console.log(`Photo saved for ${data.walletAddress.slice(0, 8)}...`);
+        socket.emit('photoUploaded', { success: true });
+        io.emit('playerPhotos', gameState.getPlayerPhotos());
+      } else {
+        console.warn(`Photo upload: setPlayerPhoto returned false for ${data.walletAddress.slice(0, 8)}...`);
+        socket.emit('photoUploaded', { success: false });
+      }
+    });
+
+    socket.on('removePhoto', (data) => {
+      if (!data || typeof data.walletAddress !== 'string') return;
+      gameState.removePlayerPhoto(data.walletAddress);
+      io.emit('playerPhotos', gameState.getPlayerPhotos());
+    });
+
+    socket.on('getPhotos', () => {
+      socket.emit('playerPhotos', gameState.getPlayerPhotos());
     });
 
     socket.on('disconnect', () => {

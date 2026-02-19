@@ -14,6 +14,7 @@ export interface GameHolder {
   y?: number;
   isNew?: boolean;
   spawnTime?: number;
+  hasPhoto?: boolean;
 }
 
 export interface GameBattleBubble {
@@ -166,6 +167,7 @@ interface UseGameSocketOptions {
 export function useGameSocket(options: UseGameSocketOptions = {}) {
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
   const socketRef = useRef<Socket | null>(null);
   const dimensionsSentRef = useRef(false);
 
@@ -200,6 +202,39 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
   }, []);
 
+  // Upload profile photo for a wallet
+  const uploadPhoto = useCallback((walletAddress: string, photo: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve(false);
+        return;
+      }
+      let resolved = false;
+      const handler = (result: { success: boolean }) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(result.success);
+      };
+      socketRef.current.emit("uploadPhoto", { walletAddress, photo });
+      socketRef.current.once("photoUploaded", handler);
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          socketRef.current?.off("photoUploaded", handler);
+          console.warn("Photo upload timed out");
+          resolve(false);
+        }
+      }, 10000);
+    });
+  }, []);
+
+  // Remove profile photo
+  const removePhoto = useCallback((walletAddress: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("removePhoto", { walletAddress });
+    }
+  }, []);
+
   // Fetch onchain stats for a player
   const getOnchainStats = useCallback((walletAddress: string): Promise<OnchainPlayerStats | null> => {
     return new Promise((resolve) => {
@@ -231,6 +266,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       console.log("Connected to game server");
       setConnected(true);
       dimensionsSentRef.current = false;
+      socket.emit("getPhotos");
     });
 
     socket.on("disconnect", () => {
@@ -240,6 +276,10 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
 
     socket.on("gameState", (state: GameState) => {
       setGameState(state);
+    });
+
+    socket.on("playerPhotos", (photos: Record<string, string>) => {
+      setPlayerPhotos(photos || {});
     });
 
     socket.on("connect_error", (error) => {
@@ -254,9 +294,12 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   return {
     connected,
     gameState,
+    playerPhotos,
     setDimensions,
     sendTransaction,
     upgradeStat,
     getOnchainStats,
+    uploadPhoto,
+    removePhoto,
   };
 }
