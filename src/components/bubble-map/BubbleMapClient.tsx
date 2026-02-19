@@ -19,6 +19,26 @@ import {
 } from "./effects";
 import { Button } from "@/components/ui/button";
 
+// Kill streak announcement
+interface KillAnnouncement {
+  id: string;
+  text: string;
+  subtext: string;
+  color: string;
+  glowColor: string;
+  time: number;
+  type: 'streak' | 'banner';
+}
+
+const STREAK_LABELS: { min: number; text: string; color: string; glow: string }[] = [
+  { min: 7, text: 'LEGENDARY',   color: '#facc15', glow: 'rgba(250,204,21,0.6)' },
+  { min: 6, text: 'GODLIKE',     color: '#f59e0b', glow: 'rgba(245,158,11,0.6)' },
+  { min: 5, text: 'RAMPAGE',     color: '#ef4444', glow: 'rgba(239,68,68,0.5)' },
+  { min: 4, text: 'ULTRA KILL',  color: '#a855f7', glow: 'rgba(168,85,247,0.5)' },
+  { min: 3, text: 'TRIPLE KILL', color: '#3b82f6', glow: 'rgba(59,130,246,0.5)' },
+  { min: 2, text: 'DOUBLE KILL', color: '#22c55e', glow: 'rgba(34,197,94,0.4)' },
+];
+
 // Camera/viewport state
 interface Camera {
   x: number;
@@ -169,6 +189,13 @@ export function BubbleMapClient() {
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
   const [showOnchainPanel, setShowOnchainPanel] = useState(true);
 
+  // Kill streak announcements
+  const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
+  const [isShaking, setIsShaking] = useState(false);
+  const killStreaksRef = useRef<Map<string, { count: number; lastKillTime: number }>>(new Map());
+  const lastKillTimeRef = useRef(0);
+  const firstBloodFiredRef = useRef(false);
+
   // WebSocket for real-time transactions (forwards to server)
   const tokenAddress = process.env.NEXT_PUBLIC_TOKEN_ADDRESS || "";
   const heliusApiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY || "";
@@ -214,6 +241,94 @@ export function BubbleMapClient() {
       setUpgrading(null);
     }
   }, [connectedWalletAddress, upgrading, upgradeStat, getOnchainStats]);
+
+  // Kill streak detection — watches the kill feed for new kills
+  useEffect(() => {
+    if (!gameState?.killFeed?.length) return;
+
+    const newKills = gameState.killFeed.filter(k => k.time > lastKillTimeRef.current);
+    if (newKills.length === 0) return;
+
+    lastKillTimeRef.current = Math.max(...newKills.map(k => k.time));
+
+    const STREAK_WINDOW = 10_000;
+
+    for (const kill of newKills) {
+      const now = Date.now();
+      const streaks = killStreaksRef.current;
+      const prev = streaks.get(kill.killer) || { count: 0, lastKillTime: 0 };
+
+      if (now - prev.lastKillTime > STREAK_WINDOW) {
+        prev.count = 0;
+      }
+      prev.count++;
+      prev.lastKillTime = now;
+      streaks.set(kill.killer, prev);
+
+      const isMyKill = kill.killer === connectedWalletAddress;
+      const killerLabel = kill.killer.slice(0, 6) + '...';
+      const victimLabel = kill.victim.slice(0, 6) + '...';
+
+      // First blood
+      if (!firstBloodFiredRef.current) {
+        firstBloodFiredRef.current = true;
+        setAnnouncements(a => [...a, {
+          id: `fb-${now}`,
+          text: 'FIRST BLOOD',
+          subtext: `${killerLabel} drew first blood`,
+          color: '#ef4444',
+          glowColor: 'rgba(239,68,68,0.5)',
+          time: now,
+          type: 'streak',
+        }]);
+        setIsShaking(true);
+        setTimeout(() => setIsShaking(false), 400);
+      }
+
+      // Kill streak announcement
+      const streakDef = STREAK_LABELS.find(s => prev.count >= s.min);
+      if (streakDef) {
+        setAnnouncements(a => [...a, {
+          id: `streak-${now}-${kill.killer}`,
+          text: streakDef.text,
+          subtext: `${killerLabel} (${prev.count} kill streak)`,
+          color: streakDef.color,
+          glowColor: streakDef.glow,
+          time: now + 1,
+          type: 'streak',
+        }]);
+        setIsShaking(true);
+        setTimeout(() => setIsShaking(false), 400);
+      }
+
+      // Kill banner (always)
+      setAnnouncements(a => [...a, {
+        id: `kb-${now}-${kill.victim}`,
+        text: '',
+        subtext: `${killerLabel}  eliminated  ${victimLabel}`,
+        color: isMyKill ? '#a855f7' : '#94a3b8',
+        glowColor: 'transparent',
+        time: now,
+        type: 'banner',
+      }]);
+
+      if (isMyKill) {
+        setIsShaking(true);
+        setTimeout(() => setIsShaking(false), 400);
+      }
+    }
+  }, [gameState?.killFeed, connectedWalletAddress]);
+
+  // Clean up expired announcements
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setAnnouncements(a => a.filter(ann =>
+        ann.type === 'streak' ? now - ann.time < 2800 : now - ann.time < 3500
+      ));
+    }, 400);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle resize
   useEffect(() => {
@@ -509,7 +624,7 @@ export function BubbleMapClient() {
 
   return (
     <div 
-      className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} touch-none`}
+      className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} touch-none ${isShaking ? 'camera-shake' : ''}`}
       ref={containerRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -959,6 +1074,69 @@ export function BubbleMapClient() {
           </div>
         </motion.div>
       )}
+
+      {/* Kill Streak Announcements */}
+      <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+        {/* Big streak text — center screen */}
+        {announcements
+          .filter(a => a.type === 'streak')
+          .slice(-2)
+          .map(ann => (
+            <div
+              key={ann.id}
+              className="absolute inset-0 flex items-center justify-center"
+              style={{
+                animation: 'streak-pulse 2.6s ease-out forwards',
+              }}
+            >
+              <div className="text-center">
+                <div
+                  className="text-5xl sm:text-7xl font-black tracking-widest select-none"
+                  style={{
+                    color: ann.color,
+                    textShadow: `0 0 40px ${ann.glowColor}, 0 0 80px ${ann.glowColor}, 0 2px 4px rgba(0,0,0,0.8)`,
+                    WebkitTextStroke: '1px rgba(255,255,255,0.15)',
+                  }}
+                >
+                  {ann.text}
+                </div>
+                <div
+                  className="text-sm sm:text-base font-bold mt-2 tracking-wide"
+                  style={{
+                    color: ann.color,
+                    opacity: 0.8,
+                    textShadow: `0 0 10px ${ann.glowColor}`,
+                  }}
+                >
+                  {ann.subtext}
+                </div>
+              </div>
+            </div>
+          ))}
+
+        {/* Kill banners — stacked top-center */}
+        <div className="absolute top-20 sm:top-28 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 w-80">
+          {announcements
+            .filter(a => a.type === 'banner')
+            .slice(-5)
+            .map(ann => (
+              <div
+                key={ann.id}
+                className="px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap"
+                style={{
+                  animation: 'kill-banner-in 3.2s ease-out forwards',
+                  background: 'rgba(15,23,42,0.85)',
+                  border: `1px solid ${ann.color}33`,
+                  color: ann.color,
+                  backdropFilter: 'blur(8px)',
+                  textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                }}
+              >
+                {ann.subtext}
+              </div>
+            ))}
+        </div>
+      </div>
 
       {/* Loading State */}
       <AnimatePresence>
