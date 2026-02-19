@@ -6,6 +6,7 @@ const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
 const { GameState } = require('./gameState');
+const { migrate } = require('./db');
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = dev ? 'localhost' : '0.0.0.0';
@@ -78,7 +79,7 @@ const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const gameState = new GameState();
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
   console.log('Next.js ready, starting server...');
   const httpServer = createServer((req, res) => {
     if (!httpRateLimit(req, res)) return;
@@ -257,6 +258,7 @@ app.prepare().then(() => {
     }
   }, 1000 / 30);
 
+  await migrate();
   gameState.start();
 
   httpServer

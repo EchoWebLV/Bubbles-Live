@@ -1025,9 +1025,9 @@ class GameState {
     if (dataUrl.length > 1400000) return false; // ~1MB base64 limit
     if (!dataUrl.startsWith('data:image/')) return false;
     this.playerPhotos.set(walletAddress, dataUrl);
-    savePhoto(walletAddress, dataUrl).catch(err =>
-      console.warn('Failed to persist photo:', err.message)
-    );
+    savePhoto(walletAddress, dataUrl)
+      .then(() => console.log(`Photo persisted to DB for ${walletAddress.slice(0, 8)}...`))
+      .catch(err => console.error('Failed to persist photo to DB:', err.message));
     return true;
   }
 
