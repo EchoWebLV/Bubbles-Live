@@ -1063,6 +1063,7 @@ class GameState {
 
   getState() {
     const now = Date.now();
+    const mbStatus = this.magicBlock.getStatus();
     return {
       holders: this.holders.map(h => ({
         address: h.address,
@@ -1070,8 +1071,8 @@ class GameState {
         percentage: h.percentage,
         color: h.color,
         radius: h.radius,
-        x: h.x,
-        y: h.y,
+        x: Math.round(h.x),
+        y: Math.round(h.y),
         isNew: this.newHolders.has(h.address),
         spawnTime: h.spawnTime,
         hasPhoto: this.playerPhotos.has(h.address),
@@ -1082,8 +1083,8 @@ class GameState {
       })),
       battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => ({
         address: addr,
-        health: b.health,
-        maxHealth: b.maxHealth,
+        health: Math.round(b.health),
+        maxHealth: Math.round(b.maxHealth),
         isGhost: b.isGhost,
         ghostUntil: b.ghostUntil,
         kills: b.kills,
@@ -1099,13 +1100,13 @@ class GameState {
         id: b.id,
         shooterAddress: b.shooterAddress,
         shooterColor: b.shooterColor,
-        x: b.x,
-        y: b.y,
-        startX: b.startX,
-        startY: b.startY,
-        targetX: b.targetX,
-        targetY: b.targetY,
-        progress: b.progress,
+        x: Math.round(b.x),
+        y: Math.round(b.y),
+        startX: Math.round(b.startX),
+        startY: Math.round(b.startY),
+        targetX: Math.round(b.targetX),
+        targetY: Math.round(b.targetY),
+        progress: Math.round(b.progress * 1000) / 1000,
         curveDirection: b.curveDirection,
         curveStrength: b.curveStrength,
       })),
@@ -1116,8 +1117,19 @@ class GameState {
       token: this.token,
       priceData: this.priceData,
       dimensions: this.dimensions,
-      timestamp: Date.now(),
-      magicBlock: this.magicBlock.getStatus(),
+      timestamp: now,
+      magicBlock: {
+        ready: mbStatus.ready,
+        arenaPda: mbStatus.arenaPda,
+        arenaDelegated: mbStatus.arenaDelegated,
+        playersRegistered: mbStatus.playersRegistered,
+        playersDelegated: mbStatus.playersDelegated,
+        stats: mbStatus.stats,
+        rpc: mbStatus.rpc,
+        programId: mbStatus.programId,
+        erValidator: mbStatus.erValidator,
+        eventLog: mbStatus.eventLog.slice(0, 10),
+      },
     };
   }
 

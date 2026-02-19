@@ -119,6 +119,10 @@ app.prepare().then(async () => {
     },
     transports: ['websocket', 'polling'],
     maxHttpBufferSize: 2e6,
+    perMessageDeflate: {
+      threshold: 256,
+      zlibDeflateOptions: { level: 6 },
+    },
   });
 
   let connectedClients = 0;
@@ -272,12 +276,12 @@ app.prepare().then(async () => {
     });
   });
 
-  // Broadcast game state to all clients at 30fps
+  // Broadcast game state to all clients at 10fps (compression handles the rest)
   const broadcastInterval = setInterval(() => {
     if (connectedClients > 0) {
       io.emit('gameState', gameState.getState());
     }
-  }, 1000 / 30);
+  }, 1000 / 10);
 
   await migrate();
   gameState.start();
