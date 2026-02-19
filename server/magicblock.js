@@ -503,25 +503,28 @@ class MagicBlockService {
 
   // ─── Season Reset (runs on ER) ──────────────────────────────────
 
-  async resetPlayer(walletAddress) {
-    if (!this.ready) return null;
-    const player = this.playerMap.get(walletAddress);
-    if (!player || !this.playerDelegated.has(walletAddress)) return null;
-
+  async resetPlayerByPda(playerPda, label) {
     try {
       const tx = await this.erProgram.methods
         .resetPlayer()
         .accounts({
-          playerState: player.playerPda,
+          playerState: playerPda,
         })
         .rpc();
 
-      this._logEvent('reset', `Player ${walletAddress.slice(0, 6)}... reset to base stats`, tx, { wallet: walletAddress, _er: true });
+      this._logEvent('reset', `Player ${label} reset to base stats`, tx, { _er: true });
       return tx;
     } catch (err) {
-      console.error(`MagicBlock: Reset failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      console.error(`MagicBlock: Reset failed for ${label}:`, err.message);
       return null;
     }
+  }
+
+  async resetPlayer(walletAddress) {
+    if (!this.ready) return null;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return null;
+    return this.resetPlayerByPda(player.playerPda, walletAddress.slice(0, 6) + '...');
   }
 
   async resetAllPlayers() {
@@ -530,15 +533,31 @@ class MagicBlockService {
     let success = 0;
     let failed = 0;
 
-    const wallets = [...this.playerMap.keys()];
-    console.log(`MagicBlock: Season reset — resetting ${wallets.length} players...`);
+    // Discover ALL PlayerState accounts on the ER, not just locally tracked ones
+    try {
+      const allAccounts = await this.erConnection.getProgramAccounts(COMBAT_PROGRAM_ID, {
+        filters: [
+          { dataSize: 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 },
+        ],
+      });
 
-    for (const wallet of wallets) {
-      const tx = await this.resetPlayer(wallet);
-      if (tx) {
-        success++;
-      } else {
-        failed++;
+      console.log(`MagicBlock: Season reset — found ${allAccounts.length} player accounts on ER`);
+
+      for (const { pubkey } of allAccounts) {
+        const tx = await this.resetPlayerByPda(pubkey, pubkey.toBase58().slice(0, 8) + '...');
+        if (tx) {
+          success++;
+        } else {
+          failed++;
+        }
+      }
+    } catch (err) {
+      console.error('MagicBlock: Failed to fetch all accounts from ER, falling back to playerMap:', err.message);
+
+      // Fallback: reset only locally tracked players
+      for (const wallet of this.playerMap.keys()) {
+        const tx = await this.resetPlayer(wallet);
+        if (tx) { success++; } else { failed++; }
       }
     }
 
