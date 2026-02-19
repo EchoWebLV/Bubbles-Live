@@ -855,8 +855,8 @@ class GameState {
             // never pull health DOWN from ER because batched damage in the ER
             // would cause "phantom damage" (health drops without visible bullets).
             // Local bullet hits are the visual authority for health reduction.
-            if (state.health >= state.maxHealth && bubble.health < state.maxHealth) {
-              bubble.health = state.maxHealth;
+            if (state.health >= state.maxHealth && bubble.health < bubble.maxHealth) {
+              bubble.health = bubble.maxHealth;
             }
             // Do NOT sync isAlive=false from ER — local bullet kills handle that.
             // Only sync isAlive=true (e.g. ER respawn)
