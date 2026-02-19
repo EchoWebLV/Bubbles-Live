@@ -620,10 +620,19 @@ class MagicBlockService {
   async getAllPlayerStates() {
     if (!this.ready) return new Map();
     const states = new Map();
-    for (const [walletAddress] of this.playerMap) {
-      const state = await this.getPlayerState(walletAddress);
-      if (state) {
-        states.set(walletAddress, state);
+    const entries = [...this.playerMap.entries()];
+    const BATCH = 10;
+
+    for (let i = 0; i < entries.length; i += BATCH) {
+      const batch = entries.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map(([wallet]) => this.getPlayerState(wallet))
+      );
+      for (let j = 0; j < batch.length; j++) {
+        const r = results[j];
+        if (r.status === 'fulfilled' && r.value) {
+          states.set(batch[j][0], r.value);
+        }
       }
     }
     return states;

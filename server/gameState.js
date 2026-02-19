@@ -783,7 +783,7 @@ class GameState {
       } catch (err) {
         console.error(`Registration failed for ${wallet.slice(0, 6)}:`, err.message);
       }
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 500));
     }
 
     this.isProcessingRegistration = false;
@@ -1155,7 +1155,7 @@ class GameState {
 
     this.gameLoop = setInterval(() => {
       this.tick();
-    }, 1000 / 60);
+    }, 1000 / 30);
 
     this.holderRefresh = setInterval(async () => {
       const newHolders = await this.fetchHolders();
@@ -1200,7 +1200,7 @@ class GameState {
         console.log('   Delegated:', this.magicBlock.arenaDelegated);
 
         this.magicBlock.startCommitTimer(30000);
-        this.erSyncInterval = setInterval(() => this.syncFromER(), 5000);
+        this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
 
         // Register any holders that loaded before MagicBlock was ready
         for (const holder of this.holders) {
