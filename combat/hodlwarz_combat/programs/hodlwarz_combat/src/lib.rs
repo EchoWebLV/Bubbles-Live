@@ -3,7 +3,7 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::{commit_accounts, commit_and_undelegate_accounts};
 
-declare_id!("HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio");
+declare_id!("7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi");
 
 const ARENA_SEED: &[u8] = b"arena";
 const PLAYER_SEED: &[u8] = b"player";

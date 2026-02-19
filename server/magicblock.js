@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Program ID (deployed to devnet)
-const COMBAT_PROGRAM_ID = new PublicKey('HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio');
+const COMBAT_PROGRAM_ID = new PublicKey('7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi');
 
 // Delegation program
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');

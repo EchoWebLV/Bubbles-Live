@@ -1,5 +1,5 @@
 {
-  "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio",
+  "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi",
   "metadata": {
     "name": "hodlwarz_combat",
     "version": "0.1.0",
@@ -229,7 +229,7 @@
         },
         {
           "name": "owner_program",
-          "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio"
+          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
         },
         {
           "name": "delegation_program",
@@ -418,7 +418,7 @@
         },
         {
           "name": "owner_program",
-          "address": "HF3168cAegsoUzqaNTET2Jw5HQYwNpHwA1tFBuAepgio"
+          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
         },
         {
           "name": "delegation_program",
