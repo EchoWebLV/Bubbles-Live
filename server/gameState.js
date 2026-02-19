@@ -50,8 +50,11 @@ function calcAttackPower(attackLevel) {
 }
 
 // Wallets with stale on-chain stats from previous tokens — force reset to level 1
-const RESET_WALLETS = new Set([
-  'BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu',
+const RESET_WALLETS = new Set([]);
+
+// Wallets with a guaranteed minimum XP boost (level 5 = 800 XP)
+const BOOSTED_WALLETS = new Map([
+  ['BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu', 800],
 ]);
 
 class GameState {
@@ -370,7 +373,8 @@ class GameState {
       if (!this.battleBubbles.has(holder.address)) {
         const shouldReset = RESET_WALLETS.has(holder.address);
         const cached = shouldReset ? null : this.playerCache.get(holder.address);
-        const cachedXp = cached ? (cached.xp || 0) : 0;
+        const boostXp = BOOSTED_WALLETS.get(holder.address) || 0;
+        const cachedXp = Math.max(cached ? (cached.xp || 0) : 0, boostXp);
         const lvl = Math.min(calcLevel(cachedXp), 20);
         const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
         const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : BATTLE_CONFIG.bulletDamage;
@@ -820,16 +824,18 @@ class GameState {
             bubble.attackPower = BATTLE_CONFIG.bulletDamage;
             bubble.maxHealth = BATTLE_CONFIG.maxHealth;
           } else {
+            const boostXp = BOOSTED_WALLETS.get(walletAddress) || 0;
             bubble.kills = state.kills;
             bubble.deaths = state.deaths;
-            bubble.xp = state.xp;
-            bubble.healthLevel = state.healthLevel;
-            bubble.attackLevel = state.attackLevel;
+            bubble.xp = Math.max(state.xp, boostXp);
+            const boostedLevel = calcLevel(bubble.xp);
+            bubble.healthLevel = Math.max(state.healthLevel, boostedLevel);
+            bubble.attackLevel = Math.max(state.attackLevel, boostedLevel);
           }
 
           // Cap attackPower to what the player's CURRENT kills/xp warrant
           if (!RESET_WALLETS.has(walletAddress)) {
-            const currentXp = state.xp || 0;
+            const currentXp = Math.max(state.xp || 0, BOOSTED_WALLETS.get(walletAddress) || 0);
             const expectedLevel = calcLevel(currentXp);
             const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
             const syncedAttack = state.attackPower;
@@ -840,7 +846,7 @@ class GameState {
             }
           }
 
-          const currentXpForHealth = RESET_WALLETS.has(walletAddress) ? 0 : (state.xp || 0);
+          const currentXpForHealth = RESET_WALLETS.has(walletAddress) ? 0 : Math.max(state.xp || 0, BOOSTED_WALLETS.get(walletAddress) || 0);
           const expectedLevelForHealth = calcLevel(currentXpForHealth);
           const maxAllowedHealth = calcMaxHealth(Math.min(expectedLevelForHealth, 20));
           bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
