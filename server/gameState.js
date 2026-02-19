@@ -1129,23 +1129,7 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
-    // Initialize MagicBlock Ephemeral Rollup integration
-    console.log('Initializing MagicBlock Ephemeral Rollup...');
-    this.magicBlockReady = await this.magicBlock.initialize();
-    if (this.magicBlockReady) {
-      console.log('MagicBlock ER integration active!');
-      console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
-      console.log('   Delegated:', this.magicBlock.arenaDelegated);
-
-      // Commit ER state to base layer every 30 seconds
-      this.magicBlock.startCommitTimer(30000);
-
-      // Sync ER state back to in-memory cache every 10 seconds
-      this.erSyncInterval = setInterval(() => this.syncFromER(), 5000);
-    } else {
-      console.warn('MagicBlock ER not available — game runs locally only');
-    }
-
+    // Fetch holders + metadata first so the game can start immediately
     await this.fetchTokenMetadata();
 
     this.holders = await this.fetchHolders();
@@ -1201,6 +1185,33 @@ class GameState {
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
+
+    // Initialize MagicBlock in the background — don't block the game
+    this._initMagicBlock();
+  }
+
+  async _initMagicBlock() {
+    console.log('Initializing MagicBlock Ephemeral Rollup (background)...');
+    try {
+      this.magicBlockReady = await this.magicBlock.initialize();
+      if (this.magicBlockReady) {
+        console.log('MagicBlock ER integration active!');
+        console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
+        console.log('   Delegated:', this.magicBlock.arenaDelegated);
+
+        this.magicBlock.startCommitTimer(30000);
+        this.erSyncInterval = setInterval(() => this.syncFromER(), 5000);
+
+        // Register any holders that loaded before MagicBlock was ready
+        for (const holder of this.holders) {
+          this.ensurePlayerCached(holder.address);
+        }
+      } else {
+        console.warn('MagicBlock ER not available — game runs locally only');
+      }
+    } catch (err) {
+      console.error('MagicBlock init failed (non-blocking):', err.message);
+    }
   }
 
   async stop() {
