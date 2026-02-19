@@ -500,8 +500,8 @@ class MagicBlockService {
       return {
         walletAddress,
         wallet: account.wallet.toBase58(),
-        health: account.health / DAMAGE_SCALE,
-        maxHealth: account.maxHealth / DAMAGE_SCALE,
+        health: account.health,
+        maxHealth: account.maxHealth,
         attackPower: account.attackPower / DAMAGE_SCALE,
         xp: typeof account.xp === 'object' ? account.xp.toNumber() : account.xp,
         kills: typeof account.kills === 'object' ? account.kills.toNumber() : account.kills,
