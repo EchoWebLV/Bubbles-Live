@@ -667,6 +667,21 @@ class GameState {
           targetBattle.isAlive = false;
           targetBattle.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
 
+          // Update local stats immediately (ER confirms later)
+          const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
+          if (shooterBattle) {
+            shooterBattle.kills++;
+            shooterBattle.xp += PROGRESSION.xpPerKill;
+            const newLevel = Math.min(calcLevel(shooterBattle.xp), 20);
+            shooterBattle.healthLevel = newLevel;
+            shooterBattle.attackLevel = newLevel;
+            shooterBattle.maxHealth = calcMaxHealth(newLevel);
+            shooterBattle.attackPower = calcAttackPower(newLevel);
+            shooterBattle.health = Math.min(shooterBattle.health, shooterBattle.maxHealth);
+          }
+          targetBattle.deaths++;
+          targetBattle.xp += PROGRESSION.xpPerDeath;
+
           this.killFeed.unshift({
             killer: bullet.shooterAddress,
             victim: target.address,
@@ -805,24 +820,19 @@ class GameState {
         // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          bubble.kills = state.kills;
-          bubble.deaths = state.deaths;
-          bubble.xp = state.xp;
-          bubble.healthLevel = state.healthLevel;
-          bubble.attackLevel = state.attackLevel;
+          // Use the higher of local vs on-chain: local kills happen first,
+          // ER confirms later. Never let ER sync wipe local progress.
+          bubble.kills = Math.max(bubble.kills, state.kills);
+          bubble.deaths = Math.max(bubble.deaths, state.deaths);
+          bubble.xp = Math.max(bubble.xp, state.xp);
 
-          const currentXp = state.xp || 0;
-          const expectedLevel = calcLevel(currentXp);
-          const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
-          const syncedAttack = state.attackPower;
-          if (isFinite(syncedAttack) && syncedAttack > 0) {
-            bubble.attackPower = Math.min(syncedAttack, maxAllowedAttack);
-          } else {
-            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
-          }
+          const effectiveXp = bubble.xp;
+          const effectiveLevel = Math.min(calcLevel(effectiveXp), 20);
+          bubble.healthLevel = Math.max(bubble.healthLevel, state.healthLevel, effectiveLevel);
+          bubble.attackLevel = Math.max(bubble.attackLevel, state.attackLevel, effectiveLevel);
+          bubble.attackPower = calcAttackPower(bubble.attackLevel);
 
-          const expectedLevelForHealth = calcLevel(currentXp);
-          const maxAllowedHealth = calcMaxHealth(Math.min(expectedLevelForHealth, 20));
+          const maxAllowedHealth = calcMaxHealth(bubble.healthLevel);
           bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
 
           // Don't let ER sync override a bubble that just respawned locally
