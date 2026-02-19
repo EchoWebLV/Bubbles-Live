@@ -49,15 +49,8 @@ function calcAttackPower(attackLevel) {
   return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
 }
 
-// Wallets with stale on-chain stats from previous tokens — force reset to level 1
-const RESET_WALLETS = new Set([
-  'BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu',
-]);
-
-// Wallets with a guaranteed minimum XP boost (level 5 = 800 XP)
-const BOOSTED_WALLETS = new Map([
-  ['BFSsb5keUUFeTFrV5PqpPcPLXXv7d1X6EBK4Sj9Vcnpu', 800],
-]);
+// When true, ALL players start fresh — ignores on-chain history
+const FRESH_SEASON = true;
 
 class GameState {
   constructor() {
@@ -373,10 +366,8 @@ class GameState {
       }
 
       if (!this.battleBubbles.has(holder.address)) {
-        const shouldReset = RESET_WALLETS.has(holder.address);
-        const cached = shouldReset ? null : this.playerCache.get(holder.address);
-        const boostXp = BOOSTED_WALLETS.get(holder.address) || 0;
-        const cachedXp = Math.max(cached ? (cached.xp || 0) : 0, boostXp);
+        const cached = FRESH_SEASON ? null : this.playerCache.get(holder.address);
+        const cachedXp = cached ? (cached.xp || 0) : 0;
         const lvl = Math.min(calcLevel(cachedXp), 20);
         const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
         const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : BATTLE_CONFIG.bulletDamage;
@@ -816,30 +807,23 @@ class GameState {
         // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          // Force-reset wallets with stale stats from old tokens (but apply boost if any)
-          if (RESET_WALLETS.has(walletAddress)) {
-            const boostXp = BOOSTED_WALLETS.get(walletAddress) || 0;
-            const boostLevel = calcLevel(boostXp);
+          if (FRESH_SEASON) {
+            // Fresh season: ignore on-chain history, everyone at level 1
             bubble.kills = 0;
             bubble.deaths = 0;
-            bubble.xp = boostXp;
-            bubble.healthLevel = boostLevel;
-            bubble.attackLevel = boostLevel;
-            bubble.attackPower = calcAttackPower(boostLevel);
-            bubble.maxHealth = calcMaxHealth(boostLevel);
+            bubble.xp = 0;
+            bubble.healthLevel = 1;
+            bubble.attackLevel = 1;
+            bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+            bubble.maxHealth = BATTLE_CONFIG.maxHealth;
           } else {
-            const boostXp = BOOSTED_WALLETS.get(walletAddress) || 0;
             bubble.kills = state.kills;
             bubble.deaths = state.deaths;
-            bubble.xp = Math.max(state.xp, boostXp);
-            const boostedLevel = calcLevel(bubble.xp);
-            bubble.healthLevel = Math.max(state.healthLevel, boostedLevel);
-            bubble.attackLevel = Math.max(state.attackLevel, boostedLevel);
-          }
+            bubble.xp = state.xp;
+            bubble.healthLevel = state.healthLevel;
+            bubble.attackLevel = state.attackLevel;
 
-          // Cap attackPower to what the player's CURRENT kills/xp warrant
-          if (!RESET_WALLETS.has(walletAddress)) {
-            const currentXp = Math.max(state.xp || 0, BOOSTED_WALLETS.get(walletAddress) || 0);
+            const currentXp = state.xp || 0;
             const expectedLevel = calcLevel(currentXp);
             const maxAllowedAttack = calcAttackPower(Math.min(expectedLevel, 20));
             const syncedAttack = state.attackPower;
@@ -850,7 +834,7 @@ class GameState {
             }
           }
 
-          const currentXpForHealth = RESET_WALLETS.has(walletAddress) ? 0 : Math.max(state.xp || 0, BOOSTED_WALLETS.get(walletAddress) || 0);
+          const currentXpForHealth = FRESH_SEASON ? 0 : (state.xp || 0);
           const expectedLevelForHealth = calcLevel(currentXpForHealth);
           const maxAllowedHealth = calcMaxHealth(Math.min(expectedLevelForHealth, 20));
           bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
