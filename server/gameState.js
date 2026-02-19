@@ -680,10 +680,9 @@ class GameState {
           this.killFeed = this.killFeed.slice(0, 5);
           this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
 
-          // Log kill/death to on-chain records so they always appear in the feed.
-          // Also mark deathLogged so the ER won't create a duplicate entry.
+          // Log kill/death to on-chain records immediately (no tx yet).
+          // The ER will later detect the death and patch in the tx signature.
           if (this.magicBlockReady && this.magicBlock) {
-            this.magicBlock.deathLogged.add(target.address);
             this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
               killer: bullet.shooterAddress,
               victim: target.address,

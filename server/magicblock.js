@@ -406,21 +406,36 @@ class MagicBlockService {
       this.stats.erLatencyMs = Date.now() - start;
       this.stats.attacksConfirmed++;
 
-      // After every successful attack, check if victim died on-chain
+      // After every successful attack, check if victim died on-chain.
+      // If the local game already logged the kill/death (without tx),
+      // patch those events with the tx signature so explorer links appear.
       try {
         const victimState = await this.erProgram.account.playerState.fetch(victim.playerPda);
         if (!victimState.isAlive && !this.deathLogged.has(victimAddress)) {
           this.deathLogged.add(victimAddress);
-          this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
-            killer: attackerAddress,
-            victim: victimAddress,
-            _er: true,
-          });
-          this._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated`, tx, {
-            victim: victimAddress,
-            killer: attackerAddress,
-            _er: true,
-          });
+          const erExplorer = `https://explorer.solana.com/tx/${tx}?cluster=custom&customUrl=${encodeURIComponent(ER_RPC)}`;
+          const txShort = tx.slice(0, 20) + '...';
+
+          // Try to patch existing local events first
+          let patched = false;
+          for (const evt of this.eventLog) {
+            if ((evt.type === 'kill' || evt.type === 'death') && evt.victim === victimAddress && !evt.txFull) {
+              evt.tx = txShort;
+              evt.txFull = tx;
+              evt.explorer = erExplorer;
+              evt.status = 'confirmed';
+              patched = true;
+            }
+          }
+
+          if (!patched) {
+            this._logEvent('kill', `${attackerAddress.slice(0, 6)}... killed ${victimAddress.slice(0, 6)}...`, tx, {
+              killer: attackerAddress, victim: victimAddress, _er: true,
+            });
+            this._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated`, tx, {
+              victim: victimAddress, killer: attackerAddress, _er: true,
+            });
+          }
         }
       } catch (_) {
         // State fetch failed — not critical, will catch on next cycle
