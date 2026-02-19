@@ -687,7 +687,7 @@ class GameState {
             victim: target.address,
             time: now,
           });
-          this.killFeed = this.killFeed.slice(0, 5);
+          this.killFeed = this.killFeed.slice(0, 20);
           this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
 
           // Log kill/death to on-chain records immediately (no tx yet).

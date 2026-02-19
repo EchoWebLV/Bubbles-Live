@@ -203,6 +203,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   const nextStateRef = useRef<GameState | null>(null);
   const lastServerTime = useRef(0);
   const rafRef = useRef<number>(0);
+  const lastRafUpdate = useRef(0);
 
   // Send dimensions to server
   const setDimensions = useCallback((width: number, height: number) => {
@@ -324,8 +325,9 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       console.error("Connection error:", error);
     });
 
-    const interpolate = () => {
-      if (nextStateRef.current) {
+    const interpolate = (now: number) => {
+      if (nextStateRef.current && now - lastRafUpdate.current >= 33) {
+        lastRafUpdate.current = now;
         const elapsed = performance.now() - lastServerTime.current;
         const t = Math.min(elapsed / SERVER_TICK_MS, 1);
         setGameState(lerpPositions(prevStateRef.current, nextStateRef.current, t));
