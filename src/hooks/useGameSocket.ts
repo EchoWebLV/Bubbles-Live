@@ -164,12 +164,45 @@ interface UseGameSocketOptions {
   onTransaction?: (event: { type: string; signature: string; timestamp: number }) => void;
 }
 
+const SERVER_TICK_MS = 100; // 10fps server broadcast
+
+function lerpPositions(prev: GameState | null, next: GameState, t: number): GameState {
+  if (!prev || t >= 1) return next;
+
+  const prevHolderMap = new Map(prev.holders.map(h => [h.address, h]));
+  const prevBulletMap = new Map(prev.bullets.map(b => [b.id, b]));
+
+  return {
+    ...next,
+    holders: next.holders.map(h => {
+      const p = prevHolderMap.get(h.address);
+      if (!p || p.x === undefined || h.x === undefined) return h;
+      return { ...h, x: p.x + (h.x - p.x) * t, y: p.y! + (h.y! - p.y!) * t };
+    }),
+    bullets: next.bullets.map(b => {
+      const p = prevBulletMap.get(b.id);
+      if (!p) return b;
+      return {
+        ...b,
+        x: p.x + (b.x - p.x) * t,
+        y: p.y + (b.y - p.y) * t,
+        progress: p.progress + (b.progress - p.progress) * t,
+      };
+    }),
+  };
+}
+
 export function useGameSocket(options: UseGameSocketOptions = {}) {
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
   const socketRef = useRef<Socket | null>(null);
   const dimensionsSentRef = useRef(false);
+
+  const prevStateRef = useRef<GameState | null>(null);
+  const nextStateRef = useRef<GameState | null>(null);
+  const lastServerTime = useRef(0);
+  const rafRef = useRef<number>(0);
 
   // Send dimensions to server
   const setDimensions = useCallback((width: number, height: number) => {
@@ -275,7 +308,12 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
 
     socket.on("gameState", (state: GameState) => {
-      setGameState(state);
+      prevStateRef.current = nextStateRef.current;
+      nextStateRef.current = state;
+      lastServerTime.current = performance.now();
+      if (!prevStateRef.current) {
+        setGameState(state);
+      }
     });
 
     socket.on("playerPhotos", (photos: Record<string, string>) => {
@@ -286,7 +324,18 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       console.error("Connection error:", error);
     });
 
+    const interpolate = () => {
+      if (nextStateRef.current) {
+        const elapsed = performance.now() - lastServerTime.current;
+        const t = Math.min(elapsed / SERVER_TICK_MS, 1);
+        setGameState(lerpPositions(prevStateRef.current, nextStateRef.current, t));
+      }
+      rafRef.current = requestAnimationFrame(interpolate);
+    };
+    rafRef.current = requestAnimationFrame(interpolate);
+
     return () => {
+      cancelAnimationFrame(rafRef.current);
       socket.disconnect();
     };
   }, []);
