@@ -301,17 +301,6 @@ export function BubbleMapClient() {
         setTimeout(() => setIsShaking(false), 400);
       }
 
-      // Kill banner (always)
-      setAnnouncements(a => [...a, {
-        id: `kb-${now}-${kill.victim}`,
-        text: '',
-        subtext: `${killerLabel}  eliminated  ${victimLabel}`,
-        color: isMyKill ? '#a855f7' : '#94a3b8',
-        glowColor: 'transparent',
-        time: now,
-        type: 'banner',
-      }]);
-
       if (isMyKill) {
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 400);
@@ -322,11 +311,8 @@ export function BubbleMapClient() {
   // Clean up expired announcements
   useEffect(() => {
     const interval = setInterval(() => {
-      const now = Date.now();
-      setAnnouncements(a => a.filter(ann =>
-        ann.type === 'streak' ? now - ann.time < 2800 : now - ann.time < 3500
-      ));
-    }, 400);
+      setAnnouncements(a => a.filter(ann => Date.now() - ann.time < 3200));
+    }, 500);
     return () => clearInterval(interval);
   }, []);
 
@@ -1077,7 +1063,6 @@ export function BubbleMapClient() {
 
       {/* Kill Streak Announcements */}
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-        {/* Big streak text — center screen */}
         {announcements
           .filter(a => a.type === 'streak')
           .slice(-2)
@@ -1086,7 +1071,7 @@ export function BubbleMapClient() {
               key={ann.id}
               className="absolute inset-0 flex items-center justify-center"
               style={{
-                animation: 'streak-pulse 2.6s ease-out forwards',
+                animation: 'streak-pulse 3s ease-out forwards',
               }}
             >
               <div className="text-center">
@@ -1113,29 +1098,6 @@ export function BubbleMapClient() {
               </div>
             </div>
           ))}
-
-        {/* Kill banners — stacked top-center */}
-        <div className="absolute top-20 sm:top-28 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 w-80">
-          {announcements
-            .filter(a => a.type === 'banner')
-            .slice(-5)
-            .map(ann => (
-              <div
-                key={ann.id}
-                className="px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap"
-                style={{
-                  animation: 'kill-banner-in 3.2s ease-out forwards',
-                  background: 'rgba(15,23,42,0.85)',
-                  border: `1px solid ${ann.color}33`,
-                  color: ann.color,
-                  backdropFilter: 'blur(8px)',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-                }}
-              >
-                {ann.subtext}
-              </div>
-            ))}
-        </div>
       </div>
 
       {/* Loading State */}

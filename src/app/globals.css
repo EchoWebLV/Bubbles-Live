@@ -133,20 +133,12 @@ body {
   animation: camera-shake 0.4s ease-out;
 }
 
-/* Big kill streak text pulse */
+/* Big kill streak text pulse + smooth fade out */
 @keyframes streak-pulse {
   0% { transform: scale(0.3); opacity: 0; filter: blur(10px); }
-  30% { transform: scale(1.15); opacity: 1; filter: blur(0); }
-  50% { transform: scale(1); }
-  80% { opacity: 1; }
-  100% { transform: scale(1.05); opacity: 0; filter: blur(2px); }
-}
-
-/* Kill banner slide in */
-@keyframes kill-banner-in {
-  0% { transform: translateX(60px); opacity: 0; }
-  20% { transform: translateX(-4px); opacity: 1; }
-  30% { transform: translateX(0); }
-  80% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(-20px); }
+  15% { transform: scale(1.2); opacity: 1; filter: blur(0); }
+  25% { transform: scale(0.95); }
+  35% { transform: scale(1.02); opacity: 1; }
+  60% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; filter: blur(0); }
 }
