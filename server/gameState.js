@@ -368,7 +368,8 @@ class GameState {
       }
 
       if (!this.battleBubbles.has(holder.address)) {
-        const cached = this.playerCache.get(holder.address);
+        const shouldReset = RESET_WALLETS.has(holder.address);
+        const cached = shouldReset ? null : this.playerCache.get(holder.address);
         const cachedXp = cached ? (cached.xp || 0) : 0;
         const lvl = Math.min(calcLevel(cachedXp), 20);
         const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
