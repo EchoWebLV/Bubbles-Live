@@ -161,7 +161,7 @@ const PRECISION = {
     // Rank 1: fires every 6th shot, Rank 2: every 4th, Rank 3: every 2nd
     fireFrequency: [6, 4, 2],
     secondCannonDamage: 0.50, // 50% of normal damage
-    secondCannonSpeed: 0.60,  // 60% of normal bullet speed
+    secondCannonSpeed: 1.20,  // 120% of normal bullet speed
     canCrit: false,
   },
 };

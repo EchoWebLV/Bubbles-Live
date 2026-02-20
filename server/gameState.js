@@ -60,17 +60,22 @@ const TALENT_NAME_TO_CHAIN_ID = {
   weakspot: 10, criticalStrike: 11, focusFire: 12, multiShot: 13, dualCannon: 14,
 };
 
-// Auto-allocate talent points for idle players
+const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
+  Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
+);
+
+// Auto-allocate talent points for idle players.
+// Returns the list of talent ids that were allocated (for chain sync).
 function autoAllocateTalents(bubble) {
   const available = calcTalentPoints(calcLevel(bubble.xp)) - totalPointsSpent(bubble.talents);
-  if (available <= 0) return;
-  let allocated = 0;
+  if (available <= 0) return [];
+  const allocated = [];
   for (let i = 0; i < available; i++) {
     for (const id of AUTO_ALLOCATE_ORDER) {
       const t = ALL_TALENTS[id];
       if (bubble.talents[id] < t.maxRank) {
         bubble.talents[id]++;
-        allocated++;
+        allocated.push(id);
         break;
       }
     }
@@ -126,8 +131,14 @@ class GameState {
     this.registerQueue = [];
     this.isProcessingRegistration = false;
 
-    // ER state sync timer
+    // Talent chain sync queue: [{ wallet, chainId }]
+    this.talentSyncQueue = [];
+    this.isProcessingTalentSync = false;
+
+    // ER state sync
     this.erSyncInterval = null;
+    this._isSyncingER = false;
+    this._lastTalentCatchUp = 0;
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -399,6 +410,12 @@ class GameState {
         const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
         const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : BATTLE_CONFIG.bulletDamage;
 
+        // Restore talents from ER cache
+        const cachedTalents = (cached && cached.talents && totalPointsSpent(cached.talents) > 0)
+          ? { ...cached.talents }
+          : createEmptyTalents();
+        const cachedManualBuild = cached ? (cached.manualBuild || false) : false;
+
         const bubble = {
           address: holder.address,
           health: cappedMaxHealth,
@@ -413,17 +430,16 @@ class GameState {
           healthLevel: cached ? cached.healthLevel : 1,
           attackLevel: cached ? cached.attackLevel : 1,
           isAlive: true,
-          // Talent system
-          talents: createEmptyTalents(),
-          manualBuild: false,
-          // Focus Fire tracking
+          talents: cachedTalents,
+          manualBuild: cachedManualBuild,
           lastHitTarget: null,
           focusFireStacks: 0,
-          // Dual Cannon tracking
           shotCounter: 0,
         };
-        // Auto-allocate for new idle bubbles
-        if (!bubble.manualBuild) autoAllocateTalents(bubble);
+        if (!bubble.manualBuild) {
+          const newTalents = autoAllocateTalents(bubble);
+          this._queueTalentSync(holder.address, newTalents);
+        }
         this.battleBubbles.set(holder.address, bubble);
       }
     });
@@ -900,12 +916,17 @@ class GameState {
             shooterBattle.maxHealth = calcMaxHealth(newLevel);
             shooterBattle.attackPower = calcAttackPower(newLevel);
             shooterBattle.health = Math.min(shooterBattle.health, shooterBattle.maxHealth);
-            // Auto-allocate new talent points for idle players
-            if (!shooterBattle.manualBuild) autoAllocateTalents(shooterBattle);
+            if (!shooterBattle.manualBuild) {
+              const newTalents = autoAllocateTalents(shooterBattle);
+              this._queueTalentSync(bullet.shooterAddress, newTalents);
+            }
           }
           targetBattle.deaths++;
           targetBattle.xp += PROGRESSION.xpPerDeath;
-          if (!targetBattle.manualBuild) autoAllocateTalents(targetBattle);
+          if (!targetBattle.manualBuild) {
+            const newTalents = autoAllocateTalents(targetBattle);
+            this._queueTalentSync(target.address, newTalents);
+          }
 
           this.killFeed.unshift({
             killer: bullet.shooterAddress,
@@ -1029,71 +1050,173 @@ class GameState {
     this.isProcessingRegistration = false;
   }
 
+  // ─── Talent Chain Sync Queue ─────────────────────────────────────
+
+  _queueTalentSync(walletAddress, talentNames) {
+    if (!talentNames || talentNames.length === 0) return;
+    for (const name of talentNames) {
+      const chainId = TALENT_NAME_TO_CHAIN_ID[name];
+      if (chainId !== undefined) {
+        this.talentSyncQueue.push({ wallet: walletAddress, chainId });
+      }
+    }
+    this._processTalentSyncQueue();
+  }
+
+  async _processTalentSyncQueue() {
+    if (this.isProcessingTalentSync || this.talentSyncQueue.length === 0) return;
+    if (!this.magicBlockReady) return;
+    this.isProcessingTalentSync = true;
+
+    while (this.talentSyncQueue.length > 0) {
+      const { wallet, chainId } = this.talentSyncQueue.shift();
+      try {
+        await this.magicBlock.allocateTalentOnChain(wallet, chainId);
+      } catch (err) {
+        // Non-critical — local state is the authority, chain is best-effort
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    this.isProcessingTalentSync = false;
+  }
+
   // ─── ER State Sync ───────────────────────────────────────────────
 
   async syncFromER() {
-    if (!this.magicBlockReady) return;
+    if (!this.magicBlockReady || this._isSyncingER) return;
+    this._isSyncingER = true;
 
     try {
       const erStates = await this.magicBlock.getAllPlayerStates();
       let synced = 0;
 
       for (const [walletAddress, state] of erStates) {
-        // Update player cache
-        this.playerCache.set(walletAddress, state);
-
-        // Update battle bubble from ER state
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
-          // Use the higher of local vs on-chain: local kills happen first,
-          // ER confirms later. Never let ER sync wipe local progress.
           bubble.kills = Math.max(bubble.kills, state.kills);
           bubble.deaths = Math.max(bubble.deaths, state.deaths);
           bubble.xp = Math.max(bubble.xp, state.xp);
 
-          const effectiveXp = bubble.xp;
-          const effectiveLevel = calcLevel(effectiveXp);
+          const effectiveLevel = calcLevel(bubble.xp);
           bubble.healthLevel = Math.max(bubble.healthLevel, state.healthLevel, effectiveLevel);
           bubble.attackLevel = Math.max(bubble.attackLevel, state.attackLevel, effectiveLevel);
           bubble.attackPower = calcAttackPower(bubble.attackLevel);
 
-          const maxAllowedHealth = calcMaxHealth(bubble.healthLevel);
-          bubble.maxHealth = Math.min(state.maxHealth, maxAllowedHealth);
+          // Derive maxHealth from local level + Iron Skin talent (local authority).
+          const baseMax = calcMaxHealth(bubble.healthLevel);
+          const ironSkinVal = getTalentValue('ironSkin', bubble.talents?.ironSkin || 0);
+          bubble.maxHealth = ironSkinVal > 0 ? Math.round(baseMax * (1 + ironSkinVal)) : baseMax;
 
-          // Don't let ER sync override a bubble that just respawned locally
-          // (the ER might still have stale dead state for ~5s after respawn)
           const recentlyRespawned = bubble.respawnedAt && (Date.now() - bubble.respawnedAt < 10000);
-
           if (!bubble.isGhost && !recentlyRespawned) {
-            // Only sync health if the ER shows full health (respawn) — 
-            // never pull health DOWN from ER because batched damage in the ER
-            // would cause "phantom damage" (health drops without visible bullets).
-            // Local bullet hits are the visual authority for health reduction.
             if (state.health >= state.maxHealth && bubble.health < bubble.maxHealth) {
               bubble.health = bubble.maxHealth;
             }
-            // Do NOT sync isAlive=false from ER — local bullet kills handle that.
-            // Only sync isAlive=true (e.g. ER respawn)
             if (state.isAlive && !bubble.isAlive) {
               bubble.isAlive = true;
             }
           }
 
-          // Sync talents from ER (on-chain is the source of truth)
-          if (state.talents) {
-            bubble.talents = { ...state.talents };
-            bubble.manualBuild = state.manualBuild || false;
+          // Talents: only adopt chain state if chain is strictly AHEAD in total
+          // points AND the local player hasn't manually allocated (manualBuild).
+          // The strict > prevents the chain from overwriting a local build that
+          // has the same point total but a different talent distribution.
+          if (state.talents && !bubble.manualBuild) {
+            const chainPts = totalPointsSpent(state.talents);
+            const localPts = totalPointsSpent(bubble.talents);
+            if (chainPts > localPts) {
+              bubble.talents = { ...state.talents };
+              bubble.manualBuild = state.manualBuild || false;
+            }
           }
+
+          // Write the merged bubble state back into playerCache so that any
+          // future bubble recreation (holder refresh) uses the best-known data
+          // instead of potentially stale raw chain values.
+          this.playerCache.set(walletAddress, {
+            walletAddress,
+            health: bubble.health,
+            maxHealth: bubble.maxHealth,
+            attackPower: bubble.attackPower,
+            xp: bubble.xp,
+            kills: bubble.kills,
+            deaths: bubble.deaths,
+            healthLevel: bubble.healthLevel,
+            attackLevel: bubble.attackLevel,
+            isAlive: bubble.isAlive,
+            talents: { ...bubble.talents },
+            manualBuild: bubble.manualBuild,
+          });
+        } else {
+          // No bubble yet — seed cache from chain for future bubble creation
+          this.playerCache.set(walletAddress, state);
         }
 
         synced++;
       }
 
-      if (synced > 0) {
-        this.updateTopKillers();
-      }
+      if (synced > 0) this.updateTopKillers();
+
+      // Push local talent state to chain for wallets where chain is behind
+      await this._catchUpChainTalents(erStates);
     } catch (err) {
       console.error('ER sync error:', err.message);
+    } finally {
+      this._isSyncingER = false;
+    }
+  }
+
+  // Reconcile local talent state → chain. Runs after every ER sync to ensure
+  // that fire-and-forget talent ops that failed silently eventually get pushed.
+  // Throttled to run at most every 30s to avoid spamming the ER.
+  async _catchUpChainTalents(erStates) {
+    const now = Date.now();
+    if (now - this._lastTalentCatchUp < 30000) return;
+    if (!this.magicBlockReady || this.isProcessingTalentSync) return;
+    this._lastTalentCatchUp = now;
+
+    const pendingWallets = new Set(this.talentSyncQueue.map(item => item.wallet));
+
+    for (const [walletAddress, bubble] of this.battleBubbles) {
+      if (pendingWallets.has(walletAddress)) continue;
+
+      const chainState = erStates.get(walletAddress);
+      if (!chainState?.talents) continue;
+
+      // Fast check: do per-talent ranks already match?
+      let needsSync = false;
+      for (const talentName of Object.keys(TALENT_NAME_TO_CHAIN_ID)) {
+        if ((bubble.talents[talentName] || 0) !== (chainState.talents[talentName] || 0)) {
+          needsSync = true;
+          break;
+        }
+      }
+      if (!needsSync) continue;
+
+      const chainPts = totalPointsSpent(chainState.talents);
+      const localPts = totalPointsSpent(bubble.talents);
+
+      // If chain has talents that don't match local, reset chain first
+      if (chainPts > 0) {
+        const ok = await this.magicBlock.resetTalentsOnChain(walletAddress);
+        if (!ok) continue; // will retry next cycle
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // Now push all local talent ranks from scratch
+      if (localPts > 0) {
+        let failed = false;
+        for (const [talentName, chainId] of Object.entries(TALENT_NAME_TO_CHAIN_ID)) {
+          const localRank = bubble.talents[talentName] || 0;
+          for (let i = 0; i < localRank; i++) {
+            const ok = await this.magicBlock.allocateTalentOnChain(walletAddress, chainId);
+            if (!ok) { failed = true; break; }
+            await new Promise(r => setTimeout(r, 150));
+          }
+          if (failed) break;
+        }
+      }
     }
   }
 
@@ -1190,11 +1313,8 @@ class GameState {
       bubble.health = Math.min(bubble.health, bubble.maxHealth);
     }
 
-    // Push to chain (fire-and-forget)
-    const chainId = TALENT_NAME_TO_CHAIN_ID[talentId];
-    if (this.magicBlockReady && chainId !== undefined) {
-      this.magicBlock.allocateTalentOnChain(walletAddress, chainId).catch(() => {});
-    }
+    // Push to chain via queue (catch-up mechanism retries persistent failures)
+    this._queueTalentSync(walletAddress, [talentId]);
 
     return {
       success: true,
@@ -1520,14 +1640,22 @@ class GameState {
         console.log('   Delegated:', this.magicBlock.arenaDelegated);
 
         this.magicBlock.startCommitTimer(30000);
-        this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
 
         // Register all holders that loaded before MagicBlock was ready.
-        // Can't use ensurePlayerCached here — those addresses are already
-        // cached (from start()), so it would skip the registration queue.
         for (const holder of this.holders) {
           this._queueRegistration(holder.address);
         }
+
+        // Restore persisted state from ER (single source of truth — no DB).
+        console.log('Restoring player state from Ephemeral Rollup...');
+        await this.syncFromER();
+        console.log(`ER state restored for ${this.playerCache.size} players`);
+
+        // Process any talent allocations queued before MagicBlock was ready
+        this._processTalentSyncQueue();
+
+        // Start periodic ER sync
+        this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
       } else {
         console.warn('MagicBlock ER not available — game runs locally only');
       }
@@ -1546,7 +1674,8 @@ class GameState {
 
     if (this.magicBlockReady) {
       this.magicBlock.stopCommitTimer();
-      // Final commit before shutdown
+      // Final commit to base layer before shutdown
+      console.log('Committing ER state to base layer before shutdown...');
       await this.magicBlock.commitState();
     }
   }
