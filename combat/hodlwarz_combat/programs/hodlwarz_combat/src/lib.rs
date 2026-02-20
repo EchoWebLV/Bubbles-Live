@@ -3,7 +3,7 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::{commit_accounts, commit_and_undelegate_accounts};
 
-declare_id!("7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi");
+declare_id!("EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw");
 
 const ARENA_SEED: &[u8] = b"arena";
 const PLAYER_SEED: &[u8] = b"player";
@@ -15,7 +15,8 @@ const XP_PER_DEATH: u64 = 5;
 const UPGRADE_XP_BASE: u64 = 100;
 const UPGRADE_XP_MULT: u64 = 50;
 const RESPAWN_DELAY_SECS: i64 = 5;
-const MAX_LEVEL: u8 = 20;
+const MAX_LEVEL: u8 = 100;
+const MAX_TALENT_RANK: u8 = 3;
 
 #[ephemeral]
 #[program]
@@ -49,6 +50,22 @@ pub mod hodlwarz_combat {
         player.is_alive = true;
         player.respawn_at = 0;
         player.initialized = true;
+        player.talent_iron_skin = 0;
+        player.talent_heavy_hitter = 0;
+        player.talent_regeneration = 0;
+        player.talent_lifesteal = 0;
+        player.talent_armor = 0;
+        player.talent_swift = 0;
+        player.talent_rapid_fire = 0;
+        player.talent_evasion = 0;
+        player.talent_quick_respawn = 0;
+        player.talent_momentum = 0;
+        player.talent_weakspot = 0;
+        player.talent_critical_strike = 0;
+        player.talent_focus_fire = 0;
+        player.talent_multi_shot = 0;
+        player.talent_dual_cannon = 0;
+        player.manual_build = false;
 
         msg!("Player {} registered", wallet);
         Ok(())
@@ -206,8 +223,72 @@ pub mod hodlwarz_combat {
         player.attack_level = 1;
         player.is_alive = true;
         player.respawn_at = 0;
+        // Reset talents
+        player.talent_iron_skin = 0;
+        player.talent_heavy_hitter = 0;
+        player.talent_regeneration = 0;
+        player.talent_lifesteal = 0;
+        player.talent_armor = 0;
+        player.talent_swift = 0;
+        player.talent_rapid_fire = 0;
+        player.talent_evasion = 0;
+        player.talent_quick_respawn = 0;
+        player.talent_momentum = 0;
+        player.talent_weakspot = 0;
+        player.talent_critical_strike = 0;
+        player.talent_focus_fire = 0;
+        player.talent_multi_shot = 0;
+        player.talent_dual_cannon = 0;
+        player.manual_build = false;
 
         msg!("Player {} reset to base stats", player.wallet);
+        Ok(())
+    }
+
+    /// Allocate a talent point. talent_id: 0-14. Runs on ER.
+    pub fn allocate_talent(ctx: Context<AllocateTalent>, talent_id: u8) -> Result<()> {
+        let player = &mut ctx.accounts.player_state;
+        require!(player.initialized, CombatError::NotInitialized);
+        require!(talent_id <= 14, CombatError::InvalidTalentId);
+
+        let level = calc_level(player.xp);
+        let spent = player.total_talent_points_spent();
+        let available = if level > 1 { level as u16 - 1 } else { 0 };
+        require!(spent < available, CombatError::NoTalentPoints);
+
+        let current = player.get_talent(talent_id);
+        require!(current < MAX_TALENT_RANK, CombatError::TalentMaxed);
+
+        player.set_talent(talent_id, current + 1);
+        player.manual_build = true;
+
+        msg!("Player {} allocated talent {} to rank {}", player.wallet, talent_id, current + 1);
+        Ok(())
+    }
+
+    /// Reset all talent points. Runs on ER.
+    pub fn reset_talents(ctx: Context<ResetTalents>) -> Result<()> {
+        let player = &mut ctx.accounts.player_state;
+        require!(player.initialized, CombatError::NotInitialized);
+
+        player.talent_iron_skin = 0;
+        player.talent_heavy_hitter = 0;
+        player.talent_regeneration = 0;
+        player.talent_lifesteal = 0;
+        player.talent_armor = 0;
+        player.talent_swift = 0;
+        player.talent_rapid_fire = 0;
+        player.talent_evasion = 0;
+        player.talent_quick_respawn = 0;
+        player.talent_momentum = 0;
+        player.talent_weakspot = 0;
+        player.talent_critical_strike = 0;
+        player.talent_focus_fire = 0;
+        player.talent_multi_shot = 0;
+        player.talent_dual_cannon = 0;
+        player.manual_build = true;
+
+        msg!("Player {} talents reset", player.wallet);
         Ok(())
     }
 
@@ -260,6 +341,103 @@ pub struct PlayerState {
     pub is_alive: bool,
     pub respawn_at: i64,
     pub initialized: bool,
+    // Talent tree: Strength
+    pub talent_iron_skin: u8,
+    pub talent_heavy_hitter: u8,
+    pub talent_regeneration: u8,
+    pub talent_lifesteal: u8,
+    pub talent_armor: u8,
+    // Talent tree: Speed
+    pub talent_swift: u8,
+    pub talent_rapid_fire: u8,
+    pub talent_evasion: u8,
+    pub talent_quick_respawn: u8,
+    pub talent_momentum: u8,
+    // Talent tree: Precision
+    pub talent_weakspot: u8,
+    pub talent_critical_strike: u8,
+    pub talent_focus_fire: u8,
+    pub talent_multi_shot: u8,
+    pub talent_dual_cannon: u8,
+    pub manual_build: bool,
+}
+
+impl PlayerState {
+    pub fn get_talent(&self, id: u8) -> u8 {
+        match id {
+            0 => self.talent_iron_skin,
+            1 => self.talent_heavy_hitter,
+            2 => self.talent_regeneration,
+            3 => self.talent_lifesteal,
+            4 => self.talent_armor,
+            5 => self.talent_swift,
+            6 => self.talent_rapid_fire,
+            7 => self.talent_evasion,
+            8 => self.talent_quick_respawn,
+            9 => self.talent_momentum,
+            10 => self.talent_weakspot,
+            11 => self.talent_critical_strike,
+            12 => self.talent_focus_fire,
+            13 => self.talent_multi_shot,
+            14 => self.talent_dual_cannon,
+            _ => 0,
+        }
+    }
+
+    pub fn set_talent(&mut self, id: u8, val: u8) {
+        match id {
+            0 => self.talent_iron_skin = val,
+            1 => self.talent_heavy_hitter = val,
+            2 => self.talent_regeneration = val,
+            3 => self.talent_lifesteal = val,
+            4 => self.talent_armor = val,
+            5 => self.talent_swift = val,
+            6 => self.talent_rapid_fire = val,
+            7 => self.talent_evasion = val,
+            8 => self.talent_quick_respawn = val,
+            9 => self.talent_momentum = val,
+            10 => self.talent_weakspot = val,
+            11 => self.talent_critical_strike = val,
+            12 => self.talent_focus_fire = val,
+            13 => self.talent_multi_shot = val,
+            14 => self.talent_dual_cannon = val,
+            _ => {}
+        }
+    }
+
+    pub fn total_talent_points_spent(&self) -> u16 {
+        (self.talent_iron_skin as u16)
+            + (self.talent_heavy_hitter as u16)
+            + (self.talent_regeneration as u16)
+            + (self.talent_lifesteal as u16)
+            + (self.talent_armor as u16)
+            + (self.talent_swift as u16)
+            + (self.talent_rapid_fire as u16)
+            + (self.talent_evasion as u16)
+            + (self.talent_quick_respawn as u16)
+            + (self.talent_momentum as u16)
+            + (self.talent_weakspot as u16)
+            + (self.talent_critical_strike as u16)
+            + (self.talent_focus_fire as u16)
+            + (self.talent_multi_shot as u16)
+            + (self.talent_dual_cannon as u16)
+    }
+}
+
+fn calc_level(xp: u64) -> u8 {
+    let lvl = 1u64 + integer_sqrt(xp / 10);
+    if lvl > MAX_LEVEL as u64 { MAX_LEVEL } else { lvl as u8 }
+}
+
+fn integer_sqrt(n: u64) -> u64 {
+    if n == 0 { return 0; }
+    let mut x = n;
+    let mut y = (x + 1) / 2;
+    while y < x {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    x
 }
 
 // ─── Instruction Contexts ────────────────────────────────────────────────────
@@ -285,7 +463,7 @@ pub struct RegisterPlayer<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1,
+        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 15 + 1,
         seeds = [PLAYER_SEED, wallet.as_ref()],
         bump,
     )]
@@ -342,6 +520,18 @@ pub struct ResetPlayer<'info> {
     pub player_state: Account<'info, PlayerState>,
 }
 
+#[derive(Accounts)]
+pub struct AllocateTalent<'info> {
+    #[account(mut)]
+    pub player_state: Account<'info, PlayerState>,
+}
+
+#[derive(Accounts)]
+pub struct ResetTalents<'info> {
+    #[account(mut)]
+    pub player_state: Account<'info, PlayerState>,
+}
+
 #[commit]
 #[derive(Accounts)]
 pub struct CommitState<'info> {
@@ -382,4 +572,10 @@ pub enum CombatError {
     InvalidStatType,
     #[msg("Stat already at max level")]
     MaxLevel,
+    #[msg("Invalid talent ID (0-14)")]
+    InvalidTalentId,
+    #[msg("No talent points available")]
+    NoTalentPoints,
+    #[msg("Talent already at max rank")]
+    TalentMaxed,
 }

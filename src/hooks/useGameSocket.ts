@@ -17,6 +17,25 @@ export interface GameHolder {
   hasPhoto?: boolean;
 }
 
+export interface TalentRanks {
+  ironSkin: number;
+  heavyHitter: number;
+  regeneration: number;
+  lifesteal: number;
+  armor: number;
+  swift: number;
+  rapidFire: number;
+  evasion: number;
+  quickRespawn: number;
+  momentum: number;
+  weakspot: number;
+  criticalStrike: number;
+  focusFire: number;
+  multiShot: number;
+  dualCannon: number;
+  [key: string]: number;
+}
+
 export interface GameBattleBubble {
   address: string;
   health: number;
@@ -25,15 +44,15 @@ export interface GameBattleBubble {
   ghostUntil: number | null;
   kills: number;
   deaths: number;
-  // Progression data from Ephemeral Rollup
   level: number;
   xp: number;
   healthLevel: number;
   attackLevel: number;
   attackPower: number;
-  shootingLevel?: number; // legacy alias
-  holdStreakDays?: number;
   isAlive: boolean;
+  talents: TalentRanks;
+  talentPoints: number;
+  manualBuild: boolean;
 }
 
 export interface GameBullet {
@@ -269,6 +288,36 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     }
   }, []);
 
+  // Allocate a talent point
+  const allocateTalent = useCallback((walletAddress: string, talentId: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("allocateTalent", { walletAddress, talentId });
+      socketRef.current.once("talentResult", (result: { success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }) => {
+        resolve(result);
+      });
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 10000);
+    });
+  }, []);
+
+  // Reset all talent points
+  const resetTalents = useCallback((walletAddress: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("resetTalents", { walletAddress });
+      socketRef.current.once("talentResult", (result: { success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }) => {
+        resolve(result);
+      });
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 10000);
+    });
+  }, []);
+
   // Fetch onchain stats for a player
   const getOnchainStats = useCallback((walletAddress: string): Promise<OnchainPlayerStats | null> => {
     return new Promise((resolve) => {
@@ -349,6 +398,8 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     setDimensions,
     sendTransaction,
     upgradeStat,
+    allocateTalent,
+    resetTalents,
     getOnchainStats,
     uploadPhoto,
     removePhoto,

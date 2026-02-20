@@ -1,23 +1,23 @@
-// Battle system for bubble wars
+// Battle system for bubble wars — with talent tree support
 
 export interface BattleBubble {
   address: string;
   health: number;
   maxHealth: number;
   isGhost: boolean;
-  ghostUntil: number | null; // Timestamp when ghost mode ends
+  ghostUntil: number | null;
   lastShotTime: number;
   kills: number;
   deaths: number;
-  // Progression (from Ephemeral Rollup)
   level?: number;
   xp?: number;
   healthLevel?: number;
   attackLevel?: number;
   attackPower?: number;
-  shootingLevel?: number; // legacy alias
-  holdStreakDays?: number;
   isAlive?: boolean;
+  talents?: Record<string, number>;
+  talentPoints?: number;
+  manualBuild?: boolean;
 }
 
 export interface Bullet {

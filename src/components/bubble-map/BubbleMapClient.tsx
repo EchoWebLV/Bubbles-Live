@@ -8,7 +8,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
-import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent } from "@/hooks/useGameSocket";
+import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent, TalentRanks } from "@/hooks/useGameSocket";
 import { useHolderWebSocket } from "@/hooks/useHolderWebSocket";
 import type { Holder, TokenInfo } from "./types";
 import type { BattleState } from "./battle";
@@ -38,6 +38,52 @@ const STREAK_LABELS: { min: number; text: string; color: string; glow: string }[
   { min: 3, text: 'TRIPLE KILL', color: '#3b82f6', glow: 'rgba(59,130,246,0.5)' },
   { min: 2, text: 'DOUBLE KILL', color: '#22c55e', glow: 'rgba(34,197,94,0.4)' },
 ];
+
+// Talent tree display config (mirrors server/talentConfig.js for UI)
+const TALENT_TREES = {
+  strength: {
+    name: 'Strength',
+    color: 'green',
+    icon: '🛡️',
+    talents: [
+      { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP', maxRank: 3 },
+      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage', maxRank: 3 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+1 HP/sec', maxRank: 3 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit', maxRank: 3 },
+      { id: 'armor', name: 'Armor', desc: '-8% incoming dmg', maxRank: 3 },
+    ],
+  },
+  speed: {
+    name: 'Speed',
+    color: 'blue',
+    icon: '⚡',
+    talents: [
+      { id: 'swift', name: 'Swift', desc: '+10% move speed', maxRank: 3 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown', maxRank: 3 },
+      { id: 'evasion', name: 'Evasion', desc: '+6% dodge chance', maxRank: 3 },
+      { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time', maxRank: 3 },
+      { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast', maxRank: 3 },
+    ],
+  },
+  precision: {
+    name: 'Precision',
+    color: 'red',
+    icon: '🎯',
+    talents: [
+      { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP', maxRank: 3 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)', maxRank: 3 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+8% stack dmg', maxRank: 3 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '+12% double shot', maxRank: 3 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon', maxRank: 3 },
+    ],
+  },
+} as const;
+
+function totalPointsSpentClient(talents: Record<string, number>): number {
+  let total = 0;
+  for (const v of Object.values(talents)) total += (v || 0);
+  return total;
+}
 
 // Camera/viewport state
 interface Camera {
@@ -142,7 +188,7 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, playerPhotos, setDimensions: sendDimensions, sendTransaction, upgradeStat, getOnchainStats, uploadPhoto, removePhoto } = useGameSocket();
+  const { connected, gameState, playerPhotos, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto } = useGameSocket();
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -184,10 +230,32 @@ export function BubbleMapClient() {
       if (photoInputRef.current) photoInputRef.current.value = '';
     }
   }, [connectedWalletAddress, uploadPhoto]);
-  const [upgrading, setUpgrading] = useState<number | null>(null); // 0=health, 1=shooting
+  const [upgrading, setUpgrading] = useState<number | null>(null);
   const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
   const [showOnchainPanel, setShowOnchainPanel] = useState(true);
+  const [showTalentTree, setShowTalentTree] = useState(false);
+  const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
+
+  const handleAllocateTalent = useCallback(async (talentId: string) => {
+    if (!connectedWalletAddress || allocatingTalent) return;
+    setAllocatingTalent(talentId);
+    try {
+      await allocateTalent(connectedWalletAddress, talentId);
+    } finally {
+      setAllocatingTalent(null);
+    }
+  }, [connectedWalletAddress, allocatingTalent, allocateTalent]);
+
+  const handleResetTalents = useCallback(async () => {
+    if (!connectedWalletAddress || allocatingTalent) return;
+    setAllocatingTalent('reset');
+    try {
+      await resetTalents(connectedWalletAddress);
+    } finally {
+      setAllocatingTalent(null);
+    }
+  }, [connectedWalletAddress, allocatingTalent, resetTalents]);
 
   // Kill streak announcements
   const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
@@ -567,13 +635,15 @@ export function BubbleMapClient() {
         lastShotTime: 0,
         kills: b.kills,
         deaths: b.deaths,
-        // Progression
         level: b.level ?? 1,
         xp: b.xp ?? 0,
         healthLevel: b.healthLevel ?? 1,
         attackLevel: b.attackLevel ?? 1,
         attackPower: b.attackPower ?? 10,
         isAlive: b.isAlive !== false,
+        talents: b.talents ?? ({} as TalentRanks),
+        talentPoints: b.talentPoints ?? 0,
+        manualBuild: b.manualBuild ?? false,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -976,45 +1046,26 @@ export function BubbleMapClient() {
         )}
       </AnimatePresence>
 
-      {/* Player Stats & Upgrade Panel (connected wallet) */}
-      {walletConnected && connectedWalletAddress && gameState?.magicBlock?.ready && (
+      {/* Player Stats Panel (connected wallet) */}
+      {walletConnected && connectedWalletAddress && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="absolute bottom-14 sm:bottom-16 left-2 sm:left-4 z-10 w-56 sm:w-64"
         >
           <div className="bg-slate-900/90 backdrop-blur-md rounded-xl p-3 border border-purple-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-purple-400 font-medium flex items-center gap-2">
-                <Zap className="w-3 h-3" />
-                YOUR STATS (On-Chain)
-              </div>
-              <button
-                onClick={() => setShowUpgradePanel(!showUpgradePanel)}
-                className="text-[10px] text-purple-400/60 hover:text-purple-300 transition-colors"
-              >
-                {showUpgradePanel ? 'Hide' : 'Upgrades'}
-              </button>
-            </div>
-
             {(() => {
               const myBubble = battleState.bubbles.get(connectedWalletAddress);
               if (!myBubble) return <div className="text-xs text-slate-500">Not a holder of this token</div>;
 
-              const xp = myBubble.xp ?? onchainStats?.xp ?? 0;
+              const xp = myBubble.xp ?? 0;
               const level = myBubble.level ?? 1;
-              const healthLvl = myBubble.healthLevel ?? onchainStats?.healthLevel ?? 1;
-              const attackLvl = myBubble.attackLevel ?? onchainStats?.attackLevel ?? 1;
               const kills = myBubble.kills;
               const deaths = myBubble.deaths;
-
-              // Upgrade cost formula matches onchain: base 100 + level * 50
-              const healthUpgradeCost = 100 + healthLvl * 50;
-              const attackUpgradeCost = 100 + attackLvl * 50;
+              const tp = myBubble.talentPoints ?? 0;
 
               return (
                 <div className="space-y-2">
-                  {/* Level & XP bar */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Star className="w-3 h-3 text-yellow-400" />
@@ -1022,76 +1073,128 @@ export function BubbleMapClient() {
                     </div>
                     <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
                   </div>
-
-                  {/* K/D */}
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-green-400">Kills: {kills}</span>
                     <span className="text-red-400">Deaths: {deaths}</span>
                     <span className="text-slate-400">KD: {deaths > 0 ? (kills / deaths).toFixed(1) : kills.toFixed(0)}</span>
                   </div>
-
-                  {/* Stat levels */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="flex items-center gap-1.5 bg-slate-800/50 rounded-lg px-2 py-1.5">
-                      <Shield className="w-3 h-3 text-green-400" />
-                      <span className="text-slate-300">HP Lv.{healthLvl}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-slate-800/50 rounded-lg px-2 py-1.5">
-                      <Crosshair className="w-3 h-3 text-red-400" />
-                      <span className="text-slate-300">ATK Lv.{attackLvl}</span>
-                    </div>
-                  </div>
-
-                  {/* Upgrade buttons */}
-                  {showUpgradePanel && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      className="space-y-1.5 pt-2 border-t border-slate-700/50"
-                    >
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider">Spend XP to Upgrade</div>
-                      <button
-                        onClick={() => handleUpgrade(0)}
-                        disabled={upgrading !== null || xp < healthUpgradeCost}
-                        className="w-full flex items-center justify-between bg-green-900/30 hover:bg-green-900/50 disabled:opacity-40 disabled:hover:bg-green-900/30 rounded-lg px-3 py-2 text-xs transition-colors border border-green-500/20"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Shield className="w-3.5 h-3.5 text-green-400" />
-                          <span className="text-green-300">Health Lv.{healthLvl} → {healthLvl + 1}</span>
-                        </div>
-                        <span className={`font-mono ${xp >= healthUpgradeCost ? 'text-amber-400' : 'text-slate-500'}`}>
-                          {upgrading === 0 ? '...' : `${healthUpgradeCost} XP`}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => handleUpgrade(1)}
-                        disabled={upgrading !== null || xp < attackUpgradeCost}
-                        className="w-full flex items-center justify-between bg-red-900/30 hover:bg-red-900/50 disabled:opacity-40 disabled:hover:bg-red-900/30 rounded-lg px-3 py-2 text-xs transition-colors border border-red-500/20"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Crosshair className="w-3.5 h-3.5 text-red-400" />
-                          <span className="text-red-300">Attack Lv.{attackLvl} → {attackLvl + 1}</span>
-                        </div>
-                        <span className={`font-mono ${xp >= attackUpgradeCost ? 'text-amber-400' : 'text-slate-500'}`}>
-                          {upgrading === 1 ? '...' : `${attackUpgradeCost} XP`}
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-
-                  {/* Onchain verification */}
-                  {onchainStats && (
-                    <div className="text-[10px] text-amber-500/50 flex items-center gap-1 pt-1">
-                      <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                      Verified on-chain
-                    </div>
-                  )}
+                  <button
+                    onClick={() => setShowTalentTree(!showTalentTree)}
+                    className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors border ${
+                      tp > 0
+                        ? 'bg-amber-900/40 hover:bg-amber-900/60 border-amber-500/40 text-amber-300 animate-pulse'
+                        : 'bg-slate-800/50 hover:bg-slate-700/50 border-slate-600/30 text-slate-300'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    {showTalentTree ? 'Hide Talents' : tp > 0 ? `Talent Tree (${tp} pts)` : 'Talent Tree'}
+                  </button>
                 </div>
               );
             })()}
           </div>
         </motion.div>
       )}
+
+      {/* Talent Tree Modal */}
+      <AnimatePresence>
+        {showTalentTree && walletConnected && connectedWalletAddress && (() => {
+          const myBubble = battleState.bubbles.get(connectedWalletAddress);
+          if (!myBubble) return null;
+          const talents = myBubble.talents || {} as TalentRanks;
+          const tp = myBubble.talentPoints ?? 0;
+
+          const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
+            green: { bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-400', rankBg: 'bg-green-900/30', rankFill: 'bg-green-500' },
+            blue:  { bg: 'bg-blue-900/20',  border: 'border-blue-500/30',  text: 'text-blue-400',  rankBg: 'bg-blue-900/30',  rankFill: 'bg-blue-500' },
+            red:   { bg: 'bg-red-900/20',   border: 'border-red-500/30',   text: 'text-red-400',   rankBg: 'bg-red-900/30',   rankFill: 'bg-red-500' },
+          };
+
+          return (
+            <motion.div
+              key="talent-tree"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-none"
+            >
+              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-bold text-white">Talent Tree</h2>
+                    <span className="text-sm font-mono text-amber-400">
+                      {tp > 0 ? `${tp} points available` : 'No points available'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleResetTalents}
+                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0}
+                      className="text-[10px] text-red-400/70 hover:text-red-300 disabled:opacity-30 transition-colors px-2 py-1 rounded border border-red-500/20 hover:border-red-500/40"
+                    >
+                      Reset All
+                    </button>
+                    <button
+                      onClick={() => setShowTalentTree(false)}
+                      className="text-slate-400 hover:text-white text-xl leading-none px-2"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {Object.entries(TALENT_TREES).map(([treeKey, tree]) => {
+                    const colors = treeColorMap[tree.color];
+                    return (
+                      <div key={treeKey} className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
+                        <div className={`text-sm font-bold ${colors.text} mb-3 flex items-center gap-2`}>
+                          <span>{tree.icon}</span>
+                          {tree.name}
+                        </div>
+                        <div className="space-y-2">
+                          {tree.talents.map((talent) => {
+                            const rank = talents[talent.id] ?? 0;
+                            const isMaxed = rank >= talent.maxRank;
+                            const canUpgrade = tp > 0 && !isMaxed;
+                            return (
+                              <button
+                                key={talent.id}
+                                onClick={() => canUpgrade && handleAllocateTalent(talent.id)}
+                                disabled={!canUpgrade || allocatingTalent !== null}
+                                className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
+                                  canUpgrade
+                                    ? `${colors.bg} hover:brightness-125 ${colors.border} cursor-pointer`
+                                    : isMaxed
+                                      ? `${colors.bg} ${colors.border} opacity-70`
+                                      : 'bg-slate-800/30 border-slate-700/30 opacity-50'
+                                } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
+                              >
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-medium text-white">{talent.name}</span>
+                                  <div className="flex gap-0.5">
+                                    {Array.from({ length: talent.maxRank }).map((_, i) => (
+                                      <div
+                                        key={i}
+                                        className={`w-2.5 h-2.5 rounded-sm ${i < rank ? colors.rankFill : colors.rankBg}`}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-400">{talent.desc} /rank</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
       {/* Kill Streak Announcements */}
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
@@ -1300,9 +1403,9 @@ export function BubbleMapClient() {
                         ☠️ {b.kills}
                       </span>
                     )}
-                    {(b.holdStreakDays ?? 0) > 0 && (
-                      <span className="text-blue-400">
-                        💎 {b.holdStreakDays}d
+                    {(b.talentPoints ?? 0) > 0 && (
+                      <span className="text-amber-400">
+                        ⭐ {b.talentPoints}tp
                       </span>
                     )}
                   </div>
@@ -1317,6 +1420,7 @@ export function BubbleMapClient() {
       <HolderModal
         holder={selectedHolder}
         token={token}
+        battleBubble={selectedHolder ? (battleState.bubbles.get(selectedHolder.address) ?? null) : null}
         onClose={() => setSelectedHolder(null)}
       />
 

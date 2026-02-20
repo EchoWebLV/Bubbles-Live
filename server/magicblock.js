@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Program ID (deployed to devnet)
-const COMBAT_PROGRAM_ID = new PublicKey('7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi');
+const COMBAT_PROGRAM_ID = new PublicKey('EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw');
 
 // Delegation program
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
@@ -501,6 +501,54 @@ class MagicBlockService {
     }
   }
 
+  // ─── Talent Allocation (runs on ER) ─────────────────────────────
+
+  async allocateTalentOnChain(walletAddress, talentId) {
+    if (!this.ready) return false;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return false;
+
+    try {
+      const tx = await this.erProgram.methods
+        .allocateTalent(talentId)
+        .accounts({
+          playerState: player.playerPda,
+        })
+        .rpc();
+
+      this._logEvent('talent', `${walletAddress.slice(0, 6)}... allocated talent #${talentId}`, tx, {
+        wallet: walletAddress, talentId, _er: true,
+      });
+      return true;
+    } catch (err) {
+      console.error(`MagicBlock: Talent alloc failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      return false;
+    }
+  }
+
+  async resetTalentsOnChain(walletAddress) {
+    if (!this.ready) return false;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return false;
+
+    try {
+      const tx = await this.erProgram.methods
+        .resetTalents()
+        .accounts({
+          playerState: player.playerPda,
+        })
+        .rpc();
+
+      this._logEvent('talent', `${walletAddress.slice(0, 6)}... reset all talents`, tx, {
+        wallet: walletAddress, _er: true,
+      });
+      return true;
+    } catch (err) {
+      console.error(`MagicBlock: Talent reset failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      return false;
+    }
+  }
+
   // ─── Season Reset (runs on ER) ──────────────────────────────────
 
   async resetPlayerByPda(playerPda, label) {
@@ -537,7 +585,7 @@ class MagicBlockService {
     try {
       const allAccounts = await this.erConnection.getProgramAccounts(COMBAT_PROGRAM_ID, {
         filters: [
-          { dataSize: 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 },
+          { dataSize: 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 15 + 1 },
         ],
       });
 
@@ -592,6 +640,24 @@ class MagicBlockService {
         respawnAt: typeof account.respawnAt === 'object' ? account.respawnAt.toNumber() : account.respawnAt,
         initialized: account.initialized,
         playerPda: player.playerPda.toBase58(),
+        talents: {
+          ironSkin: account.talentIronSkin || 0,
+          heavyHitter: account.talentHeavyHitter || 0,
+          regeneration: account.talentRegeneration || 0,
+          lifesteal: account.talentLifesteal || 0,
+          armor: account.talentArmor || 0,
+          swift: account.talentSwift || 0,
+          rapidFire: account.talentRapidFire || 0,
+          evasion: account.talentEvasion || 0,
+          quickRespawn: account.talentQuickRespawn || 0,
+          momentum: account.talentMomentum || 0,
+          weakspot: account.talentWeakspot || 0,
+          criticalStrike: account.talentCriticalStrike || 0,
+          focusFire: account.talentFocusFire || 0,
+          multiShot: account.talentMultiShot || 0,
+          dualCannon: account.talentDualCannon || 0,
+        },
+        manualBuild: account.manualBuild || false,
       };
     } catch (err) {
       // Silently fail — account might not be initialized yet

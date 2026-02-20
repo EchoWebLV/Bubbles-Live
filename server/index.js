@@ -21,6 +21,7 @@ const LIMITS = {
   // Per-socket rate limits: { max calls, per window (ms) }
   transaction: { max: 5, windowMs: 10000 },
   upgradeStat: { max: 3, windowMs: 15000 },
+  allocateTalent: { max: 10, windowMs: 5000 },
   getOnchainStats: { max: 5, windowMs: 10000 },
   setDimensions: { max: 3, windowMs: 5000 },
 };
@@ -212,6 +213,32 @@ app.prepare().then(async () => {
       } catch (err) {
         socket.emit('upgradeResult', { success: false, error: err.message });
       }
+    });
+
+    socket.on('allocateTalent', (data) => {
+      if (!rateLimit(socket.id, 'allocateTalent')) {
+        socket.emit('talentResult', { success: false, error: 'Rate limited' });
+        return;
+      }
+      if (!data || typeof data.walletAddress !== 'string' || typeof data.talentId !== 'string') {
+        socket.emit('talentResult', { success: false, error: 'Invalid request' });
+        return;
+      }
+      const result = gameState.allocateTalent(data.walletAddress, data.talentId);
+      socket.emit('talentResult', result);
+    });
+
+    socket.on('resetTalents', (data) => {
+      if (!rateLimit(socket.id, 'allocateTalent')) {
+        socket.emit('talentResult', { success: false, error: 'Rate limited' });
+        return;
+      }
+      if (!data || typeof data.walletAddress !== 'string') {
+        socket.emit('talentResult', { success: false, error: 'Invalid request' });
+        return;
+      }
+      const result = gameState.resetTalents(data.walletAddress);
+      socket.emit('talentResult', result);
     });
 
     socket.on('getOnchainStats', async (data) => {

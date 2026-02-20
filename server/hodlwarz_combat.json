@@ -1,5 +1,5 @@
 {
-  "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi",
+  "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw",
   "metadata": {
     "name": "hodlwarz_combat",
     "version": "0.1.0",
@@ -7,6 +7,34 @@
     "description": "Created with Anchor"
   },
   "instructions": [
+    {
+      "name": "allocate_talent",
+      "docs": [
+        "Allocate a talent point. talent_id: 0-14. Runs on ER."
+      ],
+      "discriminator": [
+        157,
+        253,
+        234,
+        201,
+        111,
+        213,
+        190,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "talent_id",
+          "type": "u8"
+        }
+      ]
+    },
     {
       "name": "commit_state",
       "docs": [
@@ -102,38 +130,38 @@
             "program": {
               "kind": "const",
               "value": [
-                241,
-                83,
-                98,
-                161,
-                191,
-                95,
-                141,
-                187,
-                189,
-                65,
-                160,
-                171,
-                46,
+                207,
+                169,
+                142,
+                89,
+                17,
+                126,
+                125,
+                204,
+                223,
+                77,
+                77,
+                121,
+                30,
+                183,
+                113,
+                73,
+                184,
+                74,
+                194,
+                122,
+                32,
+                88,
+                255,
+                131,
                 56,
-                119,
-                248,
-                178,
-                5,
-                46,
-                36,
-                221,
-                96,
-                215,
-                16,
-                9,
-                109,
-                217,
-                149,
-                236,
-                117,
-                111,
-                60
+                32,
+                196,
+                115,
+                90,
+                4,
+                191,
+                36
               ]
             }
           }
@@ -229,7 +257,7 @@
         },
         {
           "name": "owner_program",
-          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
+          "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw"
         },
         {
           "name": "delegation_program",
@@ -286,38 +314,38 @@
             "program": {
               "kind": "const",
               "value": [
-                241,
-                83,
-                98,
-                161,
-                191,
-                95,
-                141,
-                187,
-                189,
-                65,
-                160,
-                171,
-                46,
+                207,
+                169,
+                142,
+                89,
+                17,
+                126,
+                125,
+                204,
+                223,
+                77,
+                77,
+                121,
+                30,
+                183,
+                113,
+                73,
+                184,
+                74,
+                194,
+                122,
+                32,
+                88,
+                255,
+                131,
                 56,
-                119,
-                248,
-                178,
-                5,
-                46,
-                36,
-                221,
-                96,
-                215,
-                16,
-                9,
-                109,
-                217,
-                149,
-                236,
-                117,
-                111,
-                60
+                32,
+                196,
+                115,
+                90,
+                4,
+                191,
+                36
               ]
             }
           }
@@ -418,7 +446,7 @@
         },
         {
           "name": "owner_program",
-          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
+          "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw"
         },
         {
           "name": "delegation_program",
@@ -700,6 +728,29 @@
       "args": []
     },
     {
+      "name": "reset_talents",
+      "docs": [
+        "Reset all talent points. Runs on ER."
+      ],
+      "discriminator": [
+        83,
+        23,
+        63,
+        219,
+        66,
+        169,
+        216,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "respawn_player",
       "docs": [
         "Respawn a dead player after the respawn timer has elapsed. Runs on ER."
@@ -824,6 +875,21 @@
       "code": 6008,
       "name": "MaxLevel",
       "msg": "Stat already at max level"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidTalentId",
+      "msg": "Invalid talent ID (0-14)"
+    },
+    {
+      "code": 6010,
+      "name": "NoTalentPoints",
+      "msg": "No talent points available"
+    },
+    {
+      "code": 6011,
+      "name": "TalentMaxed",
+      "msg": "Talent already at max rank"
     }
   ],
   "types": [
@@ -902,6 +968,70 @@
           },
           {
             "name": "initialized",
+            "type": "bool"
+          },
+          {
+            "name": "talent_iron_skin",
+            "type": "u8"
+          },
+          {
+            "name": "talent_heavy_hitter",
+            "type": "u8"
+          },
+          {
+            "name": "talent_regeneration",
+            "type": "u8"
+          },
+          {
+            "name": "talent_lifesteal",
+            "type": "u8"
+          },
+          {
+            "name": "talent_armor",
+            "type": "u8"
+          },
+          {
+            "name": "talent_swift",
+            "type": "u8"
+          },
+          {
+            "name": "talent_rapid_fire",
+            "type": "u8"
+          },
+          {
+            "name": "talent_evasion",
+            "type": "u8"
+          },
+          {
+            "name": "talent_quick_respawn",
+            "type": "u8"
+          },
+          {
+            "name": "talent_momentum",
+            "type": "u8"
+          },
+          {
+            "name": "talent_weakspot",
+            "type": "u8"
+          },
+          {
+            "name": "talent_critical_strike",
+            "type": "u8"
+          },
+          {
+            "name": "talent_focus_fire",
+            "type": "u8"
+          },
+          {
+            "name": "talent_multi_shot",
+            "type": "u8"
+          },
+          {
+            "name": "talent_dual_cannon",
+            "type": "u8"
+          },
+          {
+            "name": "manual_build",
             "type": "bool"
           }
         ]
