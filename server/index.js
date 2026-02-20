@@ -1,6 +1,21 @@
 // Main server - runs Next.js + Socket.io + Game State
 require('dotenv').config({ path: '.env.local' });
 
+// Patch @solana/web3.js SendTransactionError BEFORE Anchor loads.
+// Anchor 0.32 uses the old (message, logs) constructor but web3.js >=1.92
+// expects ({ action, signature, transactionMessage, logs }).
+const _web3 = require('@solana/web3.js');
+const _OrigSTE = _web3.SendTransactionError;
+_web3.SendTransactionError = class extends _OrigSTE {
+  constructor(a, b) {
+    if (typeof a === 'string') {
+      super({ action: 'send', signature: '', transactionMessage: a, logs: b });
+    } else {
+      super(a, b);
+    }
+  }
+};
+
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
@@ -106,24 +121,38 @@ app.prepare().then(async () => {
       return;
     }
 
+    if (parsedUrl.pathname === '/api/photos') {
+      const photos = gameState.getPlayerPhotos();
+      const body = JSON.stringify(photos);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=30',
+      });
+      res.end(body);
+      return;
+    }
+
     handle(req, res, parsedUrl);
   });
 
+  const allowedOrigins = dev
+    ? ['http://localhost:3000']
+    : [
+        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
+        process.env.NEXT_PUBLIC_URL || null,
+        'https://hodlwarz.com',
+      ].filter(Boolean);
+
   const io = new Server(httpServer, {
     cors: {
-      origin: dev
-        ? 'http://localhost:3000'
-        : (process.env.RAILWAY_PUBLIC_DOMAIN
-            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-            : process.env.NEXT_PUBLIC_URL || '*'),
+      origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
       methods: ['GET', 'POST'],
     },
     transports: ['websocket', 'polling'],
     maxHttpBufferSize: 2e6,
-    perMessageDeflate: {
-      threshold: 256,
-      zlibDeflateOptions: { level: 6 },
-    },
+    pingInterval: 25000,
+    pingTimeout: 30000,
+    perMessageDeflate: false,
   });
 
   let connectedClients = 0;
@@ -274,7 +303,6 @@ app.prepare().then(async () => {
       if (ok) {
         console.log(`Photo saved for ${data.walletAddress.slice(0, 8)}...`);
         socket.emit('photoUploaded', { success: true });
-        io.emit('playerPhotos', gameState.getPlayerPhotos());
       } else {
         console.warn(`Photo upload: setPlayerPhoto returned false for ${data.walletAddress.slice(0, 8)}...`);
         socket.emit('photoUploaded', { success: false });
@@ -284,11 +312,6 @@ app.prepare().then(async () => {
     socket.on('removePhoto', (data) => {
       if (!data || typeof data.walletAddress !== 'string') return;
       gameState.removePlayerPhoto(data.walletAddress);
-      io.emit('playerPhotos', gameState.getPlayerPhotos());
-    });
-
-    socket.on('getPhotos', () => {
-      socket.emit('playerPhotos', gameState.getPlayerPhotos());
     });
 
     socket.on('disconnect', () => {

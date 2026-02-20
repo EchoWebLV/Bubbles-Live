@@ -1522,9 +1522,11 @@ class GameState {
         this.magicBlock.startCommitTimer(30000);
         this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
 
-        // Register any holders that loaded before MagicBlock was ready
+        // Register all holders that loaded before MagicBlock was ready.
+        // Can't use ensurePlayerCached here — those addresses are already
+        // cached (from start()), so it would skip the registration queue.
         for (const holder of this.holders) {
-          this.ensurePlayerCached(holder.address);
+          this._queueRegistration(holder.address);
         }
       } else {
         console.warn('MagicBlock ER not available — game runs locally only');

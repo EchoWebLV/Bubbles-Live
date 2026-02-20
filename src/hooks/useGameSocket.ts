@@ -333,8 +333,23 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
   }, []);
 
+  // Fetch photos via HTTP (much lighter than WebSocket)
   useEffect(() => {
-    // Connect to Socket.io server
+    let cancelled = false;
+    const fetchPhotos = async () => {
+      try {
+        const res = await fetch("/api/photos");
+        if (!res.ok) return;
+        const photos = await res.json();
+        if (!cancelled) setPlayerPhotos(photos || {});
+      } catch { /* ignore */ }
+    };
+    fetchPhotos();
+    const photoInterval = setInterval(fetchPhotos, 30000);
+    return () => { cancelled = true; clearInterval(photoInterval); };
+  }, []);
+
+  useEffect(() => {
     const socket = io({
       transports: ["websocket", "polling"],
       reconnection: true,
@@ -349,11 +364,10 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       console.log("Connected to game server");
       setConnected(true);
       dimensionsSentRef.current = false;
-      socket.emit("getPhotos");
     });
 
-    socket.on("disconnect", () => {
-      console.log("Disconnected from game server");
+    socket.on("disconnect", (reason) => {
+      console.log("Disconnected from game server:", reason);
       setConnected(false);
     });
 

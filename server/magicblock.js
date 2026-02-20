@@ -34,6 +34,13 @@ const combatIdl = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'hodlwarz_combat.json'), 'utf-8')
 );
 
+function extractTxError(err) {
+  if (err.transactionMessage) return err.transactionMessage;
+  if (err.message && !err.message.startsWith('Unknown action')) return err.message;
+  if (err.logs) return err.logs.slice(-3).join(' | ');
+  return String(err);
+}
+
 class MagicBlockService {
   constructor() {
     // Dual connections
@@ -444,8 +451,10 @@ class MagicBlockService {
       return tx;
     } catch (err) {
       this.stats.attacksFailed++;
-      if (!err.message.includes('blockhash') && !err.message.includes('VictimDead')) {
-        console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, err.message);
+      const msg = extractTxError(err);
+      const expected = ['blockhash', 'VictimDead', 'AttackerDead', 'NotInitialized'];
+      if (!expected.some(e => msg.includes(e))) {
+        console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, msg);
       }
       return null;
     }
@@ -468,7 +477,11 @@ class MagicBlockService {
       this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress, _er: true });
       return tx;
     } catch (err) {
-      console.error(`MagicBlock: Respawn failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      const msg = extractTxError(err);
+      const expected = ['AlreadyAlive', 'RespawnCooldown', 'blockhash'];
+      if (!expected.some(e => msg.includes(e))) {
+        console.error(`MagicBlock: Respawn failed for ${walletAddress.slice(0, 6)}:`, msg);
+      }
       return null;
     }
   }
@@ -495,8 +508,9 @@ class MagicBlockService {
       });
       return true;
     } catch (err) {
-      console.error(`MagicBlock: Upgrade failed for ${walletAddress.slice(0, 6)}:`, err.message);
-      this._logEvent('error', `Upgrade failed: ${err.message}`, null, { wallet: walletAddress });
+      const msg = extractTxError(err);
+      console.error(`MagicBlock: Upgrade failed for ${walletAddress.slice(0, 6)}:`, msg);
+      this._logEvent('error', `Upgrade failed: ${msg}`, null, { wallet: walletAddress });
       return false;
     }
   }
@@ -521,7 +535,11 @@ class MagicBlockService {
       });
       return true;
     } catch (err) {
-      console.error(`MagicBlock: Talent alloc failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      const msg = extractTxError(err);
+      const expected = ['NoTalentPoints', 'TalentMaxed', 'blockhash'];
+      if (!expected.some(e => msg.includes(e))) {
+        console.error(`MagicBlock: Talent alloc failed for ${walletAddress.slice(0, 6)}:`, msg);
+      }
       return false;
     }
   }
@@ -544,7 +562,7 @@ class MagicBlockService {
       });
       return true;
     } catch (err) {
-      console.error(`MagicBlock: Talent reset failed for ${walletAddress.slice(0, 6)}:`, err.message);
+      console.error(`MagicBlock: Talent reset failed for ${walletAddress.slice(0, 6)}:`, extractTxError(err));
       return false;
     }
   }
@@ -727,8 +745,9 @@ class MagicBlockService {
       this._logEvent('commit', 'ER state committed to Solana base layer', tx, { _er: true });
       return tx;
     } catch (err) {
-      console.error('MagicBlock: Commit failed:', err.message);
-      this._logEvent('error', `Commit failed: ${err.message}`);
+      const msg = extractTxError(err);
+      console.error('MagicBlock: Commit failed:', msg);
+      this._logEvent('error', `Commit failed: ${msg}`);
       return null;
     }
   }

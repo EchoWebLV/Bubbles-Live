@@ -677,7 +677,7 @@ export function BubbleMapClient() {
   const topKillers = gameState?.topKillers || [];
   const killFeed = gameState?.killFeed || [];
 
-  const isLoading = !connected || !gameState;
+  const isLoading = !gameState;
 
   return (
     <div 
