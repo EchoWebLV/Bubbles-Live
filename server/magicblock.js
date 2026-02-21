@@ -351,10 +351,11 @@ class MagicBlockService {
 
     console.log(`MagicBlock: Discovered ${discovered} valid players, ${broken} broken (need migration), ${this.playerDelegated.size} delegated`);
 
-    // Auto-migrate broken accounts if any found
+    // If broken accounts detected, reset ER session to start fresh
     if (this._brokenAccounts.size > 0) {
-      this.migrateAllBrokenAccounts().catch(err =>
-        console.warn('MagicBlock: Auto-migration failed (non-fatal):', err.message)
+      console.log('MagicBlock: Broken accounts detected — scheduling ER session reset...');
+      this.resetERSession().catch(err =>
+        console.warn('MagicBlock: ER session reset failed (non-fatal):', err.message)
       );
     }
   }
@@ -723,46 +724,75 @@ class MagicBlockService {
     }
   }
 
-  // ─── Account Migration (resize old 82-byte → 108-byte) ─────────
+  // ─── ER Session Reset (wipe broken accounts, start fresh) ───────
 
-  async migrateAllBrokenAccounts() {
-    if (!this.ready || this._brokenAccounts.size === 0) return;
+  async resetERSession() {
+    if (!this.ready) return;
 
-    console.log(`MagicBlock: Migrating ${this._brokenAccounts.size} broken accounts...`);
-    let migrated = 0;
-    let failed = 0;
+    console.log('MagicBlock: Ending ER session to clear broken accounts...');
 
-    for (const wallet of [...this._brokenAccounts]) {
-      try {
-        const walletPubkey = new PublicKey(wallet);
-        const [playerPda] = PublicKey.findProgramAddressSync(
-          [PLAYER_SEED, walletPubkey.toBuffer()],
-          COMBAT_PROGRAM_ID
-        );
-
-        const tx = await this.erProgram.methods
-          .migratePlayer()
-          .accounts({
-            playerState: playerPda,
-            authority: this.serverKeypair.publicKey,
-            systemProgram: SystemProgram.programId,
-          })
-          .rpc();
-
-        this._brokenAccounts.delete(wallet);
-        this._accountFailCount.delete(wallet);
-        migrated++;
-        console.log(`MagicBlock: Migrated ${wallet.slice(0, 6)}... tx: ${tx.slice(0, 20)}...`);
-      } catch (err) {
-        failed++;
-        if (failed <= 3) {
-          console.error(`MagicBlock: Migration failed for ${wallet.slice(0, 6)}:`, err.message);
-        }
-      }
-      await new Promise(r => setTimeout(r, 300));
+    try {
+      // End session: commit arena + undelegate from ER
+      const tx = await this.erProgram.methods
+        .endSession()
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          arena: this.arenaPda,
+          magicProgram: new PublicKey('Magic11111111111111111111111111111111111111'),
+          magicContext: new PublicKey('MagicContext1111111111111111111111111111111'),
+        })
+        .rpc();
+      console.log('MagicBlock: ER session ended, tx:', tx.slice(0, 20) + '...');
+    } catch (err) {
+      console.warn('MagicBlock: End session failed (may already be undelegated):', err.message);
     }
 
-    console.log(`MagicBlock: Migration complete — ${migrated} migrated, ${failed} failed, ${this._brokenAccounts.size} remaining`);
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Re-delegate arena
+    try {
+      const [bufferPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('buffer'), this.arenaPda.toBuffer()],
+        COMBAT_PROGRAM_ID
+      );
+      const [delegationRecord] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation'), this.arenaPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+      const [delegationMetadata] = PublicKey.findProgramAddressSync(
+        [Buffer.from('delegation-metadata'), this.arenaPda.toBuffer()],
+        DELEGATION_PROGRAM_ID
+      );
+
+      const tx = await this.baseProgram.methods
+        .delegateArena()
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          bufferArena: bufferPda,
+          delegationRecordArena: delegationRecord,
+          delegationMetadataArena: delegationMetadata,
+          arena: this.arenaPda,
+          ownerProgram: COMBAT_PROGRAM_ID,
+          delegationProgram: DELEGATION_PROGRAM_ID,
+        })
+        .remainingAccounts([
+          { pubkey: ER_VALIDATOR, isSigner: false, isWritable: false },
+        ])
+        .rpc();
+
+      this.arenaDelegated = true;
+      console.log('MagicBlock: Arena re-delegated to ER');
+    } catch (err) {
+      console.warn('MagicBlock: Arena re-delegation failed:', err.message);
+    }
+
+    // Clear all player state — they'll be re-registered fresh
+    this.playerMap.clear();
+    this.playerDelegated.clear();
+    this._brokenAccounts.clear();
+    this._accountFailCount.clear();
+
+    console.log('MagicBlock: ER session reset complete. Players will re-register with correct account size.');
   }
 
   // ─── Season Reset (runs on ER) ──────────────────────────────────
