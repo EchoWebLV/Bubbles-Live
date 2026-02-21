@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-hodlwarz_combat = "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw"
+hodlwarz_combat = "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
 
 [registry]
 url = "https://api.apr.dev"

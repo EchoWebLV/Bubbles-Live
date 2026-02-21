@@ -1,5 +1,5 @@
 {
-  "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw",
+  "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi",
   "metadata": {
     "name": "hodlwarz_combat",
     "version": "0.1.0",
@@ -10,7 +10,7 @@
     {
       "name": "allocate_talent",
       "docs": [
-        "Allocate a talent point. talent_id: 0-14. Runs on ER."
+        "Allocate a talent point. talent_id: 0-24. Runs on ER."
       ],
       "discriminator": [
         157,
@@ -130,38 +130,38 @@
             "program": {
               "kind": "const",
               "value": [
-                207,
-                169,
-                142,
-                89,
-                17,
-                126,
-                125,
-                204,
-                223,
-                77,
-                77,
-                121,
-                30,
-                183,
-                113,
-                73,
-                184,
-                74,
-                194,
-                122,
-                32,
-                88,
-                255,
-                131,
-                56,
-                32,
+                97,
                 196,
-                115,
-                90,
-                4,
-                191,
-                36
+                85,
+                110,
+                29,
+                55,
+                85,
+                142,
+                240,
+                65,
+                230,
+                130,
+                222,
+                238,
+                92,
+                131,
+                110,
+                211,
+                111,
+                28,
+                91,
+                167,
+                178,
+                190,
+                35,
+                254,
+                73,
+                96,
+                167,
+                158,
+                0,
+                73
               ]
             }
           }
@@ -257,7 +257,7 @@
         },
         {
           "name": "owner_program",
-          "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw"
+          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
         },
         {
           "name": "delegation_program",
@@ -314,38 +314,38 @@
             "program": {
               "kind": "const",
               "value": [
-                207,
-                169,
-                142,
-                89,
-                17,
-                126,
-                125,
-                204,
-                223,
-                77,
-                77,
-                121,
-                30,
-                183,
-                113,
-                73,
-                184,
-                74,
-                194,
-                122,
-                32,
-                88,
-                255,
-                131,
-                56,
-                32,
+                97,
                 196,
-                115,
-                90,
-                4,
-                191,
-                36
+                85,
+                110,
+                29,
+                55,
+                85,
+                142,
+                240,
+                65,
+                230,
+                130,
+                222,
+                238,
+                92,
+                131,
+                110,
+                211,
+                111,
+                28,
+                91,
+                167,
+                178,
+                190,
+                35,
+                254,
+                73,
+                96,
+                167,
+                158,
+                0,
+                73
               ]
             }
           }
@@ -446,7 +446,7 @@
         },
         {
           "name": "owner_program",
-          "address": "EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw"
+          "address": "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
         },
         {
           "name": "delegation_program",
@@ -879,7 +879,7 @@
     {
       "code": 6009,
       "name": "InvalidTalentId",
-      "msg": "Invalid talent ID (0-14)"
+      "msg": "Invalid talent ID (0-24)"
     },
     {
       "code": 6010,
@@ -1028,6 +1028,46 @@
           },
           {
             "name": "talent_dual_cannon",
+            "type": "u8"
+          },
+          {
+            "name": "talent_deflect",
+            "type": "u8"
+          },
+          {
+            "name": "talent_absorb",
+            "type": "u8"
+          },
+          {
+            "name": "talent_last_stand",
+            "type": "u8"
+          },
+          {
+            "name": "talent_cloak",
+            "type": "u8"
+          },
+          {
+            "name": "talent_dash",
+            "type": "u8"
+          },
+          {
+            "name": "talent_rampage",
+            "type": "u8"
+          },
+          {
+            "name": "talent_homing",
+            "type": "u8"
+          },
+          {
+            "name": "talent_ricochet",
+            "type": "u8"
+          },
+          {
+            "name": "talent_deathbomb",
+            "type": "u8"
+          },
+          {
+            "name": "talent_frenzy",
             "type": "u8"
           },
           {

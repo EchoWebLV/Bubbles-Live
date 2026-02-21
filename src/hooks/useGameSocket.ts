@@ -33,6 +33,16 @@ export interface TalentRanks {
   focusFire: number;
   multiShot: number;
   dualCannon: number;
+  deflect: number;
+  absorb: number;
+  lastStand: number;
+  cloak: number;
+  dash: number;
+  rampage: number;
+  homing: number;
+  ricochet: number;
+  deathbomb: number;
+  frenzy: number;
   [key: string]: number;
 }
 

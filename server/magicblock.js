@@ -8,7 +8,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Program ID (deployed to devnet)
-const COMBAT_PROGRAM_ID = new PublicKey('EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw');
+const COMBAT_PROGRAM_ID = new PublicKey('7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi');
 
 // Delegation program
 const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
@@ -674,6 +674,16 @@ class MagicBlockService {
           focusFire: account.talentFocusFire || 0,
           multiShot: account.talentMultiShot || 0,
           dualCannon: account.talentDualCannon || 0,
+          deflect: account.talentDeflect || 0,
+          absorb: account.talentAbsorb || 0,
+          lastStand: account.talentLastStand || 0,
+          cloak: account.talentCloak || 0,
+          dash: account.talentDash || 0,
+          rampage: account.talentRampage || 0,
+          homing: account.talentHoming || 0,
+          ricochet: account.talentRicochet || 0,
+          deathbomb: account.talentDeathbomb || 0,
+          frenzy: account.talentFrenzy || 0,
         },
         manualBuild: account.manualBuild || false,
       };

@@ -152,7 +152,10 @@ app.prepare().then(async () => {
     maxHttpBufferSize: 2e6,
     pingInterval: 25000,
     pingTimeout: 30000,
-    perMessageDeflate: false,
+    perMessageDeflate: {
+      threshold: 1024,
+      zlibDeflateOptions: { level: 6 },
+    },
   });
 
   let connectedClients = 0;
@@ -326,12 +329,12 @@ app.prepare().then(async () => {
     });
   });
 
-  // Broadcast game state to all clients at 10fps (compression handles the rest)
+  // Broadcast game state to all clients at 10fps (perMessageDeflate compresses the JSON)
   const broadcastInterval = setInterval(() => {
     if (connectedClients > 0) {
       io.emit('gameState', gameState.getState());
     }
-  }, 1000 / 10);
+  }, 100);
 
   await migrate();
   gameState.start();

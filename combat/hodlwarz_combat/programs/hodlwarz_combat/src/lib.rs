@@ -3,7 +3,7 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::{commit_accounts, commit_and_undelegate_accounts};
 
-declare_id!("EydMHGb1jtdB4Z2xkGwmajYwL9GBiWDC6wGRpd786Yrw");
+declare_id!("7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi");
 
 const ARENA_SEED: &[u8] = b"arena";
 const PLAYER_SEED: &[u8] = b"player";
@@ -16,7 +16,12 @@ const UPGRADE_XP_BASE: u64 = 100;
 const UPGRADE_XP_MULT: u64 = 50;
 const RESPAWN_DELAY_SECS: i64 = 5;
 const MAX_LEVEL: u8 = 100;
-const MAX_TALENT_RANK: u8 = 3;
+const MAX_TALENT_RANK_OLD: u8 = 5;  // Strength / Speed / Precision (IDs 0-14)
+const MAX_TALENT_RANK_NEW: u8 = 3;  // Utility / Chaos (IDs 15-24)
+
+fn max_rank_for_talent(talent_id: u8) -> u8 {
+    if talent_id <= 14 { MAX_TALENT_RANK_OLD } else { MAX_TALENT_RANK_NEW }
+}
 
 #[ephemeral]
 #[program]
@@ -50,21 +55,36 @@ pub mod hodlwarz_combat {
         player.is_alive = true;
         player.respawn_at = 0;
         player.initialized = true;
+        // Strength
         player.talent_iron_skin = 0;
         player.talent_heavy_hitter = 0;
         player.talent_regeneration = 0;
         player.talent_lifesteal = 0;
         player.talent_armor = 0;
+        // Speed
         player.talent_swift = 0;
         player.talent_rapid_fire = 0;
         player.talent_evasion = 0;
         player.talent_quick_respawn = 0;
         player.talent_momentum = 0;
+        // Precision
         player.talent_weakspot = 0;
         player.talent_critical_strike = 0;
         player.talent_focus_fire = 0;
         player.talent_multi_shot = 0;
         player.talent_dual_cannon = 0;
+        // Utility
+        player.talent_deflect = 0;
+        player.talent_absorb = 0;
+        player.talent_last_stand = 0;
+        player.talent_cloak = 0;
+        player.talent_dash = 0;
+        // Chaos
+        player.talent_rampage = 0;
+        player.talent_homing = 0;
+        player.talent_ricochet = 0;
+        player.talent_deathbomb = 0;
+        player.talent_frenzy = 0;
         player.manual_build = false;
 
         msg!("Player {} registered", wallet);
@@ -223,7 +243,7 @@ pub mod hodlwarz_combat {
         player.attack_level = 1;
         player.is_alive = true;
         player.respawn_at = 0;
-        // Reset talents
+        // Reset all talents
         player.talent_iron_skin = 0;
         player.talent_heavy_hitter = 0;
         player.talent_regeneration = 0;
@@ -239,17 +259,27 @@ pub mod hodlwarz_combat {
         player.talent_focus_fire = 0;
         player.talent_multi_shot = 0;
         player.talent_dual_cannon = 0;
+        player.talent_deflect = 0;
+        player.talent_absorb = 0;
+        player.talent_last_stand = 0;
+        player.talent_cloak = 0;
+        player.talent_dash = 0;
+        player.talent_rampage = 0;
+        player.talent_homing = 0;
+        player.talent_ricochet = 0;
+        player.talent_deathbomb = 0;
+        player.talent_frenzy = 0;
         player.manual_build = false;
 
         msg!("Player {} reset to base stats", player.wallet);
         Ok(())
     }
 
-    /// Allocate a talent point. talent_id: 0-14. Runs on ER.
+    /// Allocate a talent point. talent_id: 0-24. Runs on ER.
     pub fn allocate_talent(ctx: Context<AllocateTalent>, talent_id: u8) -> Result<()> {
         let player = &mut ctx.accounts.player_state;
         require!(player.initialized, CombatError::NotInitialized);
-        require!(talent_id <= 14, CombatError::InvalidTalentId);
+        require!(talent_id <= 24, CombatError::InvalidTalentId);
 
         let level = calc_level(player.xp);
         let spent = player.total_talent_points_spent();
@@ -257,7 +287,7 @@ pub mod hodlwarz_combat {
         require!(spent < available, CombatError::NoTalentPoints);
 
         let current = player.get_talent(talent_id);
-        require!(current < MAX_TALENT_RANK, CombatError::TalentMaxed);
+        require!(current < max_rank_for_talent(talent_id), CombatError::TalentMaxed);
 
         player.set_talent(talent_id, current + 1);
         player.manual_build = true;
@@ -286,6 +316,16 @@ pub mod hodlwarz_combat {
         player.talent_focus_fire = 0;
         player.talent_multi_shot = 0;
         player.talent_dual_cannon = 0;
+        player.talent_deflect = 0;
+        player.talent_absorb = 0;
+        player.talent_last_stand = 0;
+        player.talent_cloak = 0;
+        player.talent_dash = 0;
+        player.talent_rampage = 0;
+        player.talent_homing = 0;
+        player.talent_ricochet = 0;
+        player.talent_deathbomb = 0;
+        player.talent_frenzy = 0;
         player.manual_build = true;
 
         msg!("Player {} talents reset", player.wallet);
@@ -341,24 +381,36 @@ pub struct PlayerState {
     pub is_alive: bool,
     pub respawn_at: i64,
     pub initialized: bool,
-    // Talent tree: Strength
+    // Talent tree: Strength (max rank 5)
     pub talent_iron_skin: u8,
     pub talent_heavy_hitter: u8,
     pub talent_regeneration: u8,
     pub talent_lifesteal: u8,
     pub talent_armor: u8,
-    // Talent tree: Speed
+    // Talent tree: Speed (max rank 5)
     pub talent_swift: u8,
     pub talent_rapid_fire: u8,
     pub talent_evasion: u8,
     pub talent_quick_respawn: u8,
     pub talent_momentum: u8,
-    // Talent tree: Precision
+    // Talent tree: Precision (max rank 5)
     pub talent_weakspot: u8,
     pub talent_critical_strike: u8,
     pub talent_focus_fire: u8,
     pub talent_multi_shot: u8,
     pub talent_dual_cannon: u8,
+    // Talent tree: Utility (max rank 3)
+    pub talent_deflect: u8,
+    pub talent_absorb: u8,
+    pub talent_last_stand: u8,
+    pub talent_cloak: u8,
+    pub talent_dash: u8,
+    // Talent tree: Chaos (max rank 3)
+    pub talent_rampage: u8,
+    pub talent_homing: u8,
+    pub talent_ricochet: u8,
+    pub talent_deathbomb: u8,
+    pub talent_frenzy: u8,
     pub manual_build: bool,
 }
 
@@ -380,6 +432,16 @@ impl PlayerState {
             12 => self.talent_focus_fire,
             13 => self.talent_multi_shot,
             14 => self.talent_dual_cannon,
+            15 => self.talent_deflect,
+            16 => self.talent_absorb,
+            17 => self.talent_last_stand,
+            18 => self.talent_cloak,
+            19 => self.talent_dash,
+            20 => self.talent_rampage,
+            21 => self.talent_homing,
+            22 => self.talent_ricochet,
+            23 => self.talent_deathbomb,
+            24 => self.talent_frenzy,
             _ => 0,
         }
     }
@@ -401,6 +463,16 @@ impl PlayerState {
             12 => self.talent_focus_fire = val,
             13 => self.talent_multi_shot = val,
             14 => self.talent_dual_cannon = val,
+            15 => self.talent_deflect = val,
+            16 => self.talent_absorb = val,
+            17 => self.talent_last_stand = val,
+            18 => self.talent_cloak = val,
+            19 => self.talent_dash = val,
+            20 => self.talent_rampage = val,
+            21 => self.talent_homing = val,
+            22 => self.talent_ricochet = val,
+            23 => self.talent_deathbomb = val,
+            24 => self.talent_frenzy = val,
             _ => {}
         }
     }
@@ -421,6 +493,16 @@ impl PlayerState {
             + (self.talent_focus_fire as u16)
             + (self.talent_multi_shot as u16)
             + (self.talent_dual_cannon as u16)
+            + (self.talent_deflect as u16)
+            + (self.talent_absorb as u16)
+            + (self.talent_last_stand as u16)
+            + (self.talent_cloak as u16)
+            + (self.talent_dash as u16)
+            + (self.talent_rampage as u16)
+            + (self.talent_homing as u16)
+            + (self.talent_ricochet as u16)
+            + (self.talent_deathbomb as u16)
+            + (self.talent_frenzy as u16)
     }
 }
 
@@ -463,7 +545,7 @@ pub struct RegisterPlayer<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 15 + 1,
+        space = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1,
         seeds = [PLAYER_SEED, wallet.as_ref()],
         bump,
     )]
@@ -572,7 +654,7 @@ pub enum CombatError {
     InvalidStatType,
     #[msg("Stat already at max level")]
     MaxLevel,
-    #[msg("Invalid talent ID (0-14)")]
+    #[msg("Invalid talent ID (0-24)")]
     InvalidTalentId,
     #[msg("No talent points available")]
     NoTalentPoints,

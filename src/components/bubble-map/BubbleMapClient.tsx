@@ -46,11 +46,11 @@ const TALENT_TREES = {
     color: 'green',
     icon: '🛡️',
     talents: [
-      { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP', maxRank: 3 },
-      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage', maxRank: 3 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+1 HP/sec', maxRank: 3 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit', maxRank: 3 },
-      { id: 'armor', name: 'Armor', desc: '-8% incoming dmg', maxRank: 3 },
+      { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP', maxRank: 5 },
+      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+1 HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit', maxRank: 5 },
+      { id: 'armor', name: 'Armor', desc: '-8% incoming dmg', maxRank: 5 },
     ],
   },
   speed: {
@@ -58,11 +58,11 @@ const TALENT_TREES = {
     color: 'blue',
     icon: '⚡',
     talents: [
-      { id: 'swift', name: 'Swift', desc: '+10% move speed', maxRank: 3 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown', maxRank: 3 },
-      { id: 'evasion', name: 'Evasion', desc: '+6% dodge chance', maxRank: 3 },
-      { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time', maxRank: 3 },
-      { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast', maxRank: 3 },
+      { id: 'swift', name: 'Swift', desc: '+10% move speed', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown', maxRank: 5 },
+      { id: 'evasion', name: 'Evasion', desc: '+6% dodge chance', maxRank: 5 },
+      { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time', maxRank: 5 },
+      { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast', maxRank: 5 },
     ],
   },
   precision: {
@@ -70,11 +70,35 @@ const TALENT_TREES = {
     color: 'red',
     icon: '🎯',
     talents: [
-      { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP', maxRank: 3 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)', maxRank: 3 },
-      { id: 'focusFire', name: 'Focus Fire', desc: '+8% stack dmg', maxRank: 3 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '+12% double shot', maxRank: 3 },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon', maxRank: 3 },
+      { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)', maxRank: 5 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+8% stack dmg', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '+12% double shot', maxRank: 5 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon', maxRank: 5 },
+    ],
+  },
+  utility: {
+    name: 'Utility',
+    color: 'yellow',
+    icon: '🔰',
+    talents: [
+      { id: 'deflect', name: 'Deflect', desc: '+5% bullet reflect', maxRank: 3 },
+      { id: 'absorb', name: 'Absorb', desc: '+10% kill shield', maxRank: 3 },
+      { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP', maxRank: 3 },
+      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 1.5s every 15/12/9s', maxRank: 3 },
+      { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8s', maxRank: 3 },
+    ],
+  },
+  chaos: {
+    name: 'Chaos',
+    color: 'purple',
+    icon: '💀',
+    talents: [
+      { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill', maxRank: 3 },
+      { id: 'homing', name: 'Homing', desc: '+10% hit radius', maxRank: 3 },
+      { id: 'ricochet', name: 'Ricochet', desc: '+10% bounce chance', maxRank: 3 },
+      { id: 'deathbomb', name: 'Deathbomb', desc: '+10% HP as explosion', maxRank: 3 },
+      { id: 'frenzy', name: 'Frenzy', desc: '+15% fire rate/kill', maxRank: 3 },
     ],
   },
 } as const;
@@ -1105,9 +1129,11 @@ export function BubbleMapClient() {
           const tp = myBubble.talentPoints ?? 0;
 
           const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
-            green: { bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-400', rankBg: 'bg-green-900/30', rankFill: 'bg-green-500' },
-            blue:  { bg: 'bg-blue-900/20',  border: 'border-blue-500/30',  text: 'text-blue-400',  rankBg: 'bg-blue-900/30',  rankFill: 'bg-blue-500' },
-            red:   { bg: 'bg-red-900/20',   border: 'border-red-500/30',   text: 'text-red-400',   rankBg: 'bg-red-900/30',   rankFill: 'bg-red-500' },
+            green:  { bg: 'bg-green-900/20',  border: 'border-green-500/30',  text: 'text-green-400',  rankBg: 'bg-green-900/30',  rankFill: 'bg-green-500' },
+            blue:   { bg: 'bg-blue-900/20',   border: 'border-blue-500/30',   text: 'text-blue-400',   rankBg: 'bg-blue-900/30',   rankFill: 'bg-blue-500' },
+            red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
+            yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
+            purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
           };
 
           return (
@@ -1118,7 +1144,7 @@ export function BubbleMapClient() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-6 max-w-3xl w-full max-h-[85vh] overflow-y-auto">
+              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-6 max-w-6xl w-full max-h-[85vh] overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <h2 className="text-lg font-bold text-white">Talent Tree</h2>
@@ -1143,7 +1169,7 @@ export function BubbleMapClient() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {Object.entries(TALENT_TREES).map(([treeKey, tree]) => {
                     const colors = treeColorMap[tree.color];
                     return (

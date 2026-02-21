@@ -63,7 +63,8 @@ export const BATTLE_CONFIG = {
   fireRate: 200, // ms between shots (0.2 seconds)
   bulletSpeed: 8, // pixels per frame
   bulletRadius: 3,
-  ghostDuration: 60000, // 60 seconds in ms
+  ghostBaseMs: 20000,   // 20s at level 1, +1s per level (server-authoritative)
+  ghostPerLevelMs: 1000,
   respawnHealth: 100,
 };
 
@@ -323,7 +324,7 @@ export function updateBattleState(
         if (targetBubble.health <= 0) {
           targetBubble.health = 0;
           targetBubble.isGhost = true;
-          targetBubble.ghostUntil = now + BATTLE_CONFIG.ghostDuration;
+          targetBubble.ghostUntil = now + BATTLE_CONFIG.ghostBaseMs;
           targetBubble.deaths++;
 
           // Credit kill to shooter

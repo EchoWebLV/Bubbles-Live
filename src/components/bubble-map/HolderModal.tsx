@@ -20,6 +20,7 @@ const TALENT_TREES = {
     name: 'Strength',
     color: 'green',
     icon: '\u{1F6E1}\u{FE0F}',
+    maxRank: 5,
     talents: [
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP' },
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage' },
@@ -32,6 +33,7 @@ const TALENT_TREES = {
     name: 'Speed',
     color: 'blue',
     icon: '\u{26A1}',
+    maxRank: 5,
     talents: [
       { id: 'swift', name: 'Swift', desc: '+10% move speed' },
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown' },
@@ -44,6 +46,7 @@ const TALENT_TREES = {
     name: 'Precision',
     color: 'red',
     icon: '\u{1F3AF}',
+    maxRank: 5,
     talents: [
       { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP' },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)' },
@@ -52,9 +55,33 @@ const TALENT_TREES = {
       { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon' },
     ],
   },
+  utility: {
+    name: 'Utility',
+    color: 'yellow',
+    icon: '\u{1F530}',
+    maxRank: 3,
+    talents: [
+      { id: 'deflect', name: 'Deflect', desc: '+5% bullet reflect' },
+      { id: 'absorb', name: 'Absorb', desc: '+10% kill shield' },
+      { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP' },
+      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 1.5s every 15/12/9s' },
+      { id: 'dash', name: 'Dash', desc: 'Burst dash 12/10/8s' },
+    ],
+  },
+  chaos: {
+    name: 'Chaos',
+    color: 'purple',
+    icon: '\u{1F480}',
+    maxRank: 3,
+    talents: [
+      { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill' },
+      { id: 'homing', name: 'Homing', desc: '+10% hit radius' },
+      { id: 'ricochet', name: 'Ricochet', desc: '+10% bounce chance' },
+      { id: 'deathbomb', name: 'Deathbomb', desc: '+10% HP as explosion' },
+      { id: 'frenzy', name: 'Frenzy', desc: '+15% fire rate/kill' },
+    ],
+  },
 } as const;
-
-const MAX_RANK = 3;
 
 interface HolderModalProps {
   holder: Holder | null;
@@ -82,9 +109,11 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
   const totalSpent = Object.values(talents).reduce((s, v) => s + (v || 0), 0);
 
   const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
-    green: { bg: 'bg-green-900/20', border: 'border-green-500/30', text: 'text-green-400', rankBg: 'bg-green-900/30', rankFill: 'bg-green-500' },
-    blue:  { bg: 'bg-blue-900/20',  border: 'border-blue-500/30',  text: 'text-blue-400',  rankBg: 'bg-blue-900/30',  rankFill: 'bg-blue-500' },
-    red:   { bg: 'bg-red-900/20',   border: 'border-red-500/30',   text: 'text-red-400',   rankBg: 'bg-red-900/30',   rankFill: 'bg-red-500' },
+    green:  { bg: 'bg-green-900/20',  border: 'border-green-500/30',  text: 'text-green-400',  rankBg: 'bg-green-900/30',  rankFill: 'bg-green-500' },
+    blue:   { bg: 'bg-blue-900/20',   border: 'border-blue-500/30',   text: 'text-blue-400',   rankBg: 'bg-blue-900/30',   rankFill: 'bg-blue-500' },
+    red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
+    yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
+    purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
   };
 
   return (
@@ -322,7 +351,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                         <div key={talent.id} className="flex items-center justify-between">
                           <span className="text-[11px] text-slate-500">{talent.name}</span>
                           <div className="flex gap-0.5">
-                            {Array.from({ length: MAX_RANK }).map((_, i) => (
+                            {Array.from({ length: tree.maxRank }).map((_, i) => (
                               <div key={i} className={`w-2 h-2 rounded-sm ${colors.rankBg}`} />
                             ))}
                           </div>
@@ -357,7 +386,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                             )}
                           </div>
                           <div className="flex gap-0.5 shrink-0 ml-2">
-                            {Array.from({ length: MAX_RANK }).map((_, i) => (
+                            {Array.from({ length: tree.maxRank }).map((_, i) => (
                               <div
                                 key={i}
                                 className={`w-2.5 h-2.5 rounded-sm ${i < rank ? colors.rankFill : colors.rankBg}`}
