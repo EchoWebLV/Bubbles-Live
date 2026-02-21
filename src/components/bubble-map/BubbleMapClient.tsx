@@ -16,6 +16,8 @@ import {
   EffectsState,
   createInitialEffectsState,
   updateEffects,
+  createDeathbombExplosion,
+  createBulletPopFirework,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 
@@ -48,7 +50,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP', maxRank: 5 },
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+1 HP/sec', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.3 HP/sec', maxRank: 5 },
       { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit', maxRank: 5 },
       { id: 'armor', name: 'Armor', desc: '-8% incoming dmg', maxRank: 5 },
     ],
@@ -60,7 +62,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'swift', name: 'Swift', desc: '+10% move speed', maxRank: 5 },
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown', maxRank: 5 },
-      { id: 'evasion', name: 'Evasion', desc: '+6% dodge chance', maxRank: 5 },
+      { id: 'evasion', name: 'Evasion', desc: '+8% dodge chance', maxRank: 5 },
       { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time', maxRank: 5 },
       { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast', maxRank: 5 },
     ],
@@ -82,10 +84,10 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '🔰',
     talents: [
-      { id: 'deflect', name: 'Deflect', desc: '+5% bullet reflect', maxRank: 3 },
+      { id: 'deflect', name: 'Deflect', desc: '+10% bullet reflect', maxRank: 3 },
       { id: 'absorb', name: 'Absorb', desc: '+10% kill shield', maxRank: 3 },
       { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP', maxRank: 3 },
-      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 1.5s every 15/12/9s', maxRank: 3 },
+      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 2s every 15/12/9s', maxRank: 3 },
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8s', maxRank: 3 },
     ],
   },
@@ -96,9 +98,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill', maxRank: 3 },
       { id: 'homing', name: 'Homing', desc: '+10% hit radius', maxRank: 3 },
-      { id: 'ricochet', name: 'Ricochet', desc: '+10% bounce chance', maxRank: 3 },
-      { id: 'deathbomb', name: 'Deathbomb', desc: '+10% HP as explosion', maxRank: 3 },
-      { id: 'frenzy', name: 'Frenzy', desc: '+15% fire rate/kill', maxRank: 3 },
+      { id: 'ricochet', name: 'Ricochet', desc: '+15% bounce chance', maxRank: 3 },
+      { id: 'deathbomb', name: 'Deathbomb', desc: '+15% HP as explosion', maxRank: 3 },
+      { id: 'frenzy', name: 'Frenzy', desc: '+8% fire rate/kill', maxRank: 3 },
     ],
   },
 } as const;
@@ -703,6 +705,33 @@ export function BubbleMapClient() {
 
   const isLoading = !gameState;
 
+  const processedVfxRef = useRef<Set<string>>(new Set());
+  const vfxList = gameState?.vfx || [];
+  useEffect(() => {
+    if (vfxList.length === 0) return;
+    const newEffects: ReturnType<typeof createDeathbombExplosion>[] = [];
+    for (const v of vfxList) {
+      const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
+      if (processedVfxRef.current.has(key)) continue;
+      processedVfxRef.current.add(key);
+      if (v.type === 'deathbomb') {
+        newEffects.push(createDeathbombExplosion(v.x, v.y, v.radius || 200, v.color));
+      } else if (v.type === 'bulletPop') {
+        newEffects.push(createBulletPopFirework(v.x, v.y, v.color));
+      }
+    }
+    if (newEffects.length > 0) {
+      setEffectsState(prev => ({
+        ...prev,
+        explosions: [...prev.explosions, ...newEffects],
+      }));
+    }
+    if (processedVfxRef.current.size > 500) {
+      const entries = Array.from(processedVfxRef.current);
+      processedVfxRef.current = new Set(entries.slice(-200));
+    }
+  }, [vfxList]);
+
   return (
     <div 
       className={`relative w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} touch-none ${isShaking ? 'camera-shake' : ''}`}
@@ -1103,6 +1132,17 @@ export function BubbleMapClient() {
                     <span className="text-slate-400">KD: {deaths > 0 ? (kills / deaths).toFixed(1) : kills.toFixed(0)}</span>
                   </div>
                   <button
+                    onClick={() => setFollowingAddress(followingAddress === connectedWalletAddress ? null : connectedWalletAddress)}
+                    className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border ${
+                      followingAddress === connectedWalletAddress
+                        ? 'bg-cyan-900/40 hover:bg-cyan-900/60 border-cyan-500/40 text-cyan-300'
+                        : 'bg-slate-800/50 hover:bg-slate-700/50 border-slate-600/30 text-slate-300'
+                    }`}
+                  >
+                    <Crosshair className="w-3 h-3" />
+                    {followingAddress === connectedWalletAddress ? 'Unfollow' : 'Follow Me'}
+                  </button>
+                  <button
                     onClick={() => setShowTalentTree(!showTalentTree)}
                     className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors border ${
                       tp > 0
@@ -1230,9 +1270,10 @@ export function BubbleMapClient() {
           .map(ann => (
             <div
               key={ann.id}
-              className="absolute inset-0 flex items-center justify-center"
+              className="absolute inset-0 flex justify-center"
               style={{
                 animation: 'streak-pulse 3s ease-out forwards',
+                paddingTop: '25vh',
               }}
             >
               <div className="text-center">

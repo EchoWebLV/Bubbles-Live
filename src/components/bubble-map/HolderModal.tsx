@@ -24,7 +24,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP' },
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage' },
-      { id: 'regeneration', name: 'Regeneration', desc: '+1 HP/sec' },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.3 HP/sec' },
       { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit' },
       { id: 'armor', name: 'Armor', desc: '-8% incoming dmg' },
     ],
@@ -37,7 +37,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'swift', name: 'Swift', desc: '+10% move speed' },
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown' },
-      { id: 'evasion', name: 'Evasion', desc: '+6% dodge chance' },
+      { id: 'evasion', name: 'Evasion', desc: '+8% dodge chance' },
       { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time' },
       { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast' },
     ],
@@ -61,10 +61,10 @@ const TALENT_TREES = {
     icon: '\u{1F530}',
     maxRank: 3,
     talents: [
-      { id: 'deflect', name: 'Deflect', desc: '+5% bullet reflect' },
+      { id: 'deflect', name: 'Deflect', desc: '+10% bullet reflect' },
       { id: 'absorb', name: 'Absorb', desc: '+10% kill shield' },
       { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP' },
-      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 1.5s every 15/12/9s' },
+      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 2s every 15/12/9s' },
       { id: 'dash', name: 'Dash', desc: 'Burst dash 12/10/8s' },
     ],
   },
@@ -76,9 +76,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill' },
       { id: 'homing', name: 'Homing', desc: '+10% hit radius' },
-      { id: 'ricochet', name: 'Ricochet', desc: '+10% bounce chance' },
-      { id: 'deathbomb', name: 'Deathbomb', desc: '+10% HP as explosion' },
-      { id: 'frenzy', name: 'Frenzy', desc: '+15% fire rate/kill' },
+      { id: 'ricochet', name: 'Ricochet', desc: '+15% bounce chance' },
+      { id: 'deathbomb', name: 'Deathbomb', desc: '+15% HP as explosion' },
+      { id: 'frenzy', name: 'Frenzy', desc: '+8% fire rate/kill' },
     ],
   },
 } as const;

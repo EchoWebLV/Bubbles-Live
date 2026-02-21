@@ -34,8 +34,8 @@ const STRENGTH = {
     description: 'Heal {value} HP/sec',
     tree: 'strength',
     maxRank: MAX_RANK_OLD,
-    perRank: 1,           // +1 HP/sec per rank
-    hardCap: 5,           // max 5 HP/sec
+    perRank: 0.3,         // +0.3 HP/sec per rank
+    hardCap: 1.5,         // max 1.5 HP/sec
     healCeiling: 0.80,    // only heals up to 80% of max HP
   },
   lifesteal: {
@@ -87,8 +87,8 @@ const SPEED = {
     description: '{value}% dodge chance',
     tree: 'speed',
     maxRank: MAX_RANK_OLD,
-    perRank: 0.06,        // +6% per rank
-    hardCap: 0.30,        // max 30% dodge
+    perRank: 0.08,        // +8% per rank
+    hardCap: 0.40,        // max 40% dodge
   },
   quickRespawn: {
     id: 'quickRespawn',
@@ -176,8 +176,8 @@ const UTILITY = {
     description: '{value}% chance to reflect bullets',
     tree: 'utility',
     maxRank: MAX_RANK_NEW,
-    perRank: 0.05,        // +5% per rank
-    hardCap: 0.15,        // max 15% reflect
+    perRank: 0.10,        // +10% per rank
+    hardCap: 0.30,        // max 30% reflect
   },
   absorb: {
     id: 'absorb',
@@ -206,7 +206,7 @@ const UTILITY = {
     tree: 'utility',
     maxRank: MAX_RANK_NEW,
     cooldownMs: [15000, 12000, 9000],
-    durationMs: 1500,
+    durationMs: 2000,
   },
   dash: {
     id: 'dash',
@@ -215,7 +215,7 @@ const UTILITY = {
     tree: 'utility',
     maxRank: MAX_RANK_NEW,
     cooldownMs: [12000, 10000, 8000],
-    dashStrength: 8,      // velocity multiplier on dash
+    dashStrength: 5,      // velocity multiplier on dash
   },
 };
 
@@ -246,8 +246,8 @@ const CHAOS = {
     description: '{value}% chance to bounce to 2nd target',
     tree: 'chaos',
     maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.30,        // max 30%
+    perRank: 0.15,        // +15% per rank
+    hardCap: 0.45,        // max 45%
     bounceDamage: 0.60,   // bounce bullet does 60% damage
     bounceRange: 200,     // pixels — max range for bounce target
   },
@@ -257,9 +257,9 @@ const CHAOS = {
     description: 'Explode on death for {value}% max HP damage',
     tree: 'chaos',
     maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.30,        // max 30%
-    explosionRadius: 120, // pixels
+    perRank: 0.15,        // +15% per rank
+    hardCap: 0.45,        // max 45%
+    explosionRadius: 200, // pixels
   },
   frenzy: {
     id: 'frenzy',
@@ -267,10 +267,11 @@ const CHAOS = {
     description: '+{value}% fire rate per kill streak',
     tree: 'chaos',
     maxRank: MAX_RANK_NEW,
-    perRank: 0.15,        // +15% per kill per rank
-    hardCap: 0.45,        // max +45% per kill
-    decayMs: 5000,        // stacks reset after 5s without a kill
-    maxStacks: 5,
+    perRank: 0.08,        // +8% per kill per rank
+    hardCap: 0.24,        // max +24% per kill
+    decayMs: 4000,        // stacks reset after 4s without a kill
+    maxStacks: 3,
+    minMultiplier: 0.40,  // fire rate can't drop below 40% of base (60% max boost)
   },
 };
 

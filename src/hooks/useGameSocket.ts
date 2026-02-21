@@ -105,11 +105,21 @@ export interface GamePopEffect {
   progress: number;
 }
 
+export interface GameVfx {
+  type: 'deathbomb' | 'bulletPop';
+  x: number;
+  y: number;
+  radius?: number;
+  color: string;
+  createdAt: number;
+}
+
 export interface GameState {
   holders: GameHolder[];
   battleBubbles: GameBattleBubble[];
   bullets: GameBullet[];
   damageNumbers: GameDamageNumber[];
+  vfx: GameVfx[];
   killFeed: GameKillFeed[];
   eventLog: string[];
   topKillers: { address: string; kills: number; level: number }[];

@@ -113,6 +113,109 @@ export function createExplosion(x: number, y: number, color: string): Explosion 
   };
 }
 
+// Create deathbomb explosion effect
+export function createDeathbombExplosion(x: number, y: number, radius: number, color: string): Explosion {
+  const particles: Particle[] = [];
+  const particleCount = 40;
+
+  for (let i = 0; i < particleCount; i++) {
+    const angle = (i / particleCount) * Math.PI * 2;
+    const speed = 3 + Math.random() * 6;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 4 + Math.random() * 6,
+      color,
+      alpha: 1,
+      decay: 0.015 + Math.random() * 0.01,
+    });
+  }
+
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 5 + Math.random() * 8;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 2 + Math.random() * 3,
+      color: "#ffffff",
+      alpha: 1,
+      decay: 0.02 + Math.random() * 0.015,
+    });
+  }
+
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 4;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 3 + Math.random() * 5,
+      color: "#ff6600",
+      alpha: 1,
+      decay: 0.018 + Math.random() * 0.012,
+    });
+  }
+
+  return {
+    x,
+    y,
+    particles,
+    createdAt: Date.now(),
+    duration: 2500,
+  };
+}
+
+// Create small firework for bullet that missed its target
+export function createBulletPopFirework(x: number, y: number, color: string): Explosion {
+  const particles: Particle[] = [];
+  const particleCount = 8;
+
+  for (let i = 0; i < particleCount; i++) {
+    const angle = (i / particleCount) * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 2;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 1.5 + Math.random() * 2,
+      color,
+      alpha: 0.8,
+      decay: 0.04 + Math.random() * 0.03,
+    });
+  }
+
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 2.5;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 1 + Math.random() * 1.5,
+      color: "#ffffff",
+      alpha: 0.9,
+      decay: 0.05 + Math.random() * 0.03,
+    });
+  }
+
+  return {
+    x,
+    y,
+    particles,
+    createdAt: Date.now(),
+    duration: 800,
+  };
+}
+
 // Create ripple effect for whale movement
 export function createRipple(x: number, y: number, color: string, maxRadius: number = 500): Ripple {
   return {

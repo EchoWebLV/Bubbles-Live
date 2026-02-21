@@ -44,7 +44,15 @@ const PROGRESSION = {
 };
 
 function calcLevel(xp) {
-  return Math.min(1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale)), MAX_LEVEL);
+  const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
+  if (baseLevel <= 50) return Math.min(baseLevel, MAX_LEVEL);
+  // After level 50, each level costs 50% more than the previous (exponential)
+  const level50Xp = 49 * 49 * PROGRESSION.levelScale; // XP needed to reach 50
+  const extraXp = xp - level50Xp;
+  const baseCost = 1000;
+  const ratio = 1.5;
+  const extraLevels = Math.floor(Math.log(1 + extraXp * (ratio - 1) / baseCost) / Math.log(ratio));
+  return Math.min(50 + extraLevels, MAX_LEVEL);
 }
 function calcMaxHealth(healthLevel) {
   return PROGRESSION.baseHealth + (healthLevel - 1) * PROGRESSION.healthPerLevel;
@@ -53,7 +61,7 @@ function calcAttackPower(attackLevel) {
   return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
 }
 function calcTalentPoints(level) {
-  return Math.max(0, level - 1);
+  return Math.max(0, Math.floor((level - 1) / 2));
 }
 
 const TALENT_NAME_TO_CHAIN_ID = {
@@ -68,21 +76,18 @@ const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
   Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
 );
 
-// Auto-allocate talent points for idle players.
+// Auto-allocate talent points for idle players (randomized builds).
 // Returns the list of talent ids that were allocated (for chain sync).
 function autoAllocateTalents(bubble) {
   const available = calcTalentPoints(calcLevel(bubble.xp)) - totalPointsSpent(bubble.talents);
   if (available <= 0) return [];
   const allocated = [];
   for (let i = 0; i < available; i++) {
-    for (const id of AUTO_ALLOCATE_ORDER) {
-      const t = ALL_TALENTS[id];
-      if (bubble.talents[id] < t.maxRank) {
-        bubble.talents[id]++;
-        allocated.push(id);
-        break;
-      }
-    }
+    const candidates = AUTO_ALLOCATE_ORDER.filter(id => bubble.talents[id] < ALL_TALENTS[id].maxRank);
+    if (candidates.length === 0) break;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    bubble.talents[pick]++;
+    allocated.push(pick);
   }
   return allocated;
 }
@@ -94,6 +99,7 @@ class GameState {
     this.battleBubbles = new Map();
     this.bullets = [];
     this.damageNumbers = [];
+    this.vfx = [];
     this.killFeed = [];
     this.eventLog = [];
     this.topKillers = [];
@@ -494,14 +500,24 @@ class GameState {
         holder.vx = Math.cos(angle) * PHYSICS_CONFIG.minSpeed;
         holder.vy = Math.sin(angle) * PHYSICS_CONFIG.minSpeed;
       }
-      // Swift talent: increase max speed
+      // Swift talent: increase max speed AND boost actual velocity
       const bb = this.battleBubbles.get(holder.address);
       const swiftVal = bb ? getTalentValue('swift', bb.talents?.swift || 0) : 0;
       const effectiveMax = Math.min(
         PHYSICS_CONFIG.maxSpeed * (1 + swiftVal),
         ALL_TALENTS.swift.maxSpeedCap
       );
-      if (speed > effectiveMax) {
+      if (swiftVal > 0 && speed > 0 && speed < effectiveMax) {
+        const boost = 1 + swiftVal * 0.5;
+        holder.vx *= boost;
+        holder.vy *= boost;
+        const boostedSpeed = Math.sqrt(holder.vx ** 2 + holder.vy ** 2);
+        if (boostedSpeed > effectiveMax) {
+          const clamp = effectiveMax / boostedSpeed;
+          holder.vx *= clamp;
+          holder.vy *= clamp;
+        }
+      } else if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
         holder.vy *= scale;
@@ -677,7 +693,8 @@ class GameState {
       // Frenzy talent: kill streak boosts fire rate
       if (battleBubble.frenzyStacks > 0) {
         const frenzyVal = getTalentValue('frenzy', battleBubble.talents?.frenzy || 0);
-        effectiveFireRate *= (1 - frenzyVal * battleBubble.frenzyStacks);
+        const frenzyMult = Math.max(ALL_TALENTS.frenzy.minMultiplier, 1 - frenzyVal * battleBubble.frenzyStacks);
+        effectiveFireRate *= frenzyMult;
       }
 
       effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs);
@@ -873,6 +890,9 @@ class GameState {
       if (bullet.progress >= 1.1 ||
           bullet.x < -50 || bullet.x > width + 50 ||
           bullet.y < -50 || bullet.y > height + 50) {
+        if (bullet.progress >= 1.0 && bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
+          this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now });
+        }
         bulletsToRemove.add(bullet.id);
         return;
       }
@@ -1068,6 +1088,7 @@ class GameState {
           if (deathbombVal > 0) {
             const explosionDmg = targetBattle.maxHealth * deathbombVal;
             const explosionRadius = ALL_TALENTS.deathbomb.explosionRadius;
+            this.vfx.push({ type: 'deathbomb', x: target.x, y: target.y, radius: explosionRadius, color: target.color || '#ff4444', createdAt: now });
             this.holders.forEach(h => {
               if (h.address === target.address || h.x === undefined) return;
               const hBattle = this.battleBubbles.get(h.address);
@@ -1079,6 +1100,9 @@ class GameState {
                 const falloff = 1 - (eDist / explosionRadius);
                 const dmg = explosionDmg * falloff;
                 hBattle.health -= dmg;
+                if (this.magicBlockReady) {
+                  this._queueAttack(target.address, h.address, dmg);
+                }
                 this.damageNumbers.push({
                   id: `dmg-${now}-${Math.random()}`,
                   x: h.x + (Math.random() - 0.5) * 20,
@@ -1093,7 +1117,8 @@ class GameState {
 
           // Ghost duration scales with level: 20s base + 1s per level
           const victimLevel = calcLevel(targetBattle.xp || 0);
-          const baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
+          let baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
+          if (victimLevel >= 50) baseGhostMs += 2000;
           const qrVal = getTalentValue('quickRespawn', targetBattle.talents?.quickRespawn || 0);
           const ghostMs = Math.max(
             baseGhostMs * (1 - qrVal),
@@ -1103,7 +1128,8 @@ class GameState {
 
           if (shooterBattle) {
             shooterBattle.kills++;
-            const killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+            let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+            if (victimLevel >= 50) killXp *= 2;
             shooterBattle.xp += killXp;
             const newLevel = calcLevel(shooterBattle.xp);
             shooterBattle.healthLevel = newLevel;
@@ -1177,6 +1203,8 @@ class GameState {
     this.damageNumbers = this.damageNumbers
       .map(dn => ({ ...dn, y: dn.y - 0.5, alpha: dn.alpha - 0.02 }))
       .filter(dn => dn.alpha > 0);
+
+    this.vfx = this.vfx.filter(v => now - v.createdAt < 1500);
 
     // Process attack queue (send to ER)
     this._processAttackQueue();
@@ -1765,6 +1793,7 @@ class GameState {
         curveStrength: b.curveStrength,
       })),
       damageNumbers: this.damageNumbers,
+      vfx: this.vfx,
       killFeed: this.killFeed,
       eventLog: this.eventLog,
       topKillers: this.topKillers,
