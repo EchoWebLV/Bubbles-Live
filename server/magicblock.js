@@ -214,6 +214,10 @@ class MagicBlockService {
       }
 
       this.ready = true;
+
+      // Discover all existing player accounts so state survives restarts
+      await this._discoverExistingPlayers();
+
       console.log('MagicBlock: ER integration ready!');
       this._logEvent('system', 'Ephemeral Rollup integration active');
       return true;
@@ -224,6 +228,80 @@ class MagicBlockService {
       this.ready = false;
       return false;
     }
+  }
+
+  // ─── Player Discovery (restore state across restarts) ────────────
+
+  async _discoverExistingPlayers() {
+    const PLAYER_STATE_SIZE = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1;
+    let discovered = 0;
+
+    // Try ER first (delegated accounts live there)
+    try {
+      const erAccounts = await this.erConnection.getProgramAccounts(COMBAT_PROGRAM_ID, {
+        filters: [{ dataSize: PLAYER_STATE_SIZE }],
+      });
+      console.log(`MagicBlock: Found ${erAccounts.length} player accounts on ER`);
+
+      for (const { pubkey, account } of erAccounts) {
+        try {
+          const decoded = this.erProgram.coder.accounts.decode('playerState', account.data);
+          const wallet = decoded.wallet.toBase58();
+          if (!this.playerMap.has(wallet)) {
+            const [playerPda, playerBump] = PublicKey.findProgramAddressSync(
+              [PLAYER_SEED, decoded.wallet.toBuffer()],
+              COMBAT_PROGRAM_ID
+            );
+            this.playerMap.set(wallet, { playerPda, playerBump, walletAddress: wallet });
+            this.playerDelegated.add(wallet);
+            discovered++;
+          }
+        } catch (e) { /* skip malformed accounts */ }
+      }
+    } catch (err) {
+      console.warn('MagicBlock: Could not scan ER for existing players:', err.message);
+    }
+
+    // Also scan base layer for accounts not yet delegated
+    try {
+      const baseAccounts = await this.baseConnection.getProgramAccounts(COMBAT_PROGRAM_ID, {
+        filters: [{ dataSize: PLAYER_STATE_SIZE }],
+      });
+
+      for (const { pubkey, account } of baseAccounts) {
+        try {
+          const decoded = this.baseProgram.coder.accounts.decode('playerState', account.data);
+          const wallet = decoded.wallet.toBase58();
+          if (!this.playerMap.has(wallet)) {
+            const [playerPda, playerBump] = PublicKey.findProgramAddressSync(
+              [PLAYER_SEED, decoded.wallet.toBuffer()],
+              COMBAT_PROGRAM_ID
+            );
+            this.playerMap.set(wallet, { playerPda, playerBump, walletAddress: wallet });
+            discovered++;
+          }
+        } catch (e) { /* skip malformed accounts */ }
+      }
+    } catch (err) {
+      console.warn('MagicBlock: Could not scan base layer for existing players:', err.message);
+    }
+
+    // Also check for delegated accounts on base layer (owner = delegation program)
+    try {
+      const delegatedAccounts = await this.baseConnection.getProgramAccounts(DELEGATION_PROGRAM_ID, {
+        filters: [{ dataSize: PLAYER_STATE_SIZE }],
+      });
+
+      for (const { pubkey } of delegatedAccounts) {
+        for (const [wallet, info] of this.playerMap) {
+          if (info.playerPda.equals(pubkey)) {
+            this.playerDelegated.add(wallet);
+          }
+        }
+      }
+    } catch (err) { /* delegation scan is best-effort */ }
+
+    console.log(`MagicBlock: Discovered ${discovered} existing players, ${this.playerDelegated.size} delegated`);
   }
 
   // ─── Delegation ──────────────────────────────────────────────────
