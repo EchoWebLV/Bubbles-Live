@@ -21,6 +21,7 @@ const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
 const { GameState } = require('./gameState');
+const { GovernanceManager } = require('./governance');
 const { migrate } = require('./db');
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -94,6 +95,7 @@ console.log('Initializing Next.js...');
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 const gameState = new GameState();
+const governance = new GovernanceManager();
 
 app.prepare().then(async () => {
   console.log('Next.js ready, starting server...');
@@ -129,6 +131,24 @@ app.prepare().then(async () => {
         'Cache-Control': 'public, max-age=30',
       });
       res.end(body);
+      return;
+    }
+
+    // ─── Governance API ───────────────────────────────────────────
+    if (parsedUrl.pathname === '/api/governance') {
+      const body = JSON.stringify(governance.getStatus());
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=10',
+      });
+      res.end(body);
+      return;
+    }
+
+    if (parsedUrl.pathname === '/api/governance/voter' && parsedUrl.query.wallet) {
+      const info = await governance.getVoterInfo(parsedUrl.query.wallet);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(info));
       return;
     }
 
@@ -338,6 +358,10 @@ app.prepare().then(async () => {
 
   await migrate();
   gameState.start();
+
+  governance.initialize().then(ok => {
+    if (ok) governance.startPolling(30000);
+  });
 
   httpServer
     .once('error', (err) => {
