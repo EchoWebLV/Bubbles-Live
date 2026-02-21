@@ -23,7 +23,7 @@ const ER_WS = 'wss://devnet.magicblock.app';
 
 // PDA Seeds (must match Rust program)
 const ARENA_SEED = Buffer.from('arena');
-const PLAYER_SEED = Buffer.from('player');
+const PLAYER_SEED = Buffer.from('player_v2');
 
 // On-chain uses u16 integers for damage/attack (BASE_ATTACK=10).
 // Local game uses floats (bulletDamage=0.1).  Scale factor = 100.
@@ -76,10 +76,6 @@ class MagicBlockService {
     // Cleared when the player respawns.
     this.deathLogged = new Set();
 
-    // Circuit breaker: skip on-chain ops for accounts that repeatedly fail
-    // with AccountDidNotDeserialize (old 82-byte accounts not yet migrated).
-    this._brokenAccounts = new Set();
-    this._accountFailCount = new Map();
 
     // Stats
     this.stats = {
@@ -117,25 +113,6 @@ class MagicBlockService {
       this.serverKeypair = null;
       this.wallet = null;
     }
-  }
-
-  // ─── Circuit Breaker (skip broken on-chain accounts) ────────────
-
-  _isAccountBroken(wallet) {
-    return this._brokenAccounts.has(wallet);
-  }
-
-  _recordDeserializeFailure(wallet) {
-    const count = (this._accountFailCount.get(wallet) || 0) + 1;
-    this._accountFailCount.set(wallet, count);
-    if (count >= 3 && !this._brokenAccounts.has(wallet)) {
-      this._brokenAccounts.add(wallet);
-      console.warn(`MagicBlock: Account ${wallet.slice(0, 6)}... marked broken (needs migration). Skipping on-chain ops.`);
-    }
-  }
-
-  _isDeserializeError(err) {
-    return err && err.message && err.message.includes('AccountDidNotDeserialize');
   }
 
   // ─── Event Logging ───────────────────────────────────────────────
@@ -261,29 +238,22 @@ class MagicBlockService {
   async _discoverExistingPlayers() {
     const PLAYER_STATE_SIZE = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1;
     let discovered = 0;
-    let broken = 0;
     const RPC_TIMEOUT = 15000;
 
     const withTimeout = (promise, ms) =>
       Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('RPC timeout')), ms))]);
 
-    // Scan ER for ALL program accounts (any size) to detect old/broken ones
+    // Scan ER for valid player accounts
     try {
       const erAccounts = await withTimeout(
         this.erConnection.getProgramAccounts(COMBAT_PROGRAM_ID),
         RPC_TIMEOUT
       );
 
-      const correctSize = [];
-      const wrongSize = [];
-      for (const a of erAccounts) {
-        if (a.account.data.length === PLAYER_STATE_SIZE) correctSize.push(a);
-        else if (a.account.data.length !== 53) wrongSize.push(a); // 53 = Arena
-      }
+      const validAccounts = erAccounts.filter(a => a.account.data.length === PLAYER_STATE_SIZE);
+      console.log(`MagicBlock: ER accounts — ${validAccounts.length} valid players found`);
 
-      console.log(`MagicBlock: ER accounts — ${correctSize.length} valid, ${wrongSize.length} wrong-size (need migration), 1 arena`);
-
-      for (const { pubkey, account } of correctSize) {
+      for (const { pubkey, account } of validAccounts) {
         try {
           const decoded = this.erProgram.coder.accounts.decode('playerState', account.data);
           const wallet = decoded.wallet.toBase58();
@@ -297,15 +267,6 @@ class MagicBlockService {
             discovered++;
           }
         } catch (e) { /* skip malformed */ }
-      }
-
-      // Pre-mark wrong-size accounts as broken (avoid wasting RPC calls)
-      for (const { account } of wrongSize) {
-        try {
-          const wallet = new PublicKey(account.data.slice(8, 40)).toBase58();
-          this._brokenAccounts.add(wallet);
-          broken++;
-        } catch (e) { /* skip */ }
       }
     } catch (err) {
       console.warn('MagicBlock: ER player scan skipped:', err.message);
@@ -349,11 +310,7 @@ class MagicBlockService {
       } catch (e) { /* best-effort */ }
     }
 
-    console.log(`MagicBlock: Discovered ${discovered} valid players, ${broken} broken (need migration), ${this.playerDelegated.size} delegated`);
-
-    if (this._brokenAccounts.size > 0) {
-      console.log(`MagicBlock: ${this._brokenAccounts.size} old-format accounts detected — circuit breaker active, on-chain ops skipped for these wallets`);
-    }
+    console.log(`MagicBlock: Discovered ${discovered} valid players, ${this.playerDelegated.size} delegated`);
   }
 
   // ─── Delegation ──────────────────────────────────────────────────
@@ -517,8 +474,6 @@ class MagicBlockService {
     if (!attacker || !victim) return null;
     if (!this.playerDelegated.has(attackerAddress) || !this.playerDelegated.has(victimAddress)) return null;
 
-    if (this._isAccountBroken(attackerAddress) || this._isAccountBroken(victimAddress)) return null;
-
     // Skip if victim already confirmed dead on-chain (avoid VictimDead errors)
     if (this.deathLogged.has(victimAddress)) return null;
 
@@ -583,11 +538,6 @@ class MagicBlockService {
       return tx;
     } catch (err) {
       this.stats.attacksFailed++;
-      if (this._isDeserializeError(err)) {
-        this._recordDeserializeFailure(attackerAddress);
-        this._recordDeserializeFailure(victimAddress);
-        return null;
-      }
       const msg = extractTxError(err);
       const expected = ['blockhash', 'VictimDead', 'AttackerDead', 'NotInitialized'];
       if (!expected.some(e => msg.includes(e))) {
@@ -599,7 +549,6 @@ class MagicBlockService {
 
   async respawnPlayer(walletAddress) {
     if (!this.ready) return null;
-    if (this._isAccountBroken(walletAddress)) return null;
     const player = this.playerMap.get(walletAddress);
     if (!player || !this.playerDelegated.has(walletAddress)) return null;
 
@@ -615,10 +564,6 @@ class MagicBlockService {
       this._logEvent('respawn', `Player ${walletAddress.slice(0, 6)}... respawned on ER`, tx, { wallet: walletAddress, _er: true });
       return tx;
     } catch (err) {
-      if (this._isDeserializeError(err)) {
-        this._recordDeserializeFailure(walletAddress);
-        return null;
-      }
       const msg = extractTxError(err);
       const expected = ['AlreadyAlive', 'RespawnCooldown', 'blockhash'];
       if (!expected.some(e => msg.includes(e))) {
@@ -630,7 +575,6 @@ class MagicBlockService {
 
   async upgradeStat(walletAddress, statType) {
     if (!this.ready) return false;
-    if (this._isAccountBroken(walletAddress)) return false;
     const player = this.playerMap.get(walletAddress);
     if (!player || !this.playerDelegated.has(walletAddress)) return false;
 
@@ -651,10 +595,6 @@ class MagicBlockService {
       });
       return true;
     } catch (err) {
-      if (this._isDeserializeError(err)) {
-        this._recordDeserializeFailure(walletAddress);
-        return false;
-      }
       const msg = extractTxError(err);
       console.error(`MagicBlock: Upgrade failed for ${walletAddress.slice(0, 6)}:`, msg);
       this._logEvent('error', `Upgrade failed: ${msg}`, null, { wallet: walletAddress });
@@ -666,7 +606,6 @@ class MagicBlockService {
 
   async allocateTalentOnChain(walletAddress, talentId) {
     if (!this.ready) return false;
-    if (this._isAccountBroken(walletAddress)) return false;
     const player = this.playerMap.get(walletAddress);
     if (!player || !this.playerDelegated.has(walletAddress)) return false;
 
@@ -683,10 +622,6 @@ class MagicBlockService {
       });
       return true;
     } catch (err) {
-      if (this._isDeserializeError(err)) {
-        this._recordDeserializeFailure(walletAddress);
-        return false;
-      }
       const msg = extractTxError(err);
       const expected = ['NoTalentPoints', 'TalentMaxed', 'blockhash'];
       if (!expected.some(e => msg.includes(e))) {
@@ -698,7 +633,6 @@ class MagicBlockService {
 
   async resetTalentsOnChain(walletAddress) {
     if (!this.ready) return false;
-    if (this._isAccountBroken(walletAddress)) return false;
     const player = this.playerMap.get(walletAddress);
     if (!player || !this.playerDelegated.has(walletAddress)) return false;
 
@@ -789,7 +723,6 @@ class MagicBlockService {
 
   async getPlayerState(walletAddress) {
     if (!this.ready) return null;
-    if (this._isAccountBroken(walletAddress)) return null;
     const player = this.playerMap.get(walletAddress);
     if (!player) return null;
 
@@ -938,7 +871,6 @@ class MagicBlockService {
       arenaDelegated: this.arenaDelegated,
       playersRegistered: this.playerMap.size,
       playersDelegated: this.playerDelegated.size,
-      brokenAccounts: this._brokenAccounts.size,
       stats: { ...this.stats },
       eventLog: this.eventLog.slice(0, 100),
       rpc: {
