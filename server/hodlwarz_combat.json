@@ -562,6 +562,39 @@
       "args": []
     },
     {
+      "name": "migrate_player",
+      "docs": [
+        "Migrate an old player account from 82 bytes to 108 bytes (adds talent + manual_build fields).",
+        "Uses UncheckedAccount because Anchor can't deserialize the old smaller struct."
+      ],
+      "discriminator": [
+        194,
+        21,
+        151,
+        9,
+        90,
+        168,
+        177,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "player_state",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "process_attack",
       "docs": [
         "Process an attack: attacker deals damage to victim. Runs on ER."
@@ -890,6 +923,11 @@
       "code": 6011,
       "name": "TalentMaxed",
       "msg": "Talent already at max rank"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidMigration",
+      "msg": "Invalid migration: account is not a valid old-format PlayerState"
     }
   ],
   "types": [

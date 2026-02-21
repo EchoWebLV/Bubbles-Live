@@ -332,6 +332,45 @@ pub mod hodlwarz_combat {
         Ok(())
     }
 
+    /// Migrate an old player account from 82 bytes to 108 bytes (adds talent + manual_build fields).
+    /// Uses UncheckedAccount because Anchor can't deserialize the old smaller struct.
+    pub fn migrate_player(ctx: Context<MigratePlayer>) -> Result<()> {
+        let player_info = &ctx.accounts.player_state;
+        let current_len = player_info.data_len();
+        let target_len: usize = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1; // 108
+
+        if current_len == target_len {
+            msg!("Account already at target size, no migration needed");
+            return Ok(());
+        }
+
+        require!(current_len < target_len, CombatError::InvalidMigration);
+
+        // Verify the discriminator matches PlayerState
+        let data = player_info.try_borrow_data()?;
+        let expected_disc: [u8; 8] = [56, 3, 60, 86, 174, 16, 244, 195];
+        require!(data[..8] == expected_disc, CombatError::InvalidMigration);
+        drop(data);
+
+        // Realloc to new size (new bytes are zero-initialized)
+        #[allow(deprecated)]
+        player_info.realloc(target_len, false)?;
+
+        // Transfer additional rent from payer if needed
+        let rent = Rent::get()?;
+        let new_min = rent.minimum_balance(target_len);
+        let old_balance = player_info.lamports();
+        if new_min > old_balance {
+            let diff = new_min - old_balance;
+            let payer = &ctx.accounts.authority;
+            **payer.try_borrow_mut_lamports()? -= diff;
+            **player_info.try_borrow_mut_lamports()? += diff;
+        }
+
+        msg!("Player account migrated from {} to {} bytes", current_len, target_len);
+        Ok(())
+    }
+
     /// Commit ER state back to base layer (keeps delegation active).
     pub fn commit_state(ctx: Context<CommitState>) -> Result<()> {
         commit_accounts(
@@ -614,6 +653,16 @@ pub struct ResetTalents<'info> {
     pub player_state: Account<'info, PlayerState>,
 }
 
+#[derive(Accounts)]
+pub struct MigratePlayer<'info> {
+    /// CHECK: Old player account that needs resizing — we verify discriminator manually
+    #[account(mut)]
+    pub player_state: AccountInfo<'info>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[commit]
 #[derive(Accounts)]
 pub struct CommitState<'info> {
@@ -660,4 +709,6 @@ pub enum CombatError {
     NoTalentPoints,
     #[msg("Talent already at max rank")]
     TalentMaxed,
+    #[msg("Invalid migration: account is not a valid old-format PlayerState")]
+    InvalidMigration,
 }
