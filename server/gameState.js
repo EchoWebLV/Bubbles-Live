@@ -500,24 +500,14 @@ class GameState {
         holder.vx = Math.cos(angle) * PHYSICS_CONFIG.minSpeed;
         holder.vy = Math.sin(angle) * PHYSICS_CONFIG.minSpeed;
       }
-      // Swift talent: increase max speed AND boost actual velocity
+      // Swift talent: increase max speed
       const bb = this.battleBubbles.get(holder.address);
       const swiftVal = bb ? getTalentValue('swift', bb.talents?.swift || 0) : 0;
       const effectiveMax = Math.min(
         PHYSICS_CONFIG.maxSpeed * (1 + swiftVal),
         ALL_TALENTS.swift.maxSpeedCap
       );
-      if (swiftVal > 0 && speed > 0 && speed < effectiveMax) {
-        const boost = 1 + swiftVal * 0.5;
-        holder.vx *= boost;
-        holder.vy *= boost;
-        const boostedSpeed = Math.sqrt(holder.vx ** 2 + holder.vy ** 2);
-        if (boostedSpeed > effectiveMax) {
-          const clamp = effectiveMax / boostedSpeed;
-          holder.vx *= clamp;
-          holder.vy *= clamp;
-        }
-      } else if (speed > effectiveMax) {
+      if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
         holder.vy *= scale;
