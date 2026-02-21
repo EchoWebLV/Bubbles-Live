@@ -745,6 +745,7 @@ class MagicBlockService {
           .accounts({
             playerState: playerPda,
             authority: this.serverKeypair.publicKey,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
 

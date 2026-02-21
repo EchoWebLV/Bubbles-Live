@@ -352,8 +352,25 @@ pub mod hodlwarz_combat {
         require!(data[..8] == expected_disc, CombatError::InvalidMigration);
         drop(data);
 
-        // Realloc to new size (new bytes are zero-initialized).
-        // No rent transfer needed — ER doesn't enforce rent exemption.
+        // Transfer additional rent via CPI before realloc
+        let rent = Rent::get()?;
+        let new_min = rent.minimum_balance(target_len);
+        let old_balance = player_info.lamports();
+        if new_min > old_balance {
+            let diff = new_min - old_balance;
+            anchor_lang::system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    anchor_lang::system_program::Transfer {
+                        from: ctx.accounts.authority.to_account_info(),
+                        to: player_info.to_account_info(),
+                    },
+                ),
+                diff,
+            )?;
+        }
+
+        // Realloc to new size (new bytes are zero-initialized)
         #[allow(deprecated)]
         player_info.realloc(target_len, false)?;
 
@@ -648,7 +665,9 @@ pub struct MigratePlayer<'info> {
     /// CHECK: Old player account that needs resizing — we verify discriminator manually
     #[account(mut)]
     pub player_state: AccountInfo<'info>,
+    #[account(mut)]
     pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[commit]
