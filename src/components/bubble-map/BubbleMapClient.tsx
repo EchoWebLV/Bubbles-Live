@@ -948,8 +948,8 @@ export function BubbleMapClient() {
         </motion.div>
       )}
 
-      {/* Kill Feed */}
-      {killFeed.length > 0 && (
+      {/* Kill Feed — hidden for now */}
+      {false && killFeed.length > 0 && (
         <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-10 w-44 sm:w-52">
           <div className="bg-slate-900/70 backdrop-blur-md rounded-lg border border-red-500/20 overflow-hidden">
             <div className="px-2 py-1 border-b border-red-500/10">
@@ -1300,8 +1300,8 @@ export function BubbleMapClient() {
         />
       )}
 
-      {/* Compact Bottom Control Bar */}
-      <div className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-20">
+      {/* Compact Bottom Control Bar — hidden for now */}
+      <div className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-20 hidden">
         <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-900/70 backdrop-blur-md rounded-full px-1.5 sm:px-2 py-1 sm:py-1.5 border border-slate-700/50 scale-90 sm:scale-100 origin-center">
           {/* Zoom Out */}
           <button

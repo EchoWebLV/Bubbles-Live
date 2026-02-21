@@ -603,7 +603,7 @@ class MagicBlockService {
     try {
       const allAccounts = await this.erConnection.getProgramAccounts(COMBAT_PROGRAM_ID, {
         filters: [
-          { dataSize: 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 15 + 1 },
+          { dataSize: 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1 },
         ],
       });
 
