@@ -328,7 +328,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
 
         {/* Talents Tab */}
         {tab === 'talents' && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 max-h-[55vh] overflow-y-auto space-y-2 pr-1">
             {totalSpent === 0 && (
               <div className="text-center text-xs text-slate-500 py-4">
                 No talents allocated yet
@@ -337,59 +337,41 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
 
             {Object.entries(TALENT_TREES).map(([treeKey, tree]) => {
               const colors = treeColorMap[tree.color];
-              const treeTalents = tree.talents.filter(t => (talents[t.id] || 0) > 0);
-              if (treeTalents.length === 0 && totalSpent > 0) return null;
-              if (totalSpent === 0) {
-                return (
-                  <div key={treeKey} className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
-                    <div className={`text-xs font-bold ${colors.text} flex items-center gap-2`}>
+              const treePoints = tree.talents.reduce((s, t) => s + (talents[t.id] || 0), 0);
+              const hasPoints = treePoints > 0;
+
+              return (
+                <div
+                  key={treeKey}
+                  className={`rounded-xl border ${colors.border} ${colors.bg} p-2.5 ${!hasPoints && totalSpent > 0 ? 'opacity-40' : ''}`}
+                >
+                  <div className={`text-xs font-bold ${colors.text} flex items-center justify-between`}>
+                    <div className="flex items-center gap-2">
                       <span>{tree.icon}</span>
                       {tree.name}
                     </div>
-                    <div className="mt-2 space-y-1.5">
-                      {tree.talents.map(talent => (
-                        <div key={talent.id} className="flex items-center justify-between">
-                          <span className="text-[11px] text-slate-500">{talent.name}</span>
-                          <div className="flex gap-0.5">
-                            {Array.from({ length: tree.maxRank }).map((_, i) => (
-                              <div key={i} className={`w-2 h-2 rounded-sm ${colors.rankBg}`} />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    {hasPoints && (
+                      <span className="text-[9px] opacity-60">{treePoints} pts</span>
+                    )}
                   </div>
-                );
-              }
-              return (
-                <motion.div
-                  key={treeKey}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}
-                >
-                  <div className={`text-xs font-bold ${colors.text} flex items-center gap-2 mb-2`}>
-                    <span>{tree.icon}</span>
-                    {tree.name}
-                  </div>
-                  <div className="space-y-1.5">
+                  <div className="mt-1.5 space-y-1">
                     {tree.talents.map(talent => {
                       const rank = talents[talent.id] || 0;
                       return (
-                        <div key={talent.id} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`text-[11px] font-medium ${rank > 0 ? 'text-white' : 'text-slate-500'}`}>
+                        <div key={talent.id} className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className={`text-[10px] font-medium truncate ${rank > 0 ? 'text-white' : 'text-slate-500'}`}>
                               {talent.name}
                             </span>
                             {rank > 0 && (
-                              <span className="text-[9px] text-slate-500">{talent.desc}</span>
+                              <span className="text-[8px] text-slate-500 truncate hidden sm:inline">{talent.desc}</span>
                             )}
                           </div>
-                          <div className="flex gap-0.5 shrink-0 ml-2">
+                          <div className="flex gap-0.5 shrink-0">
                             {Array.from({ length: tree.maxRank }).map((_, i) => (
                               <div
                                 key={i}
-                                className={`w-2.5 h-2.5 rounded-sm ${i < rank ? colors.rankFill : colors.rankBg}`}
+                                className={`w-2 h-2 rounded-sm ${i < rank ? colors.rankFill : colors.rankBg}`}
                               />
                             ))}
                           </div>
@@ -397,7 +379,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                       );
                     })}
                   </div>
-                </motion.div>
+                </div>
               );
             })}
 
