@@ -121,6 +121,34 @@ app.prepare().then(async () => {
       return;
     }
 
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/remove-photo') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const { walletAddress } = JSON.parse(body);
+          if (!walletAddress) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'walletAddress required' }));
+            return;
+          }
+          gameState.removePlayerPhoto(walletAddress);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, walletAddress }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
     if (parsedUrl.pathname === '/api/photos') {
       const photos = gameState.getPlayerPhotos();
       const body = JSON.stringify(photos);
