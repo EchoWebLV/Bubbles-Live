@@ -218,10 +218,13 @@ class MagicBlockService {
       console.log('MagicBlock: ER integration ready!');
       this._logEvent('system', 'Ephemeral Rollup integration active');
 
-      // Discover existing players in background (non-blocking so server starts fast)
-      this._discoverExistingPlayers().catch(err =>
-        console.warn('MagicBlock: Player discovery failed (non-fatal):', err.message)
-      );
+      // Discover existing players BEFORE returning — playerMap must be populated
+      // so that syncFromER() can restore kills/XP/levels on startup.
+      try {
+        await this._discoverExistingPlayers();
+      } catch (err) {
+        console.warn('MagicBlock: Player discovery failed (non-fatal):', err.message);
+      }
 
       return true;
     } catch (err) {
@@ -238,7 +241,7 @@ class MagicBlockService {
   async _discoverExistingPlayers() {
     const PLAYER_STATE_SIZE = 8 + 32 + 2 + 2 + 2 + 8 + 8 + 8 + 1 + 1 + 1 + 8 + 1 + 25 + 1;
     let discovered = 0;
-    const RPC_TIMEOUT = 15000;
+    const RPC_TIMEOUT = 30000;
 
     const withTimeout = (promise, ms) =>
       Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('RPC timeout')), ms))]);
