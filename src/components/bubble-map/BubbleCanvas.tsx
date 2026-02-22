@@ -100,6 +100,28 @@ export function BubbleCanvas({
     ctx.scale(camera.zoom, camera.zoom);
     ctx.translate(-centerX + camera.x, -centerY + camera.y);
 
+    // Synthwave grid background (zooms with camera)
+    const gridSize = 60;
+    const viewLeft = -centerX / camera.zoom + centerX - camera.x;
+    const viewTop = -centerY / camera.zoom + centerY - camera.y;
+    const viewRight = viewLeft + width / camera.zoom;
+    const viewBottom = viewTop + height / camera.zoom;
+    const startX = Math.floor(viewLeft / gridSize) * gridSize;
+    const startY = Math.floor(viewTop / gridSize) * gridSize;
+
+    ctx.strokeStyle = 'rgba(147, 51, 234, 0.08)';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.beginPath();
+    for (let x = startX; x <= viewRight; x += gridSize) {
+      ctx.moveTo(x, viewTop);
+      ctx.lineTo(x, viewBottom);
+    }
+    for (let y = startY; y <= viewBottom; y += gridSize) {
+      ctx.moveTo(viewLeft, y);
+      ctx.lineTo(viewRight, y);
+    }
+    ctx.stroke();
+
     // Draw effects background (ripples, global effects)
     drawEffects(ctx, effectsState, width, height);
 
