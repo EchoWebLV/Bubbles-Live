@@ -1335,7 +1335,7 @@ class GameState {
   // ─── ER State Sync ───────────────────────────────────────────────
 
   async syncFromER() {
-    if (!this.magicBlockReady || this._isSyncingER) return;
+    if (!this.magicBlock.ready || this._isSyncingER) return;
     this._isSyncingER = true;
 
     try {
@@ -1935,32 +1935,38 @@ class GameState {
   async _initMagicBlock() {
     console.log('Initializing MagicBlock Ephemeral Rollup (background)...');
     try {
-      this.magicBlockReady = await this.magicBlock.initialize();
-      if (this.magicBlockReady) {
-        console.log('MagicBlock ER integration active!');
-        console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
-        console.log('   Delegated:', this.magicBlock.arenaDelegated);
-
-        this.magicBlock.startCommitTimer(30000);
-
-        // Register all holders that loaded before MagicBlock was ready.
-        for (const holder of this.holders) {
-          this._queueRegistration(holder.address);
-        }
-
-        // Restore persisted state from ER (single source of truth — no DB).
-        console.log('Restoring player state from Ephemeral Rollup...');
-        await this.syncFromER();
-        console.log(`ER state restored for ${this.playerCache.size} players`);
-
-        // Process any talent allocations queued before MagicBlock was ready
-        this._processTalentSyncQueue();
-
-        // Start periodic ER sync
-        this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
-      } else {
+      const initialized = await this.magicBlock.initialize();
+      if (!initialized) {
         console.warn('MagicBlock ER not available — game runs locally only');
+        return;
       }
+
+      console.log('MagicBlock ER integration active!');
+      console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
+      console.log('   Delegated:', this.magicBlock.arenaDelegated);
+
+      // Restore persisted state from ER BEFORE enabling magicBlockReady.
+      // This prevents the game loop from sending stale level-1 attacks to
+      // the ER and overwriting real player data.
+      console.log('Restoring player state from Ephemeral Rollup...');
+      await this.syncFromER();
+      console.log(`ER state restored for ${this.playerCache.size} players`);
+
+      // NOW enable ER features — game loop can safely send attacks
+      this.magicBlockReady = true;
+
+      this.magicBlock.startCommitTimer(30000);
+
+      // Register all holders that loaded before MagicBlock was ready.
+      for (const holder of this.holders) {
+        this._queueRegistration(holder.address);
+      }
+
+      // Process any talent allocations queued before MagicBlock was ready
+      this._processTalentSyncQueue();
+
+      // Start periodic ER sync
+      this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
     } catch (err) {
       console.error('MagicBlock init failed (non-blocking):', err.message);
     }
