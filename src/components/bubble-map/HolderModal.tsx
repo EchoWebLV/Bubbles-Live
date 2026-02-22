@@ -16,69 +16,64 @@ import type { BattleBubble } from "./battle";
 import { shortenAddress, formatNumber, formatPercentage } from "@/lib/utils";
 
 const TALENT_TREES = {
-  strength: {
-    name: 'Strength',
+  tank: {
+    name: 'Tank',
     color: 'green',
     icon: '\u{1F6E1}\u{FE0F}',
-    maxRank: 5,
     talents: [
-      { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP' },
-      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage' },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.3 HP/sec' },
-      { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit' },
-      { id: 'armor', name: 'Armor', desc: '-8% incoming dmg' },
+      { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
+      { id: 'ironSkin', name: 'Iron Skin', desc: '+10/20/30/40/50% max HP', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 8/16/24/32/40% of dmg dealt', maxRank: 5 },
+      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.5/1.0/1.5% max HP as bullet dmg', maxRank: 3 },
     ],
   },
-  speed: {
-    name: 'Speed',
-    color: 'blue',
-    icon: '\u{26A1}',
-    maxRank: 5,
-    talents: [
-      { id: 'swift', name: 'Swift', desc: '+10% move speed' },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown' },
-      { id: 'evasion', name: 'Evasion', desc: '+8% dodge chance' },
-      { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time' },
-      { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast' },
-    ],
-  },
-  precision: {
-    name: 'Precision',
+  firepower: {
+    name: 'Firepower',
     color: 'red',
     icon: '\u{1F3AF}',
-    maxRank: 5,
     talents: [
-      { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP' },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)' },
-      { id: 'focusFire', name: 'Focus Fire', desc: '+8% stack dmg' },
-      { id: 'multiShot', name: 'Multi Shot', desc: '+12% double shot' },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon' },
+      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% chance for 2x dmg', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots', maxRank: 3 },
     ],
   },
-  utility: {
-    name: 'Utility',
+  brawler: {
+    name: 'Brawler',
+    color: 'blue',
+    icon: '\u{1F4A8}',
+    talents: [
+      { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 3/5/7/9/11% max HP dmg', maxRank: 5 },
+      { id: 'momentum', name: 'Momentum', desc: '+10/20/30/40/50% move speed for 3s after dash', maxRank: 5 },
+      { id: 'spikes', name: 'Spikes', desc: 'Return 10/15/20/25/30% dmg to attacker', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 12/16/20% max HP', maxRank: 3 },
+    ],
+  },
+  massDamage: {
+    name: 'Mass Damage',
     color: 'yellow',
-    icon: '\u{1F530}',
-    maxRank: 3,
+    icon: '\u{1F4A5}',
     talents: [
-      { id: 'deflect', name: 'Deflect', desc: '+10% bullet reflect' },
-      { id: 'absorb', name: 'Absorb', desc: '+10% kill shield' },
-      { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP' },
-      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 2s every 15/12/9s' },
-      { id: 'dash', name: 'Dash', desc: 'Burst dash 12/10/8s' },
+      { id: 'ricochet', name: 'Ricochet', desc: '15/25/35/45/65% chance to bounce', maxRank: 5 },
+      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'shrapnel', name: 'Shrapnel', desc: '2/2/2/3/3 fragments on hit at 20/25/30/30/35% dmg', maxRank: 5 },
+      { id: 'nova', name: 'Nova', desc: 'Burst 3/6/9/12/15 bullets in all directions every 2s', maxRank: 5 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+4/8/12% dmg per hit, max 3 stacks', maxRank: 3 },
     ],
   },
-  chaos: {
-    name: 'Chaos',
+  bloodThirst: {
+    name: 'Blood Thirst',
     color: 'purple',
-    icon: '\u{1F480}',
-    maxRank: 3,
+    icon: '\u{1FA78}',
     talents: [
-      { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill' },
-      { id: 'homing', name: 'Homing', desc: '+10% hit radius' },
-      { id: 'ricochet', name: 'Ricochet', desc: '+15% bounce chance' },
-      { id: 'deathbomb', name: 'Deathbomb', desc: '+15% HP as explosion' },
-      { id: 'frenzy', name: 'Frenzy', desc: '+8% fire rate/kill' },
+      { id: 'experience', name: 'Experience', desc: '+5/10/15/20/25% XP gained', maxRank: 5 },
+      { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
+      { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +10/20/30/40/50% speed & fire rate 4s', maxRank: 5 },
+      { id: 'crimsonShield', name: 'Crimson Shield', desc: 'On kill: 10/15/20/25/30% victim HP as shield for 5s', maxRank: 5 },
+      { id: 'bloodbath', name: 'Bloodbath', desc: 'On kill: AoE 5/8/12% max HP', maxRank: 3 },
     ],
   },
 } as const;
@@ -368,7 +363,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                             )}
                           </div>
                           <div className="flex gap-0.5 shrink-0">
-                            {Array.from({ length: tree.maxRank }).map((_, i) => (
+                            {Array.from({ length: talent.maxRank }).map((_, i) => (
                               <div
                                 key={i}
                                 className={`w-2 h-2 rounded-sm ${i < rank ? colors.rankFill : colors.rankBg}`}

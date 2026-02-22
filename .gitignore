@@ -39,3 +39,6 @@ next-env.d.ts
 .vscode
 *.swp
 *.swo
+
+# Dev contract keypair (never commit)
+dev-program-keypair.json

@@ -43,64 +43,64 @@ const STREAK_LABELS: { min: number; text: string; color: string; glow: string }[
 
 // Talent tree display config (mirrors server/talentConfig.js for UI)
 const TALENT_TREES = {
-  strength: {
-    name: 'Strength',
+  tank: {
+    name: 'Tank',
     color: 'green',
     icon: '🛡️',
     talents: [
-      { id: 'ironSkin', name: 'Iron Skin', desc: '+10% max HP', maxRank: 5 },
-      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+12% damage', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.3 HP/sec', maxRank: 5 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: '+8% heal on hit', maxRank: 5 },
-      { id: 'armor', name: 'Armor', desc: '-8% incoming dmg', maxRank: 5 },
+      { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
+      { id: 'ironSkin', name: 'Iron Skin', desc: '+10/20/30/40/50% max HP', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 8/16/24/32/40% of dmg dealt', maxRank: 5 },
+      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.5/1.0/1.5% max HP as bullet dmg', maxRank: 3 },
     ],
   },
-  speed: {
-    name: 'Speed',
-    color: 'blue',
-    icon: '⚡',
-    talents: [
-      { id: 'swift', name: 'Swift', desc: '+10% move speed', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-10% fire cooldown', maxRank: 5 },
-      { id: 'evasion', name: 'Evasion', desc: '+8% dodge chance', maxRank: 5 },
-      { id: 'quickRespawn', name: 'Quick Respawn', desc: '-12% ghost time', maxRank: 5 },
-      { id: 'momentum', name: 'Momentum', desc: '+5% dmg while fast', maxRank: 5 },
-    ],
-  },
-  precision: {
-    name: 'Precision',
+  firepower: {
+    name: 'Firepower',
     color: 'red',
     icon: '🎯',
     talents: [
-      { id: 'weakspot', name: 'Weakspot', desc: '+12% vs low HP', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '+7% crit (2x)', maxRank: 5 },
-      { id: 'focusFire', name: 'Focus Fire', desc: '+8% stack dmg', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '+12% double shot', maxRank: 5 },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: '2nd straight weapon', maxRank: 5 },
+      { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% chance for 2x dmg', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots', maxRank: 3 },
     ],
   },
-  utility: {
-    name: 'Utility',
+  brawler: {
+    name: 'Brawler',
+    color: 'blue',
+    icon: '💨',
+    talents: [
+      { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 3/5/7/9/11% max HP dmg', maxRank: 5 },
+      { id: 'momentum', name: 'Momentum', desc: '+10/20/30/40/50% move speed for 3s after dash', maxRank: 5 },
+      { id: 'spikes', name: 'Spikes', desc: 'Return 10/15/20/25/30% dmg to attacker', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 12/16/20% max HP', maxRank: 3 },
+    ],
+  },
+  massDamage: {
+    name: 'Mass Damage',
     color: 'yellow',
-    icon: '🔰',
+    icon: '💥',
     talents: [
-      { id: 'deflect', name: 'Deflect', desc: '+10% bullet reflect', maxRank: 3 },
-      { id: 'absorb', name: 'Absorb', desc: '+10% kill shield', maxRank: 3 },
-      { id: 'lastStand', name: 'Last Stand', desc: '+10% dmg at low HP', maxRank: 3 },
-      { id: 'cloak', name: 'Cloak', desc: 'Untargetable 2s every 15/12/9s', maxRank: 3 },
-      { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8s', maxRank: 3 },
+      { id: 'ricochet', name: 'Ricochet', desc: '15/25/35/45/65% chance to bounce', maxRank: 5 },
+      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'shrapnel', name: 'Shrapnel', desc: '2/2/2/3/3 fragments on hit at 20/25/30/30/35% dmg', maxRank: 5 },
+      { id: 'nova', name: 'Nova', desc: 'Burst 3/6/9/12/15 bullets in all directions every 2s', maxRank: 5 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+4/8/12% dmg per hit, max 3 stacks', maxRank: 3 },
     ],
   },
-  chaos: {
-    name: 'Chaos',
+  bloodThirst: {
+    name: 'Blood Thirst',
     color: 'purple',
-    icon: '💀',
+    icon: '🩸',
     talents: [
-      { id: 'rampage', name: 'Rampage', desc: '+24% dmg after kill', maxRank: 3 },
-      { id: 'homing', name: 'Homing', desc: '+10% hit radius', maxRank: 3 },
-      { id: 'ricochet', name: 'Ricochet', desc: '+15% bounce chance', maxRank: 3 },
-      { id: 'deathbomb', name: 'Deathbomb', desc: '+15% HP as explosion', maxRank: 3 },
-      { id: 'frenzy', name: 'Frenzy', desc: '+8% fire rate/kill', maxRank: 3 },
+      { id: 'experience', name: 'Experience', desc: '+5/10/15/20/25% XP gained', maxRank: 5 },
+      { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
+      { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +10/20/30/40/50% speed & fire rate 4s', maxRank: 5 },
+      { id: 'crimsonShield', name: 'Crimson Shield', desc: 'On kill: 10/15/20/25/30% victim HP as shield for 5s', maxRank: 5 },
+      { id: 'bloodbath', name: 'Bloodbath', desc: 'On kill: AoE 5/8/12% max HP', maxRank: 3 },
     ],
   },
 } as const;
@@ -714,7 +714,7 @@ export function BubbleMapClient() {
       const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
       if (processedVfxRef.current.has(key)) continue;
       processedVfxRef.current.add(key);
-      if (v.type === 'deathbomb') {
+      if (v.type === 'bloodbath' || v.type === 'shockwave') {
         newEffects.push(createDeathbombExplosion(v.x, v.y, v.radius || 200, v.color));
       } else if (v.type === 'bulletPop') {
         newEffects.push(createBulletPopFirework(v.x, v.y, v.color));
@@ -1219,25 +1219,31 @@ export function BubbleMapClient() {
                           {tree.name}
                         </div>
                         <div className="space-y-2">
-                          {tree.talents.map((talent) => {
+                          {tree.talents.map((talent, talentIdx) => {
                             const rank = talents[talent.id] ?? 0;
                             const isMaxed = rank >= talent.maxRank;
-                            const canUpgrade = tp > 0 && !isMaxed;
+                            const prereqMet = talentIdx === 0 || (talents[tree.talents[talentIdx - 1].id] ?? 0) >= 1;
+                            const canUpgrade = tp > 0 && !isMaxed && prereqMet;
+                            const isLocked = !prereqMet && rank === 0;
                             return (
                               <button
                                 key={talent.id}
                                 onClick={() => canUpgrade && handleAllocateTalent(talent.id)}
                                 disabled={!canUpgrade || allocatingTalent !== null}
                                 className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
-                                  canUpgrade
-                                    ? `${colors.bg} hover:brightness-125 ${colors.border} cursor-pointer`
-                                    : isMaxed
-                                      ? `${colors.bg} ${colors.border} opacity-70`
-                                      : 'bg-slate-800/30 border-slate-700/30 opacity-50'
+                                  isLocked
+                                    ? 'bg-slate-800/20 border-slate-700/20 opacity-30'
+                                    : canUpgrade
+                                      ? `${colors.bg} hover:brightness-125 ${colors.border} cursor-pointer`
+                                      : isMaxed
+                                        ? `${colors.bg} ${colors.border} opacity-70`
+                                        : 'bg-slate-800/30 border-slate-700/30 opacity-50'
                                 } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
                               >
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-medium text-white">{talent.name}</span>
+                                  <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
+                                    {isLocked ? '🔒 ' : ''}{talent.name}
+                                  </span>
                                   <div className="flex gap-0.5">
                                     {Array.from({ length: talent.maxRank }).map((_, i) => (
                                       <div
@@ -1247,7 +1253,7 @@ export function BubbleMapClient() {
                                     ))}
                                   </div>
                                 </div>
-                                <div className="text-[10px] text-slate-400">{talent.desc} /rank</div>
+                                <div className="text-[10px] text-slate-400">{talent.desc}</div>
                               </button>
                             );
                           })}

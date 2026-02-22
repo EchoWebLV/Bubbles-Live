@@ -733,16 +733,16 @@ function drawBullets(
 ) {
   bullets.forEach(bullet => {
     const shooterColor = bullet.shooterColor || "#ffff00";
+    const isSmall = bullet.isShrapnel;
     
     // Draw bullet trail (curved path behind the bullet)
     const trailPoints: { x: number; y: number; alpha: number }[] = [];
-    const numTrailPoints = 8;
+    const numTrailPoints = isSmall ? 4 : 8;
     
     for (let i = 0; i < numTrailPoints; i++) {
       const trailProgress = Math.max(0, bullet.progress - (i * 0.03));
       if (trailProgress <= 0) break;
       
-      // Calculate trail point position on the curve
       const t = trailProgress;
       const dx = bullet.targetX - bullet.startX;
       const dy = bullet.targetY - bullet.startY;
@@ -766,52 +766,101 @@ function drawBullets(
     }
     
     // Draw trail
+    const trailColor = isSmall ? "#ffd700" : shooterColor;
     for (let i = trailPoints.length - 1; i >= 0; i--) {
       const point = trailPoints[i];
-      const trailSize = 2 + (trailPoints.length - i) * 0.3;
+      const trailSize = isSmall ? 1 + (trailPoints.length - i) * 0.15 : 2 + (trailPoints.length - i) * 0.3;
       
       ctx.beginPath();
       ctx.arc(point.x, point.y, trailSize, 0, Math.PI * 2);
-      ctx.fillStyle = `${shooterColor}${Math.floor(point.alpha * 100).toString(16).padStart(2, '0')}`;
+      ctx.fillStyle = `${trailColor}${Math.floor(point.alpha * 100).toString(16).padStart(2, '0')}`;
       ctx.fill();
     }
-    
-    // Bullet glow with shooter's color
-    const glowGradient = ctx.createRadialGradient(
-      bullet.x, bullet.y, 0,
-      bullet.x, bullet.y, 10
-    );
-    glowGradient.addColorStop(0, `${shooterColor}cc`);
-    glowGradient.addColorStop(0.5, `${shooterColor}60`);
-    glowGradient.addColorStop(1, `${shooterColor}00`);
-    
-    ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
-    ctx.fillStyle = glowGradient;
-    ctx.fill();
-    
-    // Bullet core (white center)
-    ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    
-    // Inner color ring
-    ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = shooterColor;
-    ctx.fill();
+
+    if (isSmall) {
+      // Shrapnel: bright yellow diamond shape with orange glow
+      const glowGradient = ctx.createRadialGradient(
+        bullet.x, bullet.y, 0,
+        bullet.x, bullet.y, 7
+      );
+      glowGradient.addColorStop(0, "#ffd700cc");
+      glowGradient.addColorStop(0.5, "#ff880060");
+      glowGradient.addColorStop(1, "#ff880000");
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = glowGradient;
+      ctx.fill();
+
+      // Diamond shape instead of circle
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(Math.atan2(bullet.vy || 0, bullet.vx || 0));
+      ctx.beginPath();
+      ctx.moveTo(4, 0);
+      ctx.lineTo(0, 2);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(0, -2);
+      ctx.closePath();
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.strokeStyle = "#ffd700";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // Normal bullet: full glow + core + ring
+      const glowGradient = ctx.createRadialGradient(
+        bullet.x, bullet.y, 0,
+        bullet.x, bullet.y, 10
+      );
+      glowGradient.addColorStop(0, `${shooterColor}cc`);
+      glowGradient.addColorStop(0.5, `${shooterColor}60`);
+      glowGradient.addColorStop(1, `${shooterColor}00`);
+      
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
+      ctx.fillStyle = glowGradient;
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = shooterColor;
+      ctx.fill();
+    }
   });
 }
 
 // Draw damage numbers
 function drawDamageNumbers(ctx: CanvasRenderingContext2D, damageNumbers: DamageNumber[]) {
   damageNumbers.forEach(dn => {
+    const isBodySlam = dn.type === 'bodySlam';
+    const size = dn.fontSize || 11;
+    const shakeX = isBodySlam ? (Math.random() - 0.5) * 6 : 0;
+    const shakeY = isBodySlam ? (Math.random() - 0.5) * 6 : 0;
+    const x = dn.x + shakeX;
+    const y = dn.y + shakeY;
+    const text = `-${dn.damage.toFixed(1)}`;
+
     ctx.globalAlpha = dn.alpha;
-    ctx.fillStyle = "#ff4444";
-    ctx.font = "bold 11px system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`-${dn.damage.toFixed(1)}`, dn.x, dn.y);
+
+    if (isBodySlam) {
+      ctx.font = `bold ${size}px system-ui, sans-serif`;
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 3;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = "#ff8800";
+      ctx.fillText(text, x, y);
+    } else {
+      ctx.fillStyle = dn.color || "#ff4444";
+      ctx.font = `bold ${size}px system-ui, sans-serif`;
+      ctx.fillText(text, x, y);
+    }
     ctx.globalAlpha = 1;
   });
 }

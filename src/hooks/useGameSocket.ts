@@ -18,31 +18,36 @@ export interface GameHolder {
 }
 
 export interface TalentRanks {
+  // Tank
+  armor: number;
   ironSkin: number;
-  heavyHitter: number;
   regeneration: number;
   lifesteal: number;
-  armor: number;
-  swift: number;
+  vitalityStrike: number;
+  // Firepower
+  heavyHitter: number;
   rapidFire: number;
-  evasion: number;
-  quickRespawn: number;
-  momentum: number;
-  weakspot: number;
   criticalStrike: number;
-  focusFire: number;
   multiShot: number;
   dualCannon: number;
-  deflect: number;
-  absorb: number;
-  lastStand: number;
-  cloak: number;
+  // Brawler
   dash: number;
-  rampage: number;
-  homing: number;
+  bodySlam: number;
+  momentum: number;
+  spikes: number;
+  shockwave: number;
+  // Mass Damage
   ricochet: number;
-  deathbomb: number;
-  frenzy: number;
+  counterAttack: number;
+  shrapnel: number;
+  nova: number;
+  focusFire: number;
+  // Blood Thirst
+  experience: number;
+  execute: number;
+  killRush: number;
+  crimsonShield: number;
+  bloodbath: number;
   [key: string]: number;
 }
 
@@ -106,7 +111,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'deathbomb' | 'bulletPop';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop';
   x: number;
   y: number;
   radius?: number;

@@ -1,314 +1,385 @@
-// ─── Talent Tree Configuration ────────────────────────────────────────────
-// All percentages, caps, and balance knobs in one place.
-// Edit values here to tweak balance without touching game logic.
+// ─── Talent Tree Configuration (v2) ──────────────────────────────────────
+// 5 trees, 5 talents each, linear chain prerequisite (tier N requires 1 rank in tier N-1).
+// Tiers 1-4: max 5 ranks.  Tier 5 (capstone): max 3 ranks.
+// 1 talent point per 2 levels → 50 points at level 100 → enough for 2 full trees + 4 spare.
 
 const MAX_LEVEL = 100;
-const LEVEL_SCALE = 10; // XP needed per level: xp = (level-1)^2 * LEVEL_SCALE
-const MAX_RANK_OLD = 5;   // original trees (strength/speed/precision)
-const MAX_RANK_NEW = 3;   // new trees (utility/chaos)
-const MAX_RANK = MAX_RANK_OLD; // backwards compat for code that reads MAX_RANK
+const LEVEL_SCALE = 10;
+const MAX_RANK = 5;
+const MAX_RANK_CAPSTONE = 3;
 
-// ─── STRENGTH ─────────────────────────────────────────────────────────────
-const STRENGTH = {
+// ─── TANK ─────────────────────────────────────────────────────────────────
+const TANK = {
+  armor: {
+    id: 'armor',
+    name: 'Armor',
+    description: 'Reduce incoming damage by {value}%',
+    tree: 'tank',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
+  },
   ironSkin: {
     id: 'ironSkin',
     name: 'Iron Skin',
     description: '+{value}% max HP',
-    tree: 'strength',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.50,        // max +50%
-  },
-  heavyHitter: {
-    id: 'heavyHitter',
-    name: 'Heavy Hitter',
-    description: '+{value}% bullet damage',
-    tree: 'strength',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.12,        // +12% per rank
-    hardCap: 0.60,        // max +60%
+    tree: 'tank',
+    tier: 2,
+    requires: 'armor',
+    maxRank: MAX_RANK,
+    perRank: 0.10,
+    hardCap: 0.50,
   },
   regeneration: {
     id: 'regeneration',
     name: 'Regeneration',
     description: 'Heal {value} HP/sec',
-    tree: 'strength',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.3,         // +0.3 HP/sec per rank
-    hardCap: 1.5,         // max 1.5 HP/sec
-    healCeiling: 0.80,    // only heals up to 80% of max HP
+    tree: 'tank',
+    tier: 3,
+    requires: 'ironSkin',
+    maxRank: MAX_RANK,
+    perRank: 0.3,
+    hardCap: 1.5,
+    healCeiling: 0.80,
   },
   lifesteal: {
     id: 'lifesteal',
     name: 'Lifesteal',
     description: 'Heal {value}% of damage dealt',
-    tree: 'strength',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.08,        // +8% per rank
-    hardCap: 0.40,        // max 40%
-    healCeiling: 0.80,    // only heals up to 80% of max HP
+    tree: 'tank',
+    tier: 4,
+    requires: 'regeneration',
+    maxRank: MAX_RANK,
+    perRank: 0.08,
+    hardCap: 0.40,
+    healCeiling: 0.80,
   },
-  armor: {
-    id: 'armor',
-    name: 'Armor',
-    description: 'Reduce incoming damage by {value}%',
-    tree: 'strength',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.08,        // -8% per rank
-    hardCap: 0.40,        // max 40% reduction
+  vitalityStrike: {
+    id: 'vitalityStrike',
+    name: 'Vitality Strike',
+    description: 'Bullets deal +{value}% of max HP as bonus damage',
+    tree: 'tank',
+    tier: 5,
+    requires: 'lifesteal',
+    maxRank: MAX_RANK_CAPSTONE,
+    perRank: 0.005,
+    hardCap: 0.015,
   },
 };
 
-// ─── SPEED ────────────────────────────────────────────────────────────────
-const SPEED = {
-  swift: {
-    id: 'swift',
-    name: 'Swift',
-    description: '+{value}% movement speed',
-    tree: 'speed',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.50,        // max +50%
-    maxSpeedCap: 4.5,     // absolute max speed value
+// ─── FIREPOWER ────────────────────────────────────────────────────────────
+const FIREPOWER = {
+  heavyHitter: {
+    id: 'heavyHitter',
+    name: 'Heavy Hitter',
+    description: '+{value}% bullet damage',
+    tree: 'firepower',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
   },
   rapidFire: {
     id: 'rapidFire',
     name: 'Rapid Fire',
-    description: '-{value}% fire rate cooldown',
-    tree: 'speed',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.10,        // -10% per rank
-    hardCap: 0.50,        // max -50%
-    minCooldownMs: 100,   // absolute minimum fire cooldown
-  },
-  evasion: {
-    id: 'evasion',
-    name: 'Evasion',
-    description: '{value}% dodge chance',
-    tree: 'speed',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.08,        // +8% per rank
-    hardCap: 0.40,        // max 40% dodge
-  },
-  quickRespawn: {
-    id: 'quickRespawn',
-    name: 'Quick Respawn',
-    description: '-{value}% ghost duration',
-    tree: 'speed',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.12,        // -12% per rank
-    hardCap: 0.60,        // max -60%
-    minGhostMs: 10000,    // absolute minimum 10s ghost
-  },
-  momentum: {
-    id: 'momentum',
-    name: 'Momentum',
-    description: '+{value}% damage while moving fast',
-    tree: 'speed',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.05,        // +5% per rank
-    hardCap: 0.25,        // max +25%
-    speedThreshold: 0.70, // must be above 70% of max speed to trigger
-  },
-};
-
-// ─── PRECISION ────────────────────────────────────────────────────────────
-const PRECISION = {
-  weakspot: {
-    id: 'weakspot',
-    name: 'Weakspot',
-    description: '+{value}% damage vs targets below 30% HP',
-    tree: 'precision',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.12,        // +12% per rank
-    hardCap: 0.60,        // max +60%
-    hpThreshold: 0.30,    // triggers below 30% HP
+    description: '-{value}% fire cooldown',
+    tree: 'firepower',
+    tier: 2,
+    requires: 'heavyHitter',
+    maxRank: MAX_RANK,
+    perRank: [0.06, 0.12, 0.18, 0.24, 0.30],
+    minCooldownMs: 80,
   },
   criticalStrike: {
     id: 'criticalStrike',
     name: 'Critical Strike',
     description: '{value}% chance for 2x damage',
-    tree: 'precision',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.07,        // +7% per rank
-    hardCap: 0.35,        // max 35% crit
+    tree: 'firepower',
+    tier: 3,
+    requires: 'rapidFire',
+    maxRank: MAX_RANK,
+    perRank: 0.07,
+    hardCap: 0.35,
     critMultiplier: 2.0,
-  },
-  focusFire: {
-    id: 'focusFire',
-    name: 'Focus Fire',
-    description: '+{value}% damage per consecutive hit (max 3 stacks)',
-    tree: 'precision',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.08,        // +8% per stack per rank
-    hardCap: 0.40,        // max +40% per stack
-    maxStacks: 3,
   },
   multiShot: {
     id: 'multiShot',
     name: 'Multi Shot',
-    description: '{value}% chance to fire 2 bullets',
-    tree: 'precision',
-    maxRank: MAX_RANK_OLD,
-    perRank: 0.12,        // +12% per rank
-    hardCap: 0.60,        // max 60% chance
-    secondBulletDamage: 0.70,
+    description: '{value}% chance to fire 2 bullets (75% dmg)',
+    tree: 'firepower',
+    tier: 4,
+    requires: 'criticalStrike',
+    maxRank: MAX_RANK,
+    perRank: 0.12,
+    hardCap: 0.60,
+    secondBulletDamage: 0.75,
   },
   dualCannon: {
     id: 'dualCannon',
     name: 'Dual Cannon',
-    description: 'Slow straight second weapon targeting a 2nd enemy',
-    tree: 'precision',
-    maxRank: MAX_RANK_OLD,
-    // Rank 1-5: fires every Nth shot
-    fireFrequency: [6, 5, 4, 3, 2],
-    secondCannonDamage: 0.50,
+    description: 'Single straight shot at 2nd enemy (70% dmg)',
+    tree: 'firepower',
+    tier: 5,
+    requires: 'multiShot',
+    maxRank: MAX_RANK_CAPSTONE,
+    fireFrequency: [4, 2, 1],
+    secondCannonDamage: 0.70,
     secondCannonSpeed: 1.20,
     canCrit: false,
   },
 };
 
-// ─── UTILITY ──────────────────────────────────────────────────────────────
-const UTILITY = {
-  deflect: {
-    id: 'deflect',
-    name: 'Deflect',
-    description: '{value}% chance to reflect bullets',
-    tree: 'utility',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.30,        // max 30% reflect
-  },
-  absorb: {
-    id: 'absorb',
-    name: 'Absorb',
-    description: 'Kills grant {value}% of victim HP as shield',
-    tree: 'utility',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% of victim max HP per rank
-    hardCap: 0.30,        // max 30%
-    shieldDurationMs: 5000,
-  },
-  lastStand: {
-    id: 'lastStand',
-    name: 'Last Stand',
-    description: '+{value}% damage when below 25% HP',
-    tree: 'utility',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.30,        // max +30%
-    hpThreshold: 0.25,    // triggers below 25% HP
-  },
-  cloak: {
-    id: 'cloak',
-    name: 'Cloak',
-    description: 'Untargetable for 1.5s every {value}s',
-    tree: 'utility',
-    maxRank: MAX_RANK_NEW,
-    cooldownMs: [15000, 12000, 9000],
-    durationMs: 2000,
-  },
+// ─── BRAWLER ──────────────────────────────────────────────────────────────
+const BRAWLER = {
   dash: {
     id: 'dash',
     name: 'Dash',
     description: 'Burst dash every {value}s',
-    tree: 'utility',
-    maxRank: MAX_RANK_NEW,
-    cooldownMs: [12000, 10000, 8000],
-    dashStrength: 5,      // velocity multiplier on dash
+    tree: 'brawler',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    cooldownMs: [12000, 10000, 8000, 6000, 4000],
+    dashStrength: 5,
+  },
+  bodySlam: {
+    id: 'bodySlam',
+    name: 'Body Slam',
+    description: 'Contact deals {value}% of max HP as damage',
+    tree: 'brawler',
+    tier: 2,
+    requires: 'dash',
+    maxRank: MAX_RANK,
+    perRank: [0.03, 0.05, 0.07, 0.09, 0.11],
+  },
+  momentum: {
+    id: 'momentum',
+    name: 'Momentum',
+    description: '+{value}% move speed for 3s after dash',
+    tree: 'brawler',
+    tier: 3,
+    requires: 'bodySlam',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+    durationMs: 3000,
+  },
+  spikes: {
+    id: 'spikes',
+    name: 'Spikes',
+    description: 'Return {value}% of damage taken to attacker',
+    tree: 'brawler',
+    tier: 4,
+    requires: 'momentum',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
+  },
+  shockwave: {
+    id: 'shockwave',
+    name: 'Shockwave',
+    description: 'Body hits deal {value}% max HP AoE damage',
+    tree: 'brawler',
+    tier: 5,
+    requires: 'spikes',
+    maxRank: MAX_RANK_CAPSTONE,
+    perRank: [0.12, 0.16, 0.20],
+    radius: [100, 150, 200],
   },
 };
 
-// ─── CHAOS ────────────────────────────────────────────────────────────────
-const CHAOS = {
-  rampage: {
-    id: 'rampage',
-    name: 'Rampage',
-    description: '+{value}% damage for 3 shots after a kill',
-    tree: 'chaos',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.24,        // +24% per rank
-    hardCap: 0.72,        // max +72%
-    bulletsCount: 3,
-  },
-  homing: {
-    id: 'homing',
-    name: 'Homing',
-    description: '+{value}% bullet hit radius',
-    tree: 'chaos',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.10,        // +10% per rank
-    hardCap: 0.30,        // max +30%
-  },
+// ─── MASS DAMAGE ──────────────────────────────────────────────────────────
+const MASS_DAMAGE = {
   ricochet: {
     id: 'ricochet',
     name: 'Ricochet',
     description: '{value}% chance to bounce to 2nd target',
-    tree: 'chaos',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.15,        // +15% per rank
-    hardCap: 0.45,        // max 45%
-    bounceDamage: 0.60,   // bounce bullet does 60% damage
-    bounceRange: 200,     // pixels — max range for bounce target
+    tree: 'massDamage',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: [0.15, 0.25, 0.35, 0.45, 0.65],
+    bounceDamage: 1.0,
   },
-  deathbomb: {
-    id: 'deathbomb',
-    name: 'Deathbomb',
-    description: 'Explode on death for {value}% max HP damage',
-    tree: 'chaos',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.15,        // +15% per rank
-    hardCap: 0.45,        // max 45%
-    explosionRadius: 200, // pixels
+  counterAttack: {
+    id: 'counterAttack',
+    name: 'Counter Attack',
+    description: '{value}% chance when hit to fire bullet at attacker',
+    tree: 'massDamage',
+    tier: 2,
+    requires: 'ricochet',
+    maxRank: MAX_RANK,
+    perRank: 0.08,
+    hardCap: 0.40,
   },
-  frenzy: {
-    id: 'frenzy',
-    name: 'Frenzy',
-    description: '+{value}% fire rate per kill streak',
-    tree: 'chaos',
-    maxRank: MAX_RANK_NEW,
-    perRank: 0.08,        // +8% per kill per rank
-    hardCap: 0.24,        // max +24% per kill
-    decayMs: 4000,        // stacks reset after 4s without a kill
+  shrapnel: {
+    id: 'shrapnel',
+    name: 'Shrapnel',
+    description: 'Bullets spawn {value} fragments on hit',
+    tree: 'massDamage',
+    tier: 3,
+    requires: 'counterAttack',
+    maxRank: MAX_RANK,
+    fragments: [2, 2, 2, 3, 3],
+    fragmentDamage: [0.20, 0.25, 0.30, 0.30, 0.35],
+    fragmentRange: 150,
+  },
+  nova: {
+    id: 'nova',
+    name: 'Nova',
+    description: 'Emit {value} projectiles every 2s',
+    tree: 'massDamage',
+    tier: 4,
+    requires: 'shrapnel',
+    maxRank: MAX_RANK,
+    projectiles: [3, 6, 9, 12, 15],
+    intervalMs: 2000,
+    novaDamageMultiplier: 0.50,
+    novaSpeed: 6,
+    novaRange: 350,
+  },
+  focusFire: {
+    id: 'focusFire',
+    name: 'Focus Fire',
+    description: '+{value}% damage per consecutive hit (max 3 stacks)',
+    tree: 'massDamage',
+    tier: 5,
+    requires: 'nova',
+    maxRank: MAX_RANK_CAPSTONE,
+    perRank: 0.04,
+    hardCap: 0.12,
     maxStacks: 3,
-    minMultiplier: 0.40,  // fire rate can't drop below 40% of base (60% max boost)
   },
 };
 
-// All talents in a flat lookup for easy access
+// ─── BLOOD THIRST ─────────────────────────────────────────────────────────
+const BLOOD_THIRST = {
+  experience: {
+    id: 'experience',
+    name: 'Experience',
+    description: '+{value}% XP gained',
+    tree: 'bloodThirst',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: 0.05,
+    hardCap: 0.25,
+  },
+  execute: {
+    id: 'execute',
+    name: 'Execute',
+    description: '+{value}% damage vs targets ≤50% HP',
+    tree: 'bloodThirst',
+    tier: 2,
+    requires: 'experience',
+    maxRank: MAX_RANK,
+    perRank: [0.08, 0.16, 0.24, 0.32, 0.48],
+    hpThreshold: 0.50,
+  },
+  killRush: {
+    id: 'killRush',
+    name: 'Kill Rush',
+    description: 'On kill: +{value}% move speed & fire rate for 4s',
+    tree: 'bloodThirst',
+    tier: 3,
+    requires: 'execute',
+    maxRank: MAX_RANK,
+    perRank: 0.10,
+    hardCap: 0.50,
+    durationMs: 4000,
+  },
+  crimsonShield: {
+    id: 'crimsonShield',
+    name: 'Crimson Shield',
+    description: 'On kill: shield = {value}% of victim max HP for 5s',
+    tree: 'bloodThirst',
+    tier: 4,
+    requires: 'killRush',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
+    durationMs: 5000,
+  },
+  bloodbath: {
+    id: 'bloodbath',
+    name: 'Bloodbath',
+    description: 'On kill: blood nova deals {value}% max HP to nearby enemies',
+    tree: 'bloodThirst',
+    tier: 5,
+    requires: 'crimsonShield',
+    maxRank: MAX_RANK_CAPSTONE,
+    perRank: [0.05, 0.08, 0.12],
+    radius: [100, 150, 200],
+  },
+};
+
+// ─── Flat lookup ──────────────────────────────────────────────────────────
 const ALL_TALENTS = {
-  ...STRENGTH,
-  ...SPEED,
-  ...PRECISION,
-  ...UTILITY,
-  ...CHAOS,
+  ...TANK,
+  ...FIREPOWER,
+  ...BRAWLER,
+  ...MASS_DAMAGE,
+  ...BLOOD_THIRST,
 };
 
-// Ordered list per tree (determines UI order)
+// UI order per tree
 const TREE_ORDER = {
-  strength:  ['ironSkin', 'heavyHitter', 'regeneration', 'lifesteal', 'armor'],
-  speed:     ['swift', 'rapidFire', 'evasion', 'quickRespawn', 'momentum'],
-  precision: ['weakspot', 'criticalStrike', 'focusFire', 'multiShot', 'dualCannon'],
-  utility:   ['deflect', 'absorb', 'lastStand', 'cloak', 'dash'],
-  chaos:     ['rampage', 'homing', 'ricochet', 'deathbomb', 'frenzy'],
+  tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
+  firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
+  brawler:     ['dash', 'bodySlam', 'momentum', 'spikes', 'shockwave'],
+  massDamage:  ['ricochet', 'counterAttack', 'shrapnel', 'nova', 'focusFire'],
+  bloodThirst: ['experience', 'execute', 'killRush', 'crimsonShield', 'bloodbath'],
 };
 
-// Default auto-allocation order for idle players.
+// Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'ironSkin', 'swift', 'criticalStrike', 'deflect', 'rampage',
-  'heavyHitter', 'rapidFire', 'weakspot', 'absorb', 'homing',
-  'armor', 'evasion', 'focusFire', 'lastStand', 'ricochet',
-  'regeneration', 'quickRespawn', 'multiShot', 'cloak', 'deathbomb',
-  'lifesteal', 'momentum', 'dualCannon', 'dash', 'frenzy',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
+  'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
+  'regeneration', 'criticalStrike', 'momentum', 'shrapnel', 'killRush',
+  'lifesteal', 'multiShot', 'spikes', 'nova', 'crimsonShield',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'focusFire', 'bloodbath',
 ];
+
+// ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
+const TALENT_NAME_TO_CHAIN_ID = {
+  armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
+  heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
+  dash: 10, bodySlam: 11, momentum: 12, spikes: 13, shockwave: 14,
+  ricochet: 15, counterAttack: 16, shrapnel: 17, nova: 18, focusFire: 19,
+  experience: 20, execute: 21, killRush: 22, crimsonShield: 23, bloodbath: 24,
+};
+
+const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
+  Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
+);
+
+// On-chain account field names in the order they map to chain slot 0-24
+const CHAIN_SLOT_FIELDS = [
+  'talentIronSkin', 'talentHeavyHitter', 'talentRegeneration', 'talentLifesteal', 'talentArmor',
+  'talentSwift', 'talentRapidFire', 'talentEvasion', 'talentQuickRespawn', 'talentMomentum',
+  'talentWeakspot', 'talentCriticalStrike', 'talentFocusFire', 'talentMultiShot', 'talentDualCannon',
+  'talentDeflect', 'talentAbsorb', 'talentLastStand', 'talentCloak', 'talentDash',
+  'talentRampage', 'talentHoming', 'talentRicochet', 'talentDeathbomb', 'talentFrenzy',
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
 
 function getTalentValue(talentId, rank) {
   const t = ALL_TALENTS[talentId];
   if (!t || rank <= 0) return 0;
+  if (Array.isArray(t.perRank)) {
+    return t.perRank[Math.min(rank, t.perRank.length) - 1] || 0;
+  }
   if (t.perRank !== undefined) {
     return Math.min(t.perRank * rank, t.hardCap);
   }
   return 0;
+}
+
+function canAllocate(talentId, talents) {
+  const t = ALL_TALENTS[talentId];
+  if (!t) return false;
+  if ((talents[talentId] || 0) >= t.maxRank) return false;
+  if (t.requires && (talents[t.requires] || 0) < 1) return false;
+  return true;
 }
 
 function createEmptyTalents() {
@@ -321,15 +392,15 @@ function createEmptyTalents() {
 
 function totalPointsSpent(talents) {
   let total = 0;
-  for (const rank of Object.values(talents)) {
-    total += rank;
+  for (const id of Object.keys(ALL_TALENTS)) {
+    total += (talents[id] || 0);
   }
   return total;
 }
 
 function pointsInTree(talents, treeName) {
   let total = 0;
-  for (const id of TREE_ORDER[treeName]) {
+  for (const id of (TREE_ORDER[treeName] || [])) {
     total += (talents[id] || 0);
   }
   return total;
@@ -339,17 +410,20 @@ module.exports = {
   MAX_LEVEL,
   LEVEL_SCALE,
   MAX_RANK,
-  MAX_RANK_OLD,
-  MAX_RANK_NEW,
-  STRENGTH,
-  SPEED,
-  PRECISION,
-  UTILITY,
-  CHAOS,
+  MAX_RANK_CAPSTONE,
+  TANK,
+  FIREPOWER,
+  BRAWLER,
+  MASS_DAMAGE,
+  BLOOD_THIRST,
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
+  TALENT_NAME_TO_CHAIN_ID,
+  CHAIN_ID_TO_TALENT_NAME,
+  CHAIN_SLOT_FIELDS,
   getTalentValue,
+  canAllocate,
   createEmptyTalents,
   totalPointsSpent,
   pointsInTree,

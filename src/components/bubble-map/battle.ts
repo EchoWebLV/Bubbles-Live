@@ -38,6 +38,8 @@ export interface Bullet {
   vy: number;
   damage: number;
   createdAt: number;
+  isShrapnel?: boolean;
+  radius?: number;
 }
 
 export interface DamageNumber {
@@ -47,6 +49,9 @@ export interface DamageNumber {
   damage: number;
   createdAt: number;
   alpha: number;
+  color?: string;
+  fontSize?: number;
+  type?: string;
 }
 
 export interface BattleState {

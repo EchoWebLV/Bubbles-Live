@@ -7,19 +7,21 @@ const { PublicKey, Connection, Keypair, SystemProgram } = require('@solana/web3.
 const fs = require('fs');
 const path = require('path');
 
-// Program ID (deployed to devnet)
-const COMBAT_PROGRAM_ID = new PublicKey('7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi');
+// Program IDs — configurable via env for dev/production split
+const COMBAT_PROGRAM_ID = new PublicKey(
+  process.env.COMBAT_PROGRAM_ID || '7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi'
+);
+const DELEGATION_PROGRAM_ID = new PublicKey(
+  process.env.DELEGATION_PROGRAM_ID || 'DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh'
+);
+const ER_VALIDATOR = new PublicKey(
+  process.env.ER_VALIDATOR || 'MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57'
+);
 
-// Delegation program
-const DELEGATION_PROGRAM_ID = new PublicKey('DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh');
-
-// ER Validator for devnet Asia
-const ER_VALIDATOR = new PublicKey('MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57');
-
-// RPC Endpoints
-const BASE_RPC = 'https://api.devnet.solana.com';
-const ER_RPC = 'https://devnet.magicblock.app';
-const ER_WS = 'wss://devnet.magicblock.app';
+// RPC Endpoints — override via env for dev vs production
+const BASE_RPC = process.env.SOLANA_BASE_RPC || 'https://api.devnet.solana.com';
+const ER_RPC = process.env.MAGICBLOCK_ER_RPC || 'https://devnet.magicblock.app';
+const ER_WS = process.env.MAGICBLOCK_ER_WS || 'wss://devnet.magicblock.app';
 
 // PDA Seeds (must match Rust program)
 const ARENA_SEED = Buffer.from('arena');
@@ -29,10 +31,23 @@ const PLAYER_SEED = Buffer.from('player_v2');
 // Local game uses floats (bulletDamage=0.1).  Scale factor = 100.
 const DAMAGE_SCALE = 100;
 
-// Load IDL
+// Load IDL — patch embedded addresses when using a non-default program ID
 const combatIdl = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'hodlwarz_combat.json'), 'utf-8')
 );
+if (process.env.COMBAT_PROGRAM_ID) {
+  const pid = process.env.COMBAT_PROGRAM_ID;
+  combatIdl.address = pid;
+  if (combatIdl.accounts) {
+    for (const acct of combatIdl.accounts) {
+      if (acct.address) acct.address = pid;
+    }
+  }
+}
+
+console.log(`MagicBlock: Program ID = ${COMBAT_PROGRAM_ID.toBase58()}`);
+console.log(`MagicBlock: Base RPC  = ${BASE_RPC}`);
+console.log(`MagicBlock: ER RPC    = ${ER_RPC}`);
 
 function extractTxError(err) {
   if (err.transactionMessage) return err.transactionMessage;
@@ -749,31 +764,36 @@ class MagicBlockService {
         initialized: account.initialized,
         playerPda: player.playerPda.toBase58(),
         talents: {
-          ironSkin: account.talentIronSkin || 0,
-          heavyHitter: account.talentHeavyHitter || 0,
+          // Chain slots 0-4: Tank tree
+          armor: account.talentIronSkin || 0,
+          ironSkin: account.talentHeavyHitter || 0,
           regeneration: account.talentRegeneration || 0,
           lifesteal: account.talentLifesteal || 0,
-          armor: account.talentArmor || 0,
-          swift: account.talentSwift || 0,
+          vitalityStrike: account.talentArmor || 0,
+          // Chain slots 5-9: Firepower tree
+          heavyHitter: account.talentSwift || 0,
           rapidFire: account.talentRapidFire || 0,
-          evasion: account.talentEvasion || 0,
-          quickRespawn: account.talentQuickRespawn || 0,
-          momentum: account.talentMomentum || 0,
-          weakspot: account.talentWeakspot || 0,
-          criticalStrike: account.talentCriticalStrike || 0,
-          focusFire: account.talentFocusFire || 0,
-          multiShot: account.talentMultiShot || 0,
-          dualCannon: account.talentDualCannon || 0,
-          deflect: account.talentDeflect || 0,
-          absorb: account.talentAbsorb || 0,
-          lastStand: account.talentLastStand || 0,
-          cloak: account.talentCloak || 0,
-          dash: account.talentDash || 0,
-          rampage: account.talentRampage || 0,
-          homing: account.talentHoming || 0,
-          ricochet: account.talentRicochet || 0,
-          deathbomb: account.talentDeathbomb || 0,
-          frenzy: account.talentFrenzy || 0,
+          criticalStrike: account.talentEvasion || 0,
+          multiShot: account.talentQuickRespawn || 0,
+          dualCannon: account.talentMomentum || 0,
+          // Chain slots 10-14: Brawler tree
+          dash: account.talentWeakspot || 0,
+          bodySlam: account.talentCriticalStrike || 0,
+          momentum: account.talentFocusFire || 0,
+          spikes: account.talentMultiShot || 0,
+          shockwave: account.talentDualCannon || 0,
+          // Chain slots 15-19: Mass Damage tree
+          ricochet: account.talentDeflect || 0,
+          counterAttack: account.talentAbsorb || 0,
+          shrapnel: account.talentLastStand || 0,
+          nova: account.talentCloak || 0,
+          focusFire: account.talentDash || 0,
+          // Chain slots 20-24: Blood Thirst tree
+          experience: account.talentRampage || 0,
+          execute: account.talentHoming || 0,
+          killRush: account.talentRicochet || 0,
+          crimsonShield: account.talentDeathbomb || 0,
+          bloodbath: account.talentFrenzy || 0,
         },
         manualBuild: account.manualBuild || false,
       };

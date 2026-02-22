@@ -7,7 +7,8 @@ const { loadAllPhotos, savePhoto, deletePhoto } = require('./playerStore');
 const {
   MAX_LEVEL, LEVEL_SCALE, MAX_RANK,
   ALL_TALENTS, TREE_ORDER, AUTO_ALLOCATE_ORDER,
-  getTalentValue, createEmptyTalents, totalPointsSpent,
+  TALENT_NAME_TO_CHAIN_ID, CHAIN_ID_TO_TALENT_NAME,
+  getTalentValue, canAllocate, createEmptyTalents, totalPointsSpent,
 } = require('./talentConfig');
 
 const BATTLE_CONFIG = {
@@ -43,7 +44,9 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
+const TESTING_OVERRIDE_LEVEL = 20; // Set to null to disable
 function calcLevel(xp) {
+  if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
   if (baseLevel <= 50) return Math.min(baseLevel, MAX_LEVEL);
   // After level 50, each level costs 50% more than the previous (exponential)
@@ -60,30 +63,22 @@ function calcMaxHealth(healthLevel) {
 function calcAttackPower(attackLevel) {
   return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
 }
+const TALENT_POINT_LEVELS = [1, 3, 5, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62, 64, 66, 68, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 100];
+
 function calcTalentPoints(level) {
-  return Math.max(0, Math.floor((level - 1) / 2));
+  return TALENT_POINT_LEVELS.filter(l => level >= l).length;
 }
 
-const TALENT_NAME_TO_CHAIN_ID = {
-  ironSkin: 0, heavyHitter: 1, regeneration: 2, lifesteal: 3, armor: 4,
-  swift: 5, rapidFire: 6, evasion: 7, quickRespawn: 8, momentum: 9,
-  weakspot: 10, criticalStrike: 11, focusFire: 12, multiShot: 13, dualCannon: 14,
-  deflect: 15, absorb: 16, lastStand: 17, cloak: 18, dash: 19,
-  rampage: 20, homing: 21, ricochet: 22, deathbomb: 23, frenzy: 24,
-};
-
-const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
-  Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
-);
-
-// Auto-allocate talent points for idle players (randomized builds).
-// Returns the list of talent ids that were allocated (for chain sync).
+// Auto-allocate talent points for idle players (respects prerequisites).
 function autoAllocateTalents(bubble) {
   const available = calcTalentPoints(calcLevel(bubble.xp)) - totalPointsSpent(bubble.talents);
   if (available <= 0) return [];
   const allocated = [];
   for (let i = 0; i < available; i++) {
-    const candidates = AUTO_ALLOCATE_ORDER.filter(id => bubble.talents[id] < ALL_TALENTS[id].maxRank);
+    const candidates = AUTO_ALLOCATE_ORDER.filter(id =>
+      canAllocate(id, bubble.talents) &&
+      bubble.talents[id] < ALL_TALENTS[id].maxRank
+    );
     if (candidates.length === 0) break;
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     bubble.talents[pick]++;
@@ -460,15 +455,16 @@ class GameState {
           lastHitTarget: null,
           focusFireStacks: 0,
           shotCounter: 0,
-          // Utility
+          // Brawler state
+          _lastDash: 0,
+          _lastDashHit: 0,
+          _lastContactDmg: 0,
+          // Blood Thirst state
           shieldHP: 0,
           shieldUntil: 0,
-          cloakUntil: 0,
-          _lastCloak: 0,
-          // Chaos
-          rampageBulletsLeft: 0,
-          frenzyStacks: 0,
-          frenzyLastKillTime: 0,
+          killRushUntil: 0,
+          // Nova state
+          _lastNova: 0,
         };
         if (!bubble.manualBuild) {
           const newTalents = autoAllocateTalents(bubble);
@@ -515,13 +511,13 @@ class GameState {
         holder.vx = Math.cos(angle) * PHYSICS_CONFIG.minSpeed;
         holder.vy = Math.sin(angle) * PHYSICS_CONFIG.minSpeed;
       }
-      // Swift talent: increase max speed
+      // Kill Rush talent: temporary speed boost after kills
       const bb = this.battleBubbles.get(holder.address);
-      const swiftVal = bb ? getTalentValue('swift', bb.talents?.swift || 0) : 0;
-      const effectiveMax = Math.min(
-        PHYSICS_CONFIG.maxSpeed * (1 + swiftVal),
-        ALL_TALENTS.swift.maxSpeedCap
-      );
+      const killRushActive = bb && bb.killRushUntil && now < bb.killRushUntil;
+      const killRushSpeedBonus = killRushActive ? getTalentValue('killRush', bb.talents?.killRush || 0) : 0;
+      const momentumActive = bb && bb._momentumUntil && now < bb._momentumUntil;
+      const momentumBonus = momentumActive ? (bb._momentumBonus || 0) : 0;
+      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + killRushSpeedBonus + momentumBonus);
       if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
@@ -602,6 +598,7 @@ class GameState {
           if (!bb._lastDash) bb._lastDash = now - Math.random() * cooldown;
           if (now - bb._lastDash >= cooldown) {
             bb._lastDash = now;
+            bb._dashActive = now;
             const speed = Math.sqrt((holder.vx || 0) ** 2 + (holder.vy || 0) ** 2);
             if (speed > 0.01) {
               const nx = holder.vx / speed;
@@ -613,17 +610,13 @@ class GameState {
               holder.vx = Math.cos(angle) * ALL_TALENTS.dash.dashStrength;
               holder.vy = Math.sin(angle) * ALL_TALENTS.dash.dashStrength;
             }
-          }
-        }
 
-        // Cloak talent: periodically become untargetable
-        const cloakRank = bb.talents?.cloak || 0;
-        if (cloakRank > 0) {
-          const cloakCooldown = ALL_TALENTS.cloak.cooldownMs[cloakRank - 1];
-          if (!bb._lastCloak) bb._lastCloak = now - Math.random() * cloakCooldown;
-          if (now >= (bb.cloakUntil || 0) && now - bb._lastCloak >= cloakCooldown) {
-            bb._lastCloak = now;
-            bb.cloakUntil = now + ALL_TALENTS.cloak.durationMs;
+            // Momentum: speed buff after dashing
+            const momRank = bb.talents?.momentum || 0;
+            if (momRank > 0) {
+              bb._momentumUntil = now + ALL_TALENTS.momentum.durationMs;
+              bb._momentumBonus = getTalentValue('momentum', momRank);
+            }
           }
         }
       }
@@ -658,7 +651,7 @@ class GameState {
     });
 
     // Regeneration talent: heal alive non-ghost bubbles each tick
-    const regenTickRate = deltaTime / 30; // normalize to ~1 second at 30fps
+    const regenTickRate = deltaTime / 30;
     this.battleBubbles.forEach((bubble) => {
       if (bubble.isGhost || !bubble.isAlive) return;
       const regenRank = bubble.talents?.regeneration || 0;
@@ -670,19 +663,18 @@ class GameState {
       }
     });
 
-    // Expire shields (Absorb talent)
+    // Expire Crimson Shields
     this.battleBubbles.forEach((bubble) => {
       if (bubble.shieldHP > 0 && now > bubble.shieldUntil) {
         bubble.shieldHP = 0;
       }
     });
 
-    // Decay Frenzy stacks
-    this.battleBubbles.forEach((bubble) => {
-      if (bubble.frenzyStacks > 0 && now - bubble.frenzyLastKillTime > ALL_TALENTS.frenzy.decayMs) {
-        bubble.frenzyStacks = 0;
-      }
-    });
+    // Body Slam + Velocity Strike: contact damage during collisions
+    this._processBrawlerCollisions(now, deltaTime);
+
+    // Nova talent: emit projectiles periodically
+    this._processNova(now);
 
     // Shooting logic
     this.holders.forEach(holder => {
@@ -691,18 +683,12 @@ class GameState {
       const battleBubble = this.battleBubbles.get(holder.address);
       if (!battleBubble || battleBubble.isGhost) return;
 
-      // Rapid Fire talent: reduce cooldown
-      const rapidFireVal = getTalentValue('rapidFire', battleBubble.talents.rapidFire || 0);
-      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal);
-
-      // Frenzy talent: kill streak boosts fire rate
-      if (battleBubble.frenzyStacks > 0) {
-        const frenzyVal = getTalentValue('frenzy', battleBubble.talents?.frenzy || 0);
-        const frenzyMult = Math.max(ALL_TALENTS.frenzy.minMultiplier, 1 - frenzyVal * battleBubble.frenzyStacks);
-        effectiveFireRate *= frenzyMult;
-      }
-
-      effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs);
+      // Kill Rush talent: temporary fire rate boost after kills
+      const rapidFireVal = getTalentValue('rapidFire', battleBubble.talents?.rapidFire || 0);
+      const killRushActive = battleBubble.killRushUntil && now < battleBubble.killRushUntil;
+      const killRushVal = killRushActive ? getTalentValue('killRush', battleBubble.talents?.killRush || 0) : 0;
+      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal);
+      effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs || 80);
       if (now - battleBubble.lastShotTime < effectiveFireRate) return;
 
       // Find closest target
@@ -715,7 +701,6 @@ class GameState {
         if (target.address === holder.address || target.x === undefined) return;
         const targetBattle = this.battleBubbles.get(target.address);
         if (targetBattle?.isGhost) return;
-        if (targetBattle?.cloakUntil && now < targetBattle.cloakUntil) return;
 
         const dx = target.x - holder.x;
         const dy = target.y - holder.y;
@@ -743,33 +728,13 @@ class GameState {
           battleBubble.attackPower = BATTLE_CONFIG.bulletDamage;
         }
 
-        // Momentum talent: bonus damage while moving fast
-        const momentumRank = battleBubble.talents.momentum || 0;
-        if (momentumRank > 0) {
-          const speed = Math.sqrt((holder.vx || 0) ** 2 + (holder.vy || 0) ** 2);
-          const swiftVal = getTalentValue('swift', battleBubble.talents.swift || 0);
-          const effectiveMaxSpeed = Math.min(PHYSICS_CONFIG.maxSpeed * (1 + swiftVal), ALL_TALENTS.swift.maxSpeedCap);
-          if (speed >= effectiveMaxSpeed * ALL_TALENTS.momentum.speedThreshold) {
-            damage *= (1 + getTalentValue('momentum', momentumRank));
-          }
-        }
-
         // Heavy Hitter talent: flat damage boost
         const heavyHitterVal = getTalentValue('heavyHitter', battleBubble.talents.heavyHitter || 0);
         if (heavyHitterVal > 0) damage *= (1 + heavyHitterVal);
 
-        // Last Stand talent: bonus damage when low HP
-        const lastStandVal = getTalentValue('lastStand', battleBubble.talents?.lastStand || 0);
-        if (lastStandVal > 0 && battleBubble.health / battleBubble.maxHealth <= ALL_TALENTS.lastStand.hpThreshold) {
-          damage *= (1 + lastStandVal);
-        }
-
-        // Rampage talent: bonus damage on next 3 shots after a kill
-        if (battleBubble.rampageBulletsLeft > 0) {
-          const rampageVal = getTalentValue('rampage', battleBubble.talents?.rampage || 0);
-          if (rampageVal > 0) damage *= (1 + rampageVal);
-          battleBubble.rampageBulletsLeft--;
-        }
+        // Vitality Strike talent: bonus damage from max HP
+        const vitalityVal = getTalentValue('vitalityStrike', battleBubble.talents?.vitalityStrike || 0);
+        if (vitalityVal > 0) damage += battleBubble.maxHealth * vitalityVal;
 
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
@@ -860,10 +825,46 @@ class GameState {
       if (bulletsToRemove.has(bullet.id)) return;
 
       // Remove bullets from dead/ghost shooters
-      const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
-      if (shooterBattle && (shooterBattle.isGhost || !shooterBattle.isAlive)) {
+      const shooterBubble = this.battleBubbles.get(bullet.shooterAddress);
+      if (shooterBubble && (shooterBubble.isGhost || !shooterBubble.isAlive)) {
         bulletsToRemove.add(bullet.id);
         return;
+      }
+
+      // Nova bullets: straight-line movement, but hit detection uses normal pipeline below
+      if (bullet.isNova) {
+        bullet.x += bullet.vx * deltaTime;
+        bullet.y += bullet.vy * deltaTime;
+        const travelDx = bullet.x - bullet.startX;
+        const travelDy = bullet.y - bullet.startY;
+        const traveled = Math.sqrt(travelDx * travelDx + travelDy * travelDy);
+        bullet.progress = traveled / (bullet.novaMaxDist || 350);
+
+        if (traveled >= (bullet.novaMaxDist || 350) ||
+            bullet.x < -50 || bullet.x > width + 50 ||
+            bullet.y < -50 || bullet.y > height + 50) {
+          bulletsToRemove.add(bullet.id);
+          return;
+        }
+
+        // Find closest enemy in hit range and assign as target for normal pipeline
+        let novaHit = null;
+        let novaHitDist = Infinity;
+        for (const h of this.holders) {
+          if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+          const hb = this.battleBubbles.get(h.address);
+          if (!hb || hb.isGhost) continue;
+          const hdx = bullet.x - h.x;
+          const hdy = bullet.y - h.y;
+          const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
+          if (hDist < h.radius + 3 && hDist < novaHitDist) {
+            novaHit = h;
+            novaHitDist = hDist;
+          }
+        }
+        if (!novaHit) return;
+        bullet.targetAddress = novaHit.address;
+        // Fall through to normal hit detection below
       }
 
       const totalDist = Math.sqrt(
@@ -908,53 +909,14 @@ class GameState {
 
       const targetBattle = this.battleBubbles.get(target.address);
       if (!targetBattle || targetBattle.isGhost) return;
-      if (targetBattle.cloakUntil && now < targetBattle.cloakUntil) {
-        bulletsToRemove.add(bullet.id);
-        return;
-      }
 
       const hitDx = bullet.x - target.x;
       const hitDy = bullet.y - target.y;
       const hitDist = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
-
-      // Homing talent: increase effective hit radius
-      const shooterBattleForHoming = this.battleBubbles.get(bullet.shooterAddress);
-      const homingVal = shooterBattleForHoming ? getTalentValue('homing', shooterBattleForHoming.talents?.homing || 0) : 0;
-      const effectiveHitRadius = (target.radius + 3) * (1 + homingVal);
+      const effectiveHitRadius = target.radius + 3;
 
       if (hitDist < effectiveHitRadius) {
         bulletsToRemove.add(bullet.id);
-
-        // Deflect talent: chance to reflect bullet back at shooter
-        const deflectChance = getTalentValue('deflect', targetBattle.talents?.deflect || 0);
-        if (deflectChance > 0 && Math.random() < deflectChance && !bullet.isReflected) {
-          const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
-          if (shooter && shooter.x !== undefined) {
-            this.bullets.push({
-              id: `b-${this.bulletIdCounter++}`,
-              shooterAddress: target.address,
-              targetAddress: bullet.shooterAddress,
-              shooterColor: target.color || '#fff',
-              x: target.x, y: target.y,
-              startX: target.x, startY: target.y,
-              targetX: shooter.x, targetY: shooter.y,
-              progress: 0,
-              curveDirection: Math.random() > 0.5 ? 1 : -1,
-              curveStrength: BATTLE_CONFIG.curveStrength.min,
-              vx: 0, vy: 0,
-              damage: bullet.damage * 0.5,
-              createdAt: now,
-              isReflected: true,
-            });
-          }
-          return;
-        }
-
-        // Evasion talent: chance to dodge
-        const evasionChance = getTalentValue('evasion', targetBattle.talents?.evasion || 0);
-        if (evasionChance > 0 && Math.random() < evasionChance) {
-          return;
-        }
 
         let actualDmg = Math.min(bullet.damage, 5);
         const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
@@ -967,15 +929,15 @@ class GameState {
           }
         }
 
-        // Weakspot talent: bonus vs low-HP targets
+        // Execute talent: bonus vs targets ≤50% HP
         if (shooterBattle) {
-          const weakspotVal = getTalentValue('weakspot', shooterBattle.talents?.weakspot || 0);
-          if (weakspotVal > 0 && targetBattle.health / targetBattle.maxHealth <= ALL_TALENTS.weakspot.hpThreshold) {
-            actualDmg *= (1 + weakspotVal);
+          const executeVal = getTalentValue('execute', shooterBattle.talents?.execute || 0);
+          if (executeVal > 0 && targetBattle.health / targetBattle.maxHealth <= ALL_TALENTS.execute.hpThreshold) {
+            actualDmg *= (1 + executeVal);
           }
         }
 
-        // Focus Fire talent: stacking damage on same target
+        // Focus Fire talent (massDamage capstone): stacking damage on same target
         if (shooterBattle) {
           const focusRank = shooterBattle.talents?.focusFire || 0;
           if (focusRank > 0) {
@@ -998,6 +960,7 @@ class GameState {
 
         // Armor talent: reduce incoming damage
         const armorVal = getTalentValue('armor', targetBattle.talents?.armor || 0);
+        const dmgBeforeArmor = actualDmg;
         if (armorVal > 0) {
           actualDmg *= (1 - armorVal);
         }
@@ -1011,7 +974,7 @@ class GameState {
           }
         }
 
-        // Absorb shield: absorb damage before health
+        // Crimson Shield: absorb damage before health
         if (targetBattle.shieldHP > 0) {
           const shieldAbsorbed = Math.min(actualDmg, targetBattle.shieldHP);
           targetBattle.shieldHP -= shieldAbsorbed;
@@ -1020,6 +983,45 @@ class GameState {
 
         targetBattle.health -= actualDmg;
 
+        // Spikes talent: reflect % of damage TAKEN (after armor) back to attacker
+        if (shooterBattle && !shooterBattle.isGhost) {
+          const spikesVal = getTalentValue('spikes', targetBattle.talents?.spikes || 0);
+          if (spikesVal > 0) {
+            const reflectDmg = actualDmg * spikesVal;
+            shooterBattle.health -= reflectDmg;
+          }
+        }
+
+        // Counter Attack talent: chance to fire straight bullet back at attacker
+        if (!bullet.isCounterAttack) {
+          const counterChance = getTalentValue('counterAttack', targetBattle.talents?.counterAttack || 0);
+          if (counterChance > 0 && Math.random() < counterChance) {
+            const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
+            if (shooter && shooter.x !== undefined) {
+              const cdx = shooter.x - target.x;
+              const cdy = shooter.y - target.y;
+              const cdist = Math.sqrt(cdx * cdx + cdy * cdy);
+              this.bullets.push({
+                id: `b-${this.bulletIdCounter++}`,
+                shooterAddress: target.address,
+                targetAddress: bullet.shooterAddress,
+                shooterColor: target.color || '#fff',
+                x: target.x, y: target.y,
+                startX: target.x, startY: target.y,
+                targetX: shooter.x, targetY: shooter.y,
+                progress: 0,
+                curveDirection: 0,
+                curveStrength: 0,
+                vx: cdist > 0 ? (cdx / cdist) * BATTLE_CONFIG.bulletSpeed : 0,
+                vy: cdist > 0 ? (cdy / cdist) * BATTLE_CONFIG.bulletSpeed : 0,
+                damage: (targetBattle.attackPower || BATTLE_CONFIG.bulletDamage),
+                createdAt: now,
+                isCounterAttack: true,
+              });
+            }
+          }
+        }
+
         // Lifesteal talent: heal shooter
         if (shooterBattle && !shooterBattle.isGhost) {
           const lifestealVal = getTalentValue('lifesteal', shooterBattle.talents?.lifesteal || 0);
@@ -1027,6 +1029,53 @@ class GameState {
             const healAmount = actualDmg * lifestealVal;
             const healCeiling = shooterBattle.maxHealth * ALL_TALENTS.lifesteal.healCeiling;
             shooterBattle.health = Math.min(shooterBattle.health + healAmount, healCeiling);
+          }
+        }
+
+        // Shrapnel talent: spawn fragment projectiles on hit (base damage only)
+        if (shooterBattle && !bullet.isShrapnel) {
+          const shrapRank = shooterBattle.talents?.shrapnel || 0;
+          if (shrapRank > 0) {
+            const fragCount = ALL_TALENTS.shrapnel.fragments[shrapRank - 1];
+            const fragDmgMult = ALL_TALENTS.shrapnel.fragmentDamage[shrapRank - 1];
+            const baseDmg = (shooterBattle.attackPower || BATTLE_CONFIG.bulletDamage) * fragDmgMult;
+            const fragRange = ALL_TALENTS.shrapnel.fragmentRange;
+            const nearbyTargets = [];
+            this.holders.forEach(h => {
+              if (h.address === target.address || h.address === bullet.shooterAddress || h.x === undefined) return;
+              const hb = this.battleBubbles.get(h.address);
+              if (!hb || hb.isGhost) return;
+              const fdx = h.x - target.x;
+              const fdy = h.y - target.y;
+              const fd = Math.sqrt(fdx * fdx + fdy * fdy);
+              if (fd < fragRange) nearbyTargets.push({ holder: h, dist: fd });
+            });
+            nearbyTargets.sort((a, b) => a.dist - b.dist);
+            for (let fi = 0; fi < Math.min(fragCount, nearbyTargets.length); fi++) {
+              const ft = nearbyTargets[fi].holder;
+              const fdx = ft.x - target.x;
+              const fdy = ft.y - target.y;
+              const fd = Math.sqrt(fdx * fdx + fdy * fdy);
+              const shrapSpeed = BATTLE_CONFIG.bulletSpeed * 1.8;
+              this.bullets.push({
+                id: `b-${this.bulletIdCounter++}`,
+                shooterAddress: bullet.shooterAddress,
+                targetAddress: ft.address,
+                shooterColor: bullet.shooterColor,
+                x: target.x, y: target.y,
+                startX: target.x, startY: target.y,
+                targetX: ft.x, targetY: ft.y,
+                progress: 0,
+                curveDirection: Math.random() > 0.5 ? 1 : -1,
+                curveStrength: BATTLE_CONFIG.curveStrength.min * 0.3,
+                vx: fd > 0 ? (fdx / fd) * shrapSpeed : 0,
+                vy: fd > 0 ? (fdy / fd) * shrapSpeed : 0,
+                damage: baseDmg,
+                createdAt: now,
+                isShrapnel: true,
+                radius: 2,
+              });
+            }
           }
         }
 
@@ -1043,17 +1092,16 @@ class GameState {
           this._queueAttack(bullet.shooterAddress, target.address, actualDmg);
         }
 
-        // Ricochet talent: chance to bounce to a second target
+        // Ricochet talent: chance to bounce to a second target (base damage only)
         if (shooterBattle && !bullet.isRicochet) {
           const ricochetChance = getTalentValue('ricochet', shooterBattle.talents?.ricochet || 0);
           if (ricochetChance > 0 && Math.random() < ricochetChance) {
             let bounceTarget = null;
-            let bounceDist = ALL_TALENTS.ricochet.bounceRange;
+            let bounceDist = Infinity;
             this.holders.forEach(h => {
               if (h.address === target.address || h.address === bullet.shooterAddress || h.x === undefined) return;
               const hBattle = this.battleBubbles.get(h.address);
               if (hBattle?.isGhost) return;
-              if (hBattle?.cloakUntil && now < hBattle.cloakUntil) return;
               const bdx = h.x - target.x;
               const bdy = h.y - target.y;
               const bd = Math.sqrt(bdx * bdx + bdy * bdy);
@@ -1063,6 +1111,7 @@ class GameState {
               }
             });
             if (bounceTarget) {
+              const baseDmg = (shooterBattle.attackPower || BATTLE_CONFIG.bulletDamage) * ALL_TALENTS.ricochet.bounceDamage;
               this.bullets.push({
                 id: `b-${this.bulletIdCounter++}`,
                 shooterAddress: bullet.shooterAddress,
@@ -1075,7 +1124,7 @@ class GameState {
                 curveDirection: Math.random() > 0.5 ? 1 : -1,
                 curveStrength: BATTLE_CONFIG.curveStrength.min,
                 vx: 0, vy: 0,
-                damage: bullet.damage * ALL_TALENTS.ricochet.bounceDamage,
+                damage: baseDmg,
                 createdAt: now,
                 isRicochet: true,
               });
@@ -1088,53 +1137,21 @@ class GameState {
           targetBattle.isGhost = true;
           targetBattle.isAlive = false;
 
-          // Deathbomb talent: explode on death
-          const deathbombVal = getTalentValue('deathbomb', targetBattle.talents?.deathbomb || 0);
-          if (deathbombVal > 0) {
-            const explosionDmg = targetBattle.maxHealth * deathbombVal;
-            const explosionRadius = ALL_TALENTS.deathbomb.explosionRadius;
-            this.vfx.push({ type: 'deathbomb', x: target.x, y: target.y, radius: explosionRadius, color: target.color || '#ff4444', createdAt: now });
-            this.holders.forEach(h => {
-              if (h.address === target.address || h.x === undefined) return;
-              const hBattle = this.battleBubbles.get(h.address);
-              if (!hBattle || hBattle.isGhost) return;
-              const edx = h.x - target.x;
-              const edy = h.y - target.y;
-              const eDist = Math.sqrt(edx * edx + edy * edy);
-              if (eDist < explosionRadius) {
-                const falloff = 1 - (eDist / explosionRadius);
-                const dmg = explosionDmg * falloff;
-                hBattle.health -= dmg;
-                if (this.magicBlockReady) {
-                  this._queueAttack(target.address, h.address, dmg);
-                }
-                this.damageNumbers.push({
-                  id: `dmg-${now}-${Math.random()}`,
-                  x: h.x + (Math.random() - 0.5) * 20,
-                  y: h.y - 10,
-                  damage: dmg,
-                  createdAt: now,
-                  alpha: 1,
-                });
-              }
-            });
-          }
-
           // Ghost duration scales with level: 20s base + 1s per level
           const victimLevel = calcLevel(targetBattle.xp || 0);
           let baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
           if (victimLevel >= 50) baseGhostMs += 2000;
-          const qrVal = getTalentValue('quickRespawn', targetBattle.talents?.quickRespawn || 0);
-          const ghostMs = Math.max(
-            baseGhostMs * (1 - qrVal),
-            ALL_TALENTS.quickRespawn.minGhostMs
-          );
-          targetBattle.ghostUntil = now + ghostMs;
+          targetBattle.ghostUntil = now + baseGhostMs;
 
           if (shooterBattle) {
             shooterBattle.kills++;
             let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
             if (victimLevel >= 50) killXp *= 2;
+
+            // Experience talent: bonus XP %
+            const expVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
+            if (expVal > 0) killXp = Math.round(killXp * (1 + expVal));
+
             shooterBattle.xp += killXp;
             const newLevel = calcLevel(shooterBattle.xp);
             shooterBattle.healthLevel = newLevel;
@@ -1147,31 +1164,53 @@ class GameState {
               this._queueTalentSync(bullet.shooterAddress, newTalents);
             }
 
-            // Absorb talent: gain shield from kills
-            const absorbVal = getTalentValue('absorb', shooterBattle.talents?.absorb || 0);
-            if (absorbVal > 0) {
-              shooterBattle.shieldHP = targetBattle.maxHealth * absorbVal;
-              shooterBattle.shieldUntil = now + ALL_TALENTS.absorb.shieldDurationMs;
+            // Kill Rush talent: temporary speed + fire rate boost
+            const killRushRank = shooterBattle.talents?.killRush || 0;
+            if (killRushRank > 0) {
+              shooterBattle.killRushUntil = now + ALL_TALENTS.killRush.durationMs;
             }
 
-            // Rampage talent: bonus damage on next N shots
-            const rampageRank = shooterBattle.talents?.rampage || 0;
-            if (rampageRank > 0) {
-              shooterBattle.rampageBulletsLeft = ALL_TALENTS.rampage.bulletsCount;
+            // Crimson Shield talent: gain shield from kills
+            const crimsonVal = getTalentValue('crimsonShield', shooterBattle.talents?.crimsonShield || 0);
+            if (crimsonVal > 0) {
+              shooterBattle.shieldHP = targetBattle.maxHealth * crimsonVal;
+              shooterBattle.shieldUntil = now + ALL_TALENTS.crimsonShield.durationMs;
             }
 
-            // Frenzy talent: stack fire rate on kill streak
-            const frenzyRank = shooterBattle.talents?.frenzy || 0;
-            if (frenzyRank > 0) {
-              shooterBattle.frenzyStacks = Math.min(
-                (shooterBattle.frenzyStacks || 0) + 1,
-                ALL_TALENTS.frenzy.maxStacks
-              );
-              shooterBattle.frenzyLastKillTime = now;
+            // Bloodbath talent: blood nova on kill
+            const bloodbathRank = shooterBattle.talents?.bloodbath || 0;
+            if (bloodbathRank > 0) {
+              const bbVal = getTalentValue('bloodbath', bloodbathRank);
+              const bbRadius = ALL_TALENTS.bloodbath.radius[bloodbathRank - 1];
+              const novaDmg = shooterBattle.maxHealth * bbVal;
+              this.vfx.push({ type: 'bloodbath', x: target.x, y: target.y, radius: bbRadius, color: '#cc0000', createdAt: now });
+              this.holders.forEach(h => {
+                if (h.address === target.address || h.address === bullet.shooterAddress || h.x === undefined) return;
+                const hBattle = this.battleBubbles.get(h.address);
+                if (!hBattle || hBattle.isGhost) return;
+                const edx = h.x - target.x;
+                const edy = h.y - target.y;
+                const eDist = Math.sqrt(edx * edx + edy * edy);
+                if (eDist < bbRadius) {
+                  const falloff = 1 - (eDist / bbRadius);
+                  const dmg = novaDmg * falloff;
+                  hBattle.health -= dmg;
+                  if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, h.address, dmg);
+                  this.damageNumbers.push({
+                    id: `dmg-${now}-${Math.random()}`,
+                    x: h.x + (Math.random() - 0.5) * 20,
+                    y: h.y - 10,
+                    damage: dmg,
+                    createdAt: now,
+                    alpha: 1,
+                  });
+                }
+              });
             }
           }
           targetBattle.deaths++;
-          targetBattle.xp += PROGRESSION.xpPerDeath;
+          const deathXp = PROGRESSION.xpPerDeath;
+          targetBattle.xp += deathXp;
           if (!targetBattle.manualBuild) {
             const newTalents = autoAllocateTalents(targetBattle);
             this._queueTalentSync(target.address, newTalents);
@@ -1213,6 +1252,117 @@ class GameState {
 
     // Process attack queue (send to ER)
     this._processAttackQueue();
+  }
+
+  // ─── Brawler: Body Slam + Velocity Strike ──────────────────────
+  _processBrawlerCollisions(now, deltaTime) {
+    for (let i = 0; i < this.holders.length; i++) {
+      const a = this.holders[i];
+      const bbA = this.battleBubbles.get(a.address);
+      if (!bbA || bbA.isGhost || a.x === undefined) continue;
+
+      for (let j = i + 1; j < this.holders.length; j++) {
+        const b = this.holders[j];
+        const bbB = this.battleBubbles.get(b.address);
+        if (!bbB || bbB.isGhost || b.x === undefined) continue;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = a.radius + b.radius + 5;
+        if (dist >= minDist) continue;
+
+        // Body Slam: deal % max HP damage on any body contact (500ms cooldown per attacker)
+        const pairs = [[bbA, bbB, a, b], [bbB, bbA, b, a]];
+        for (const [attacker, victim, aH, vH] of pairs) {
+          const bodyRank = attacker.talents?.bodySlam || 0;
+          if (bodyRank > 0) {
+            if (!attacker._lastBodySlam || now - attacker._lastBodySlam >= 500) {
+              attacker._lastBodySlam = now;
+              const pct = getTalentValue('bodySlam', bodyRank);
+              const dmg = attacker.maxHealth * pct;
+              victim.health -= dmg;
+              this.damageNumbers.push({
+                id: `dmg-${now}-${Math.random()}`, x: vH.x, y: vH.y - 20,
+                damage: dmg, createdAt: now, alpha: 1,
+                color: '#ff8800', fontSize: 26, type: 'bodySlam',
+              });
+              if (this.magicBlockReady) this._queueAttack(aH.address, vH.address, dmg);
+
+              // Shockwave: AoE on body hit
+              const swRank = attacker.talents?.shockwave || 0;
+              if (swRank > 0) {
+                const swPct = getTalentValue('shockwave', swRank);
+                const swRadius = ALL_TALENTS.shockwave.radius[swRank - 1];
+                const swDmg = attacker.maxHealth * swPct;
+                this.vfx.push({ type: 'shockwave', x: vH.x, y: vH.y, radius: swRadius, color: aH.color || '#ff8800', createdAt: now });
+                this.holders.forEach(h => {
+                  if (h.address === aH.address || h.address === vH.address || h.x === undefined) return;
+                  const hb = this.battleBubbles.get(h.address);
+                  if (!hb || hb.isGhost) return;
+                  const sdx = h.x - vH.x;
+                  const sdy = h.y - vH.y;
+                  const sd = Math.sqrt(sdx * sdx + sdy * sdy);
+                  if (sd < swRadius) {
+                    const falloff = 1 - (sd / swRadius);
+                    const d = swDmg * falloff;
+                    hb.health -= d;
+                    if (this.magicBlockReady) this._queueAttack(aH.address, h.address, d);
+                  }
+                });
+              }
+            }
+          }
+
+        }
+      }
+    }
+  }
+
+  // ─── Nova: periodic burst of straight-line bullets in all directions ───
+  _processNova(now) {
+    this.battleBubbles.forEach((bubble, address) => {
+      if (bubble.isGhost) return;
+      const novaRank = bubble.talents?.nova || 0;
+      if (novaRank <= 0) return;
+      const interval = ALL_TALENTS.nova.intervalMs;
+      if (!bubble._lastNova) bubble._lastNova = now - Math.random() * interval;
+      if (now - bubble._lastNova < interval) return;
+      bubble._lastNova = now;
+
+      const holder = this.holders.find(h => h.address === address);
+      if (!holder || holder.x === undefined) return;
+
+      const count = ALL_TALENTS.nova.projectiles[novaRank - 1];
+      const baseDmg = (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * ALL_TALENTS.nova.novaDamageMultiplier;
+      const novaSpeed = ALL_TALENTS.nova.novaSpeed;
+      const range = ALL_TALENTS.nova.novaRange;
+
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 / count) * i;
+        const endX = holder.x + Math.cos(angle) * range;
+        const endY = holder.y + Math.sin(angle) * range;
+
+        this.bullets.push({
+          id: `b-${this.bulletIdCounter++}`,
+          shooterAddress: address,
+          targetAddress: address,
+          shooterColor: holder.color,
+          x: holder.x, y: holder.y,
+          startX: holder.x, startY: holder.y,
+          targetX: endX, targetY: endY,
+          progress: 0,
+          curveDirection: 0,
+          curveStrength: 0,
+          vx: Math.cos(angle) * novaSpeed,
+          vy: Math.sin(angle) * novaSpeed,
+          damage: baseDmg,
+          createdAt: now,
+          isNova: true,
+          novaMaxDist: range,
+        });
+      }
+    });
   }
 
   // ─── ER Damage Aggregation ───────────────────────────────────────
@@ -1435,9 +1585,8 @@ class GameState {
       const chainState = erStates.get(walletAddress);
       if (!chainState?.talents) continue;
 
-      // Fast check: do per-talent ranks already match?
       let needsSync = false;
-      for (const talentName of Object.keys(TALENT_NAME_TO_CHAIN_ID)) {
+      for (const talentName of Object.keys(ALL_TALENTS)) {
         if ((bubble.talents[talentName] || 0) !== (chainState.talents[talentName] || 0)) {
           needsSync = true;
           break;
@@ -1500,11 +1649,12 @@ class GameState {
       bubble.shotCounter = 0;
       bubble.shieldHP = 0;
       bubble.shieldUntil = 0;
-      bubble.cloakUntil = 0;
-      bubble._lastCloak = 0;
-      bubble.rampageBulletsLeft = 0;
-      bubble.frenzyStacks = 0;
-      bubble.frenzyLastKillTime = 0;
+      bubble.killRushUntil = 0;
+      bubble._lastDash = 0;
+      bubble._dashActive = 0;
+      bubble._lastDashHit = 0;
+      bubble._lastContactDmg = 0;
+      bubble._lastNova = 0;
     }
 
     this.playerCache.clear();
@@ -1596,13 +1746,14 @@ class GameState {
     if (!bubble) return { success: false, error: 'Not in game' };
     const talent = ALL_TALENTS[talentId];
     if (!talent) return { success: false, error: 'Unknown talent' };
-    const currentRank = bubble.talents[talentId] || 0;
-    if (currentRank >= talent.maxRank) return { success: false, error: 'Already maxed' };
+    if (!canAllocate(talentId, bubble.talents)) {
+      return { success: false, error: talent.requires ? 'Prerequisite not met' : 'Already maxed' };
+    }
     const level = calcLevel(bubble.xp);
     const available = calcTalentPoints(level) - totalPointsSpent(bubble.talents);
     if (available <= 0) return { success: false, error: 'No talent points available' };
 
-    bubble.talents[talentId] = currentRank + 1;
+    bubble.talents[talentId] = (bubble.talents[talentId] || 0) + 1;
     bubble.manualBuild = true;
 
     // Recalc Iron Skin immediately so HP reflects the new talent
@@ -1820,7 +1971,6 @@ class GameState {
         attackLevel: b.attackLevel || 1,
         attackPower: b.attackPower || BATTLE_CONFIG.bulletDamage,
         isAlive: b.isAlive !== false,
-        cloaked: b.cloakUntil ? now < b.cloakUntil : false,
         talents: b.talents || {},
         talentPoints: calcTalentPoints(calcLevel(b.xp || 0)) - totalPointsSpent(b.talents || {}),
         manualBuild: b.manualBuild || false,
