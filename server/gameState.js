@@ -401,6 +401,21 @@ class GameState {
     return minRadius + normalized * (maxRadius - minRadius);
   }
 
+  getMedianXp() {
+    const xpValues = Array.from(this.battleBubbles.values())
+      .map(b => b.xp || 0)
+      .filter(xp => xp > 0)
+      .sort((a, b) => a - b);
+
+    if (xpValues.length === 0) return 0;
+
+    const mid = Math.floor(xpValues.length / 2);
+    if (xpValues.length % 2 === 0) {
+      return Math.floor((xpValues[mid - 1] + xpValues[mid]) / 2);
+    }
+    return xpValues[mid];
+  }
+
   initializePositions() {
     const { width, height } = this.dimensions;
     const margin = 150;
@@ -415,10 +430,10 @@ class GameState {
 
       if (!this.battleBubbles.has(holder.address)) {
         const cached = this.playerCache.get(holder.address);
-        const cachedXp = cached ? (cached.xp || 0) : 0;
+        const cachedXp = cached ? (cached.xp || 0) : this.getMedianXp();
         const lvl = calcLevel(cachedXp);
-        const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : BATTLE_CONFIG.maxHealth;
-        const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : BATTLE_CONFIG.bulletDamage;
+        const cappedMaxHealth = cached ? Math.min(cached.maxHealth, calcMaxHealth(lvl)) : calcMaxHealth(lvl);
+        const cappedAttack = cached ? Math.min(cached.attackPower, calcAttackPower(lvl)) : calcAttackPower(lvl);
 
         // Restore talents from ER cache
         const cachedTalents = (cached && cached.talents && totalPointsSpent(cached.talents) > 0)
@@ -437,8 +452,8 @@ class GameState {
           kills: cached ? cached.kills : 0,
           deaths: cached ? cached.deaths : 0,
           xp: cachedXp,
-          healthLevel: cached ? cached.healthLevel : 1,
-          attackLevel: cached ? cached.attackLevel : 1,
+          healthLevel: cached ? cached.healthLevel : lvl,
+          attackLevel: cached ? cached.attackLevel : lvl,
           isAlive: true,
           talents: cachedTalents,
           manualBuild: cachedManualBuild,
@@ -1502,6 +1517,42 @@ class GameState {
     return { success: true, ...result };
   }
 
+  // ─── One-time catch-up: boost all players below median ──────────
+
+  catchUpLowLevelPlayers() {
+    const medianXp = this.getMedianXp();
+    if (medianXp <= 0) return 0;
+
+    let boosted = 0;
+    for (const [address, bubble] of this.battleBubbles) {
+      if ((bubble.xp || 0) >= medianXp) continue;
+
+      const oldLevel = calcLevel(bubble.xp || 0);
+      bubble.xp = medianXp;
+      const lvl = calcLevel(medianXp);
+      bubble.healthLevel = lvl;
+      bubble.attackLevel = lvl;
+      bubble.maxHealth = calcMaxHealth(lvl);
+      bubble.attackPower = calcAttackPower(lvl);
+      bubble.health = Math.min(bubble.health, bubble.maxHealth);
+
+      if (!bubble.manualBuild) {
+        const newTalents = autoAllocateTalents(bubble);
+        this._queueTalentSync(address, newTalents);
+      }
+
+      boosted++;
+      console.log(`Catch-up: ${address.slice(0, 6)}... boosted from level ${oldLevel} to ${lvl}`);
+    }
+
+    if (boosted > 0) {
+      this.updateTopKillers();
+      this.addEventLog(`${boosted} player(s) boosted to median level ${calcLevel(medianXp)}`);
+      console.log(`Catch-up complete: ${boosted} players boosted to median level ${calcLevel(medianXp)} (${medianXp} XP)`);
+    }
+    return boosted;
+  }
+
   // ─── Event & Player Management ───────────────────────────────────
 
   addEventLog(message) {
@@ -1511,20 +1562,26 @@ class GameState {
 
   ensurePlayerCached(walletAddress) {
     if (!this.playerCache.has(walletAddress)) {
+      const medianXp = this.getMedianXp();
+      const medianLevel = calcLevel(medianXp);
       this.playerCache.set(walletAddress, {
         walletAddress,
-        health: BATTLE_CONFIG.maxHealth,
-        maxHealth: BATTLE_CONFIG.maxHealth,
-        attackPower: BATTLE_CONFIG.bulletDamage,
-        xp: 0,
+        health: calcMaxHealth(medianLevel),
+        maxHealth: calcMaxHealth(medianLevel),
+        attackPower: calcAttackPower(medianLevel),
+        xp: medianXp,
         kills: 0,
         deaths: 0,
-        healthLevel: 1,
-        attackLevel: 1,
+        healthLevel: medianLevel,
+        attackLevel: medianLevel,
         isAlive: true,
         talents: createEmptyTalents(),
         manualBuild: false,
       });
+
+      if (medianLevel > 1) {
+        console.log(`New player ${walletAddress.slice(0, 6)}... starts at median level ${medianLevel} (${medianXp} XP)`);
+      }
 
       // Queue for ER registration
       if (this.magicBlockReady) {

@@ -121,6 +121,24 @@ app.prepare().then(async () => {
       return;
     }
 
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/catch-up') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      try {
+        const boosted = gameState.catchUpLowLevelPlayers();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, boosted }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/remove-photo') {
       const authHeader = req.headers['authorization'] || '';
       if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
