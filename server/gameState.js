@@ -831,7 +831,7 @@ class GameState {
         return;
       }
 
-      // Nova bullets: straight-line movement, but hit detection uses normal pipeline below
+      // Nova bullets: straight-line movement, hit detection uses normal pipeline below
       if (bullet.isNova) {
         bullet.x += bullet.vx * deltaTime;
         bullet.y += bullet.vy * deltaTime;
@@ -843,6 +843,9 @@ class GameState {
         if (traveled >= (bullet.novaMaxDist || 350) ||
             bullet.x < -50 || bullet.x > width + 50 ||
             bullet.y < -50 || bullet.y > height + 50) {
+          if (bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
+            this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now, small: true });
+          }
           bulletsToRemove.add(bullet.id);
           return;
         }
@@ -896,8 +899,8 @@ class GameState {
       if (bullet.progress >= 1.1 ||
           bullet.x < -50 || bullet.x > width + 50 ||
           bullet.y < -50 || bullet.y > height + 50) {
-        if (bullet.progress >= 1.0 && bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
-          this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now });
+        if (bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
+          this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now, small: true });
         }
         bulletsToRemove.add(bullet.id);
         return;
@@ -937,7 +940,7 @@ class GameState {
           }
         }
 
-        // Focus Fire talent (massDamage capstone): stacking damage on same target
+        // Focus Fire talent (massDamage T3): stacking damage on same target
         if (shooterBattle) {
           const focusRank = shooterBattle.talents?.focusFire || 0;
           if (focusRank > 0) {
@@ -1032,49 +1035,54 @@ class GameState {
           }
         }
 
-        // Shrapnel talent: spawn fragment projectiles on hit (base damage only)
-        if (shooterBattle && !bullet.isShrapnel) {
-          const shrapRank = shooterBattle.talents?.shrapnel || 0;
-          if (shrapRank > 0) {
-            const fragCount = ALL_TALENTS.shrapnel.fragments[shrapRank - 1];
-            const fragDmgMult = ALL_TALENTS.shrapnel.fragmentDamage[shrapRank - 1];
-            const baseDmg = (shooterBattle.attackPower || BATTLE_CONFIG.bulletDamage) * fragDmgMult;
-            const fragRange = ALL_TALENTS.shrapnel.fragmentRange;
-            const nearbyTargets = [];
-            this.holders.forEach(h => {
-              if (h.address === target.address || h.address === bullet.shooterAddress || h.x === undefined) return;
-              const hb = this.battleBubbles.get(h.address);
-              if (!hb || hb.isGhost) return;
-              const fdx = h.x - target.x;
-              const fdy = h.y - target.y;
-              const fd = Math.sqrt(fdx * fdx + fdy * fdy);
-              if (fd < fragRange) nearbyTargets.push({ holder: h, dist: fd });
-            });
-            nearbyTargets.sort((a, b) => a.dist - b.dist);
-            for (let fi = 0; fi < Math.min(fragCount, nearbyTargets.length); fi++) {
-              const ft = nearbyTargets[fi].holder;
-              const fdx = ft.x - target.x;
-              const fdy = ft.y - target.y;
-              const fd = Math.sqrt(fdx * fdx + fdy * fdy);
-              const shrapSpeed = BATTLE_CONFIG.bulletSpeed * 1.8;
-              this.bullets.push({
-                id: `b-${this.bulletIdCounter++}`,
-                shooterAddress: bullet.shooterAddress,
-                targetAddress: ft.address,
-                shooterColor: bullet.shooterColor,
-                x: target.x, y: target.y,
-                startX: target.x, startY: target.y,
-                targetX: ft.x, targetY: ft.y,
-                progress: 0,
-                curveDirection: Math.random() > 0.5 ? 1 : -1,
-                curveStrength: BATTLE_CONFIG.curveStrength.min * 0.3,
-                vx: fd > 0 ? (fdx / fd) * shrapSpeed : 0,
-                vy: fd > 0 ? (fdy / fd) * shrapSpeed : 0,
-                damage: baseDmg,
-                createdAt: now,
-                isShrapnel: true,
-                radius: 2,
-              });
+        // Chain Lightning: % chance on hit to arc lightning from caster to nearby enemies
+        if (shooterBattle) {
+          const clRank = shooterBattle.talents?.chainLightning || 0;
+          if (clRank > 0) {
+            const procChance = Array.isArray(ALL_TALENTS.chainLightning.procChance) ? ALL_TALENTS.chainLightning.procChance[clRank - 1] : ALL_TALENTS.chainLightning.procChance;
+            if (Math.random() < procChance) {
+              const arcCount = ALL_TALENTS.chainLightning.arcTargets[clRank - 1];
+              const baseDmgMult = ALL_TALENTS.chainLightning.arcDamage;
+              const decay = ALL_TALENTS.chainLightning.arcDecay;
+              const arcRange = ALL_TALENTS.chainLightning.arcRange;
+              const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
+              if (shooter && shooter.x !== undefined) {
+                const nearbyTargets = [];
+                this.holders.forEach(h => {
+                  if (h.address === bullet.shooterAddress || h.x === undefined) return;
+                  const hb = this.battleBubbles.get(h.address);
+                  if (!hb || hb.isGhost) return;
+                  const fdx = h.x - shooter.x;
+                  const fdy = h.y - shooter.y;
+                  const fd = Math.sqrt(fdx * fdx + fdy * fdy);
+                  if (fd < arcRange) nearbyTargets.push({ holder: h, battle: hb, dist: fd });
+                });
+                nearbyTargets.sort((a, b) => a.dist - b.dist);
+                let prevX = shooter.x, prevY = shooter.y;
+                let currentMult = baseDmgMult;
+                for (let ai = 0; ai < Math.min(arcCount, nearbyTargets.length); ai++) {
+                  const arcTarget = nearbyTargets[ai];
+                  const arcDmg = Math.min(bullet.damage * currentMult, 5);
+                  arcTarget.battle.health -= arcDmg;
+                  if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, arcTarget.holder.address, arcDmg);
+                  this.damageNumbers.push({
+                    id: `dmg-${now}-${Math.random()}`,
+                    x: arcTarget.holder.x + (Math.random() - 0.5) * 10,
+                    y: arcTarget.holder.y - 10,
+                    damage: arcDmg, createdAt: now, alpha: 1,
+                    color: '#00ccff', fontSize: 14,
+                  });
+                  this.vfx.push({
+                    type: 'lightning',
+                    x: prevX, y: prevY,
+                    targetX: arcTarget.holder.x, targetY: arcTarget.holder.y,
+                    color: shooter.color || '#00ccff', createdAt: now,
+                  });
+                  prevX = arcTarget.holder.x;
+                  prevY = arcTarget.holder.y;
+                  currentMult *= decay;
+                }
+              }
             }
           }
         }
@@ -1509,8 +1517,13 @@ class GameState {
           const ironSkinVal = getTalentValue('ironSkin', bubble.talents?.ironSkin || 0);
           bubble.maxHealth = ironSkinVal > 0 ? Math.round(baseMax * (1 + ironSkinVal)) : baseMax;
 
+          // Only trust ER health/alive data when the ER state is clearly
+          // current (has at least as much XP and kills as local). After an ER
+          // reset the stale accounts show full HP / 0 kills which would snap
+          // every idle player back to full health every sync cycle.
+          const erIsAhead = state.xp >= bubble.xp && state.kills >= bubble.kills;
           const recentlyRespawned = bubble.respawnedAt && (Date.now() - bubble.respawnedAt < 10000);
-          if (!bubble.isGhost && !recentlyRespawned) {
+          if (erIsAhead && !bubble.isGhost && !recentlyRespawned) {
             if (state.health >= state.maxHealth && bubble.health < bubble.maxHealth) {
               bubble.health = bubble.maxHealth;
             }
@@ -2132,8 +2145,8 @@ class GameState {
 
     if (this.magicBlockReady) {
       this.magicBlock.stopCommitTimer();
-      // Final commit to base layer before shutdown
-      console.log('Committing ER state to base layer before shutdown...');
+      console.log('Committing all player state to base layer before shutdown...');
+      await this.magicBlock.commitAllPlayers();
       await this.magicBlock.commitState();
     }
   }

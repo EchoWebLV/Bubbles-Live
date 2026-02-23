@@ -785,7 +785,7 @@ class MagicBlockService {
           // Chain slots 15-19: Mass Damage tree
           ricochet: account.talentDeflect || 0,
           counterAttack: account.talentAbsorb || 0,
-          shrapnel: account.talentLastStand || 0,
+          chainLightning: account.talentLastStand || 0,
           nova: account.talentCloak || 0,
           focusFire: account.talentDash || 0,
           // Chain slots 20-24: Blood Thirst tree
@@ -872,9 +872,55 @@ class MagicBlockService {
     }
   }
 
+  async commitPlayer(walletAddress) {
+    if (!this.ready) return null;
+    const player = this.playerMap.get(walletAddress);
+    if (!player || !this.playerDelegated.has(walletAddress)) return null;
+
+    try {
+      const tx = await this.erProgram.methods
+        .commitPlayer()
+        .accounts({
+          payer: this.serverKeypair.publicKey,
+          playerState: player.playerPda,
+          magicProgram: new PublicKey('Magic11111111111111111111111111111111111111'),
+          magicContext: new PublicKey('MagicContext1111111111111111111111111111111'),
+        })
+        .rpc();
+      return tx;
+    } catch (err) {
+      const msg = extractTxError(err);
+      if (!msg.includes('blockhash')) {
+        console.error(`MagicBlock: Commit player ${walletAddress.slice(0, 6)}... failed:`, msg);
+      }
+      return null;
+    }
+  }
+
+  async commitAllPlayers() {
+    if (!this.ready) return 0;
+    const wallets = [...this.playerDelegated];
+    const BATCH = 5;
+    let committed = 0;
+
+    for (let i = 0; i < wallets.length; i += BATCH) {
+      const batch = wallets.slice(i, i + BATCH);
+      const results = await Promise.allSettled(
+        batch.map(w => this.commitPlayer(w))
+      );
+      committed += results.filter(r => r.status === 'fulfilled' && r.value).length;
+    }
+
+    console.log(`MagicBlock: Committed ${committed}/${wallets.length} players to base layer`);
+    return committed;
+  }
+
   startCommitTimer(intervalMs = 30000) {
     if (this.commitInterval) clearInterval(this.commitInterval);
-    this.commitInterval = setInterval(() => this.commitState(), intervalMs);
+    this.commitInterval = setInterval(async () => {
+      await this.commitState();
+      await this.commitAllPlayers();
+    }, intervalMs);
     console.log(`MagicBlock: State commit timer started (every ${intervalMs / 1000}s)`);
   }
 

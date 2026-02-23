@@ -379,26 +379,52 @@ pub mod hodlwarz_combat {
     }
 
     /// Commit ER state back to base layer (keeps delegation active).
-    pub fn commit_state(ctx: Context<CommitState>) -> Result<()> {
+    /// Pass player state accounts as remaining_accounts to commit them too.
+    pub fn commit_state<'a>(ctx: Context<'_, '_, 'a, 'a, CommitState<'a>>) -> Result<()> {
+        let arena_info = ctx.accounts.arena.to_account_info();
+        let mut to_commit: Vec<&AccountInfo<'a>> = vec![&arena_info];
+        for acct in ctx.remaining_accounts.iter() {
+            to_commit.push(acct);
+        }
+        let count = to_commit.len();
         commit_accounts(
             &ctx.accounts.payer,
-            vec![&ctx.accounts.arena.to_account_info()],
+            to_commit,
             &ctx.accounts.magic_context,
             &ctx.accounts.magic_program,
         )?;
-        msg!("State committed to base layer");
+        msg!("State committed to base layer ({} accounts)", count);
+        Ok(())
+    }
+
+    /// Commit a single player's state from ER to base layer (keeps delegation).
+    pub fn commit_player(ctx: Context<CommitPlayer>) -> Result<()> {
+        commit_accounts(
+            &ctx.accounts.payer,
+            vec![&ctx.accounts.player_state.to_account_info()],
+            &ctx.accounts.magic_context,
+            &ctx.accounts.magic_program,
+        )?;
+        msg!("Player committed to base layer");
         Ok(())
     }
 
     /// Commit and undelegate - returns accounts to base layer.
-    pub fn end_session(ctx: Context<EndSession>) -> Result<()> {
+    /// Pass player state accounts as remaining_accounts to undelegate them too.
+    pub fn end_session<'a>(ctx: Context<'_, '_, 'a, 'a, EndSession<'a>>) -> Result<()> {
+        let arena_info = ctx.accounts.arena.to_account_info();
+        let mut to_commit: Vec<&AccountInfo<'a>> = vec![&arena_info];
+        for acct in ctx.remaining_accounts.iter() {
+            to_commit.push(acct);
+        }
+        let count = to_commit.len();
         commit_and_undelegate_accounts(
             &ctx.accounts.payer,
-            vec![&ctx.accounts.arena.to_account_info()],
+            to_commit,
             &ctx.accounts.magic_context,
             &ctx.accounts.magic_program,
         )?;
-        msg!("Session ended, accounts undelegated");
+        msg!("Session ended, {} accounts undelegated", count);
         Ok(())
     }
 }
@@ -677,6 +703,15 @@ pub struct CommitState<'info> {
     pub payer: Signer<'info>,
     #[account(mut, seeds = [ARENA_SEED], bump)]
     pub arena: Account<'info, Arena>,
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct CommitPlayer<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(mut)]
+    pub player_state: Account<'info, PlayerState>,
 }
 
 #[commit]
