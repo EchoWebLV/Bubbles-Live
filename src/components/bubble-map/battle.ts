@@ -38,6 +38,7 @@ export interface Bullet {
   vy: number;
   damage: number;
   createdAt: number;
+  isBloodBolt?: boolean;
   isShrapnel?: boolean;
   radius?: number;
 }

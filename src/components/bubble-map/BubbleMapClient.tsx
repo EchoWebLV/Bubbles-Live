@@ -79,8 +79,8 @@ const TALENT_TREES = {
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
       { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
       { id: 'relentless', name: 'Relentless', desc: 'Body Slam hit reduces Dash CD by 0.5/1/1.5/2/2.5s', maxRank: 5 },
-      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 1/1.5/2/2.5/3% max HP on contact', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/8/11% max HP', maxRank: 3 },
+      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -91,7 +91,7 @@ const TALENT_TREES = {
       { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Burst 5/8/11/14/18 bullets every 1.5s', maxRank: 5 },
+      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '5/10/15% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
@@ -102,9 +102,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
-      { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +10/20/30/40/50% speed & fire rate 4s', maxRank: 5 },
-      { id: 'crimsonShield', name: 'Crimson Shield', desc: 'On kill: 10/15/20/25/30% victim HP as shield for 5s', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +15/25/35% atk speed & dmg. R3: +20% move speed', maxRank: 3 },
+      { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
+      { id: 'bloodBolt', name: 'Blood Bolt', desc: 'Homing shots that cost 1.5/1.25/1/0.75/0.5% max HP per shot', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +25/40/55% atk speed & dmg. R3: +30% move speed', maxRank: 3 },
     ],
   },
 } as const;

@@ -44,7 +44,7 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
-const TESTING_OVERRIDE_LEVEL = null; // Set to a number to force all players to that level
+const TESTING_OVERRIDE_LEVEL = 30; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
@@ -461,8 +461,6 @@ class GameState {
           _lastDashHit: 0,
           _lastContactDmg: 0,
           // Blood Thirst state
-          shieldHP: 0,
-          shieldUntil: 0,
           killRushUntil: 0,
           // Nova state
           _lastNova: 0,
@@ -514,12 +512,10 @@ class GameState {
       }
       // Kill Rush talent: temporary speed boost after kills
       const bb = this.battleBubbles.get(holder.address);
-      const killRushActive = bb && bb.killRushUntil && now < bb.killRushUntil;
-      const killRushSpeedBonus = killRushActive ? getTalentValue('killRush', bb.talents?.killRush || 0) : 0;
       const berserkRank = bb?.talents?.berserker || 0;
       const berserkMoveBonus = (berserkRank > 0 && bb && bb.health < bb.maxHealth * ALL_TALENTS.berserker.hpThreshold)
         ? ALL_TALENTS.berserker.moveSpeedBonus[berserkRank - 1] : 0;
-      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + killRushSpeedBonus + berserkMoveBonus);
+      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + berserkMoveBonus);
       if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
@@ -666,12 +662,6 @@ class GameState {
       }
     });
 
-    // Expire Crimson Shields
-    this.battleBubbles.forEach((bubble) => {
-      if (bubble.shieldHP > 0 && now > bubble.shieldUntil) {
-        bubble.shieldHP = 0;
-      }
-    });
 
     // Nova talent: emit projectiles periodically
     this._processNova(now);
@@ -744,6 +734,14 @@ class GameState {
         const vitalityVal = getTalentValue('vitalityStrike', battleBubble.talents?.vitalityStrike || 0);
         if (vitalityVal > 0) damage += battleBubble.maxHealth * vitalityVal;
 
+        const bloodBoltRank = battleBubble.talents?.bloodBolt || 0;
+        const isBloodBolt = bloodBoltRank > 0;
+
+        if (isBloodBolt) {
+          const hpCost = battleBubble.maxHealth * ALL_TALENTS.bloodBolt.hpCost[bloodBoltRank - 1] * 0.5;
+          battleBubble.health = Math.max(1, battleBubble.health - hpCost);
+        }
+
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
           shooterAddress: holder.address,
@@ -763,6 +761,7 @@ class GameState {
           vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
           damage: damage,
           createdAt: now,
+          isBloodBolt: isBloodBolt,
         });
 
         battleBubble.shotCounter = (battleBubble.shotCounter || 0) + 1;
@@ -878,6 +877,53 @@ class GameState {
         // Fall through to normal hit detection below
       }
 
+      // Blood Bolt: homing — lock onto target, only re-target if dead/ghost
+      if (bullet.isBloodBolt) {
+        let homingTarget = null;
+        const currentTarget = this.holders.find(h => h.address === bullet.targetAddress);
+        const currentTargetBattle = currentTarget ? this.battleBubbles.get(currentTarget.address) : null;
+        const currentAlive = currentTarget && currentTarget.x !== undefined && currentTargetBattle && !currentTargetBattle.isGhost;
+
+        if (currentAlive) {
+          homingTarget = currentTarget;
+        } else {
+          let nearestDist = Infinity;
+          for (const h of this.holders) {
+            if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+            const hb = this.battleBubbles.get(h.address);
+            if (!hb || hb.isGhost) continue;
+            const hdx = h.x - bullet.x;
+            const hdy = h.y - bullet.y;
+            const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
+            if (hDist < nearestDist) {
+              homingTarget = h;
+              nearestDist = hDist;
+            }
+          }
+        }
+
+        if (homingTarget) {
+          const tdx = homingTarget.x - bullet.x;
+          const tdy = homingTarget.y - bullet.y;
+          const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
+          if (tDist > 0) {
+            const desiredVx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const desiredVy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const strength = ALL_TALENTS.bloodBolt.homingStrength;
+            bullet.vx += (desiredVx - bullet.vx) * strength;
+            bullet.vy += (desiredVy - bullet.vy) * strength;
+            const spd = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
+            if (spd > 0) {
+              bullet.vx = (bullet.vx / spd) * BATTLE_CONFIG.bulletSpeed;
+              bullet.vy = (bullet.vy / spd) * BATTLE_CONFIG.bulletSpeed;
+            }
+          }
+          bullet.targetAddress = homingTarget.address;
+          bullet.targetX = homingTarget.x;
+          bullet.targetY = homingTarget.y;
+        }
+      }
+
       const totalDist = Math.sqrt(
         Math.pow(bullet.targetX - bullet.startX, 2) +
         Math.pow(bullet.targetY - bullet.startY, 2)
@@ -985,12 +1031,6 @@ class GameState {
           }
         }
 
-        // Crimson Shield: absorb damage before health
-        if (targetBattle.shieldHP > 0) {
-          const shieldAbsorbed = Math.min(actualDmg, targetBattle.shieldHP);
-          targetBattle.shieldHP -= shieldAbsorbed;
-          actualDmg -= shieldAbsorbed;
-        }
 
         targetBattle.health -= actualDmg;
 
@@ -1175,13 +1215,6 @@ class GameState {
             const killRushRank = shooterBattle.talents?.killRush || 0;
             if (killRushRank > 0) {
               shooterBattle.killRushUntil = now + ALL_TALENTS.killRush.durationMs;
-            }
-
-            // Crimson Shield talent: gain shield from kills
-            const crimsonVal = getTalentValue('crimsonShield', shooterBattle.talents?.crimsonShield || 0);
-            if (crimsonVal > 0) {
-              shooterBattle.shieldHP = targetBattle.maxHealth * crimsonVal;
-              shooterBattle.shieldUntil = now + ALL_TALENTS.crimsonShield.durationMs;
             }
 
             // Berserker: passive talent, no on-kill effect needed
@@ -1372,8 +1405,11 @@ class GameState {
       const novaSpeed = ALL_TALENTS.nova.novaSpeed;
       const range = ALL_TALENTS.nova.novaRange;
 
+      if (!bubble._novaRotation) bubble._novaRotation = 0;
+      bubble._novaRotation += ALL_TALENTS.nova.spiralSpread;
+
       for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 / count) * i;
+        const angle = (Math.PI * 2 / count) * i + bubble._novaRotation;
         const endX = holder.x + Math.cos(angle) * range;
         const endY = holder.y + Math.sin(angle) * range;
 
@@ -1686,8 +1722,6 @@ class GameState {
       bubble.lastHitTarget = null;
       bubble.focusFireStacks = 0;
       bubble.shotCounter = 0;
-      bubble.shieldHP = 0;
-      bubble.shieldUntil = 0;
       bubble.killRushUntil = 0;
       bubble._lastDash = 0;
       bubble._dashActive = 0;
@@ -2028,6 +2062,7 @@ class GameState {
         progress: Math.round(b.progress * 1000) / 1000,
         curveDirection: b.curveDirection,
         curveStrength: b.curveStrength,
+        isBloodBolt: b.isBloodBolt || false,
       })),
       damageNumbers: this.damageNumbers,
       vfx: this.vfx,

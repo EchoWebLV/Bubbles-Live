@@ -46,7 +46,7 @@ export interface TalentRanks {
   experience: number;
   execute: number;
   killRush: number;
-  crimsonShield: number;
+  bloodBolt: number;
   berserker: number;
   [key: string]: number;
 }

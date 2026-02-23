@@ -835,6 +835,20 @@ function drawBullets(
       ctx.fill();
     }
 
+    // Blood Bolt: extra blood drip trail behind the bullet
+    if (bullet.isBloodBolt) {
+      for (let i = trailPoints.length - 1; i >= 0; i--) {
+        const point = trailPoints[i];
+        const t = 1 - (i / trailPoints.length);
+        const dripSize = 1.5 + t * 3;
+        const offsetY = Math.sin(i * 1.5) * 3;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y + offsetY, dripSize, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(180, 0, 20, ${t * 0.6})`;
+        ctx.fill();
+      }
+    }
+
     // Bullet glow + core + ring
     const glowGradient = ctx.createRadialGradient(
       bullet.x, bullet.y, 0,

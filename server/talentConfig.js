@@ -168,7 +168,7 @@ const BRAWLER = {
     tier: 4,
     requires: 'relentless',
     maxRank: MAX_RANK,
-    perRank: [0.01, 0.015, 0.02, 0.025, 0.03],
+    perRank: [0.005, 0.0075, 0.01, 0.0125, 0.015],
     orbCount: 2,
     orbRadius: 40,
     orbHitCooldown: 500,
@@ -183,7 +183,7 @@ const BRAWLER = {
     tier: 5,
     requires: 'orbit',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.04, 0.08, 0.11],
+    perRank: [0.03, 0.05, 0.07],
     radius: [100, 150, 200],
   },
 };
@@ -232,10 +232,11 @@ const MASS_DAMAGE = {
     requires: 'focusFire',
     maxRank: MAX_RANK,
     projectiles: [5, 8, 11, 14, 18],
-    intervalMs: 1500,
+    intervalMs: 1000,
     novaDamageMultiplier: 1.0,
     novaSpeed: 6,
     novaRange: 500,
+    spiralSpread: 0.5,
   },
   chainLightning: {
     id: 'chainLightning',
@@ -279,37 +280,38 @@ const BLOOD_THIRST = {
   killRush: {
     id: 'killRush',
     name: 'Kill Rush',
-    description: 'On kill: +{value}% move speed & fire rate for 4s',
+    description: 'On kill: +{value}% fire rate for 4s',
     tree: 'bloodThirst',
     tier: 3,
     requires: 'execute',
     maxRank: MAX_RANK,
-    perRank: 0.10,
-    hardCap: 0.50,
+    perRank: 0.20,
+    hardCap: 1.00,
     durationMs: 4000,
   },
-  crimsonShield: {
-    id: 'crimsonShield',
-    name: 'Crimson Shield',
-    description: 'On kill: shield = {value}% of victim max HP for 5s',
+  bloodBolt: {
+    id: 'bloodBolt',
+    name: 'Blood Bolt',
+    description: 'Shots become homing bolts. Cost {value}% max HP per shot (min 25% HP)',
     tree: 'bloodThirst',
     tier: 4,
     requires: 'killRush',
     maxRank: MAX_RANK,
-    perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
-    durationMs: 5000,
+    hpCost: [0.015, 0.0125, 0.01, 0.0075, 0.005],
+    homingStrength: 0.12,
+    minHpPct: 0.25,
   },
   berserker: {
     id: 'berserker',
     name: 'Berserker',
-    description: 'Below 50% HP: +{value}% attack speed & bullet dmg. R3: +20% move speed',
+    description: 'Below 50% HP: +{value}% attack speed & bullet dmg. R3: +30% move speed',
     tree: 'bloodThirst',
     tier: 5,
-    requires: 'crimsonShield',
+    requires: 'bloodBolt',
     maxRank: MAX_RANK_CAPSTONE,
-    atkSpeedBonus: [0.15, 0.25, 0.35],
-    dmgBonus: [0.15, 0.25, 0.35],
-    moveSpeedBonus: [0, 0, 0.20],
+    atkSpeedBonus: [0.25, 0.40, 0.55],
+    dmgBonus: [0.25, 0.40, 0.55],
+    moveSpeedBonus: [0, 0, 0.30],
     hpThreshold: 0.50,
   },
 };
@@ -329,7 +331,7 @@ const TREE_ORDER = {
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
   massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
-  bloodThirst: ['experience', 'execute', 'killRush', 'crimsonShield', 'berserker'],
+  bloodThirst: ['experience', 'execute', 'killRush', 'bloodBolt', 'berserker'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
@@ -337,7 +339,7 @@ const AUTO_ALLOCATE_ORDER = [
   'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
   'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
   'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'orbit', 'nova', 'crimsonShield',
+  'lifesteal', 'multiShot', 'orbit', 'nova', 'bloodBolt',
   'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
 ];
 
@@ -347,7 +349,7 @@ const TALENT_NAME_TO_CHAIN_ID = {
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
   ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
-  experience: 20, execute: 21, killRush: 22, crimsonShield: 23, berserker: 24,
+  experience: 20, execute: 21, killRush: 22, bloodBolt: 23, berserker: 24,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
