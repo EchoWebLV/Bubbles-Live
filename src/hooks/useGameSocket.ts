@@ -39,7 +39,7 @@ export interface TalentRanks {
   // Mass Damage
   ricochet: number;
   counterAttack: number;
-  shrapnel: number;
+  chainLightning: number;
   nova: number;
   focusFire: number;
   // Blood Thirst
@@ -111,12 +111,15 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning';
   x: number;
   y: number;
+  targetX?: number;
+  targetY?: number;
   radius?: number;
   color: string;
   createdAt: number;
+  small?: boolean;
 }
 
 export interface GameState {

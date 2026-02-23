@@ -118,7 +118,7 @@ const FIREPOWER = {
   dualCannon: {
     id: 'dualCannon',
     name: 'Dual Cannon',
-    description: 'Single straight shot at 2nd enemy (70% dmg)',
+    description: 'Straight shot at 2nd enemy (70% dmg)',
     tree: 'firepower',
     tier: 5,
     requires: 'multiShot',
@@ -211,17 +211,16 @@ const MASS_DAMAGE = {
     perRank: 0.08,
     hardCap: 0.40,
   },
-  shrapnel: {
-    id: 'shrapnel',
-    name: 'Shrapnel',
-    description: 'Bullets spawn {value} fragments on hit',
+  focusFire: {
+    id: 'focusFire',
+    name: 'Focus Fire',
+    description: '+{value}% damage per consecutive hit on same target (max 3 stacks)',
     tree: 'massDamage',
     tier: 3,
     requires: 'counterAttack',
     maxRank: MAX_RANK,
-    fragments: [2, 2, 2, 3, 3],
-    fragmentDamage: [0.20, 0.25, 0.30, 0.30, 0.35],
-    fragmentRange: 150,
+    perRank: [0.03, 0.06, 0.09, 0.12, 0.15],
+    maxStacks: 3,
   },
   nova: {
     id: 'nova',
@@ -229,25 +228,27 @@ const MASS_DAMAGE = {
     description: 'Emit {value} projectiles every 2s',
     tree: 'massDamage',
     tier: 4,
-    requires: 'shrapnel',
+    requires: 'focusFire',
     maxRank: MAX_RANK,
     projectiles: [3, 6, 9, 12, 15],
     intervalMs: 2000,
-    novaDamageMultiplier: 0.50,
+    novaDamageMultiplier: 1.0,
     novaSpeed: 6,
     novaRange: 350,
   },
-  focusFire: {
-    id: 'focusFire',
-    name: 'Focus Fire',
-    description: '+{value}% damage per consecutive hit (max 3 stacks)',
+  chainLightning: {
+    id: 'chainLightning',
+    name: 'Chain Lightning',
+    description: 'Every hit arcs lightning to {value} nearby enemies (80% dmg)',
     tree: 'massDamage',
     tier: 5,
     requires: 'nova',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: 0.04,
-    hardCap: 0.12,
-    maxStacks: 3,
+    procChance: [0.10, 0.15, 0.20],
+    arcTargets: [2, 3, 4],
+    arcDamage: 3.0,
+    arcDecay: 0.50,
+    arcRange: 900,
   },
 };
 
@@ -325,7 +326,7 @@ const TREE_ORDER = {
   tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
   brawler:     ['dash', 'bodySlam', 'momentum', 'spikes', 'shockwave'],
-  massDamage:  ['ricochet', 'counterAttack', 'shrapnel', 'nova', 'focusFire'],
+  massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'crimsonShield', 'bloodbath'],
 };
 
@@ -333,9 +334,9 @@ const TREE_ORDER = {
 const AUTO_ALLOCATE_ORDER = [
   'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
   'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
-  'regeneration', 'criticalStrike', 'momentum', 'shrapnel', 'killRush',
+  'regeneration', 'criticalStrike', 'momentum', 'focusFire', 'killRush',
   'lifesteal', 'multiShot', 'spikes', 'nova', 'crimsonShield',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'focusFire', 'bloodbath',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'bloodbath',
 ];
 
 // ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
@@ -343,7 +344,7 @@ const TALENT_NAME_TO_CHAIN_ID = {
   armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, momentum: 12, spikes: 13, shockwave: 14,
-  ricochet: 15, counterAttack: 16, shrapnel: 17, nova: 18, focusFire: 19,
+  ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
   experience: 20, execute: 21, killRush: 22, crimsonShield: 23, bloodbath: 24,
 };
 

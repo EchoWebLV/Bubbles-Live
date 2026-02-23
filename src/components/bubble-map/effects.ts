@@ -216,6 +216,98 @@ export function createBulletPopFirework(x: number, y: number, color: string): Ex
   };
 }
 
+// Minor pop for bullets expiring without hitting
+export function createSmallBulletPop(x: number, y: number, color: string): Explosion {
+  const particles: Particle[] = [];
+  for (let i = 0; i < 4; i++) {
+    const angle = (i / 4) * Math.PI * 2 + Math.random() * 0.5;
+    const speed = 0.8 + Math.random() * 1.2;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 1 + Math.random() * 1,
+      color,
+      alpha: 0.5,
+      decay: 0.06 + Math.random() * 0.04,
+    });
+  }
+  return { x, y, particles, createdAt: Date.now(), duration: 400 };
+}
+
+// Lightning arc data stored for direct canvas rendering
+export interface LightningArc {
+  points: { x: number; y: number }[];
+  branches: { x: number; y: number }[][];
+  color: string;
+  createdAt: number;
+  duration: number;
+}
+
+export function createLightningArcData(x1: number, y1: number, x2: number, y2: number, color: string): LightningArc {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const segments = Math.max(5, Math.floor(dist / 15));
+  const points: { x: number; y: number }[] = [];
+  const branches: { x: number; y: number }[][] = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const jitter = i === 0 || i === segments ? 0 : (Math.random() - 0.5) * 24;
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+    points.push({
+      x: x1 + dx * t + perpX * jitter,
+      y: y1 + dy * t + perpY * jitter,
+    });
+
+    if (i > 0 && i < segments && Math.random() > 0.5) {
+      const branchLen = 15 + Math.random() * 20;
+      const branchAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.5;
+      branches.push([
+        { x: points[i].x, y: points[i].y },
+        { x: points[i].x + Math.cos(branchAngle) * branchLen, y: points[i].y + Math.sin(branchAngle) * branchLen },
+      ]);
+    }
+  }
+
+  return { points, branches, color, createdAt: Date.now(), duration: 300 };
+}
+
+// Wrapper that returns an Explosion for the effects pipeline
+export function createLightningArc(x1: number, y1: number, x2: number, y2: number, color: string): Explosion {
+  const particles: Particle[] = [];
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const segments = Math.max(5, Math.floor(dist / 20));
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const jitter = i === 0 || i === segments ? 0 : (Math.random() - 0.5) * 20;
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+    particles.push({
+      x: x1 + dx * t + perpX * jitter,
+      y: y1 + dy * t + perpY * jitter,
+      vx: (Math.random() - 0.5) * 1,
+      vy: (Math.random() - 0.5) * 1,
+      radius: 2,
+      color: '#ffffff',
+      alpha: 1,
+      decay: 0.12,
+    });
+  }
+
+  return {
+    x: (x1 + x2) / 2, y: (y1 + y2) / 2,
+    particles,
+    createdAt: Date.now(),
+    duration: 300,
+  };
+}
+
 // Create ripple effect for whale movement
 export function createRipple(x: number, y: number, color: string, maxRadius: number = 500): Ripple {
   return {

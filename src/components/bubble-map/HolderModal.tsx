@@ -37,7 +37,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% chance for 2x dmg', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots', maxRank: 3 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots (70% dmg)', maxRank: 3 },
     ],
   },
   brawler: {
@@ -59,9 +59,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'ricochet', name: 'Ricochet', desc: '15/25/35/45/65% chance to bounce', maxRank: 5 },
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
-      { id: 'shrapnel', name: 'Shrapnel', desc: '2/2/2/3/3 fragments on hit at 20/25/30/30/35% dmg', maxRank: 5 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Burst 3/6/9/12/15 bullets in all directions every 2s', maxRank: 5 },
-      { id: 'focusFire', name: 'Focus Fire', desc: '+4/8/12% dmg per hit, max 3 stacks', maxRank: 3 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '10/15/20% chance: lightning to 2/3/4 enemies (300% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {

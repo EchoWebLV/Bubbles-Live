@@ -18,6 +18,10 @@ import {
   updateEffects,
   createDeathbombExplosion,
   createBulletPopFirework,
+  createSmallBulletPop,
+  createLightningArc,
+  createLightningArcData,
+  type LightningArc,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 
@@ -64,7 +68,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% chance for 2x dmg', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots', maxRank: 3 },
+      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots (70% dmg)', maxRank: 3 },
     ],
   },
   brawler: {
@@ -86,9 +90,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'ricochet', name: 'Ricochet', desc: '15/25/35/45/65% chance to bounce', maxRank: 5 },
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
-      { id: 'shrapnel', name: 'Shrapnel', desc: '2/2/2/3/3 fragments on hit at 20/25/30/30/35% dmg', maxRank: 5 },
+      { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Burst 3/6/9/12/15 bullets in all directions every 2s', maxRank: 5 },
-      { id: 'focusFire', name: 'Focus Fire', desc: '+4/8/12% dmg per hit, max 3 stacks', maxRank: 3 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '10/15/20% chance: lightning to 2/3/4 enemies (300% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -706,10 +710,12 @@ export function BubbleMapClient() {
   const isLoading = !gameState;
 
   const processedVfxRef = useRef<Set<string>>(new Set());
+  const [lightningArcs, setLightningArcs] = useState<LightningArc[]>([]);
   const vfxList = gameState?.vfx || [];
   useEffect(() => {
     if (vfxList.length === 0) return;
     const newEffects: ReturnType<typeof createDeathbombExplosion>[] = [];
+    const newArcs: LightningArc[] = [];
     for (const v of vfxList) {
       const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
       if (processedVfxRef.current.has(key)) continue;
@@ -717,7 +723,10 @@ export function BubbleMapClient() {
       if (v.type === 'bloodbath' || v.type === 'shockwave') {
         newEffects.push(createDeathbombExplosion(v.x, v.y, v.radius || 200, v.color));
       } else if (v.type === 'bulletPop') {
-        newEffects.push(createBulletPopFirework(v.x, v.y, v.color));
+        newEffects.push(v.small ? createSmallBulletPop(v.x, v.y, v.color) : createBulletPopFirework(v.x, v.y, v.color));
+      } else if (v.type === 'lightning' && v.targetX !== undefined && v.targetY !== undefined) {
+        newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
+        newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
       }
     }
     if (newEffects.length > 0) {
@@ -726,11 +735,22 @@ export function BubbleMapClient() {
         explosions: [...prev.explosions, ...newEffects],
       }));
     }
+    if (newArcs.length > 0) {
+      setLightningArcs(prev => [...prev, ...newArcs].filter(a => Date.now() - a.createdAt < a.duration));
+    }
     if (processedVfxRef.current.size > 500) {
       const entries = Array.from(processedVfxRef.current);
       processedVfxRef.current = new Set(entries.slice(-200));
     }
   }, [vfxList]);
+
+  // Clean up expired lightning arcs
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLightningArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div 
@@ -1342,6 +1362,7 @@ export function BubbleMapClient() {
           popEffects={popEffects}
           camera={camera}
           connectedWallet={connectedWalletAddress}
+          lightningArcs={lightningArcs}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />

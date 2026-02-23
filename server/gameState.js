@@ -525,6 +525,9 @@ class GameState {
       }
     });
 
+    // Body Slam: check contacts BEFORE physics pushes them apart
+    this._processBrawlerCollisions(now, deltaTime);
+
     // Bubble collisions + soft repulsion
     for (let i = 0; i < this.holders.length; i++) {
       for (let j = i + 1; j < this.holders.length; j++) {
@@ -669,9 +672,6 @@ class GameState {
         bubble.shieldHP = 0;
       }
     });
-
-    // Body Slam + Velocity Strike: contact damage during collisions
-    this._processBrawlerCollisions(now, deltaTime);
 
     // Nova talent: emit projectiles periodically
     this._processNova(now);
@@ -1277,7 +1277,7 @@ class GameState {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const minDist = a.radius + b.radius + 5;
+        const minDist = a.radius + b.radius + 15;
         if (dist >= minDist) continue;
 
         // Body Slam: deal % max HP damage on any body contact (500ms cooldown per attacker)
@@ -1305,7 +1305,7 @@ class GameState {
                 const swDmg = attacker.maxHealth * swPct;
                 this.vfx.push({ type: 'shockwave', x: vH.x, y: vH.y, radius: swRadius, color: aH.color || '#ff8800', createdAt: now });
                 this.holders.forEach(h => {
-                  if (h.address === aH.address || h.address === vH.address || h.x === undefined) return;
+                  if (h.address === aH.address || h.x === undefined) return;
                   const hb = this.battleBubbles.get(h.address);
                   if (!hb || hb.isGhost) return;
                   const sdx = h.x - vH.x;

@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import type { Holder, PopEffect } from "./types";
 import type { EffectsState } from "./effects";
 import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
+import type { LightningArc } from "./effects";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
 import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
 
@@ -25,6 +26,7 @@ interface BubbleCanvasProps {
   popEffects: PopEffect[];
   camera?: Camera;
   connectedWallet?: string | null;
+  lightningArcs?: LightningArc[];
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -50,6 +52,7 @@ export function BubbleCanvas({
   popEffects,
   camera = DEFAULT_CAMERA,
   connectedWallet,
+  lightningArcs = [],
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -414,6 +417,15 @@ export function BubbleCanvas({
       }
     });
 
+    // Draw lightning arcs
+    const nowMs = Date.now();
+    for (const arc of lightningArcs) {
+      const age = nowMs - arc.createdAt;
+      if (age > arc.duration) continue;
+      const alpha = 1 - age / arc.duration;
+      drawLightningBolt(ctx, arc, alpha);
+    }
+
     // Draw damage numbers on top
     drawDamageNumbers(ctx, battleState.damageNumbers);
 
@@ -544,7 +556,7 @@ export function BubbleCanvas({
       }
     });
     
-  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet]);
+  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);
@@ -733,11 +745,10 @@ function drawBullets(
 ) {
   bullets.forEach(bullet => {
     const shooterColor = bullet.shooterColor || "#ffff00";
-    const isSmall = bullet.isShrapnel;
     
     // Draw bullet trail (curved path behind the bullet)
     const trailPoints: { x: number; y: number; alpha: number }[] = [];
-    const numTrailPoints = isSmall ? 4 : 8;
+    const numTrailPoints = 8;
     
     for (let i = 0; i < numTrailPoints; i++) {
       const trailProgress = Math.max(0, bullet.progress - (i * 0.03));
@@ -766,72 +777,39 @@ function drawBullets(
     }
     
     // Draw trail
-    const trailColor = isSmall ? "#ffd700" : shooterColor;
     for (let i = trailPoints.length - 1; i >= 0; i--) {
       const point = trailPoints[i];
-      const trailSize = isSmall ? 1 + (trailPoints.length - i) * 0.15 : 2 + (trailPoints.length - i) * 0.3;
+      const trailSize = 2 + (trailPoints.length - i) * 0.3;
       
       ctx.beginPath();
       ctx.arc(point.x, point.y, trailSize, 0, Math.PI * 2);
-      ctx.fillStyle = `${trailColor}${Math.floor(point.alpha * 100).toString(16).padStart(2, '0')}`;
+      ctx.fillStyle = `${shooterColor}${Math.floor(point.alpha * 100).toString(16).padStart(2, '0')}`;
       ctx.fill();
     }
 
-    if (isSmall) {
-      // Shrapnel: bright yellow diamond shape with orange glow
-      const glowGradient = ctx.createRadialGradient(
-        bullet.x, bullet.y, 0,
-        bullet.x, bullet.y, 7
-      );
-      glowGradient.addColorStop(0, "#ffd700cc");
-      glowGradient.addColorStop(0.5, "#ff880060");
-      glowGradient.addColorStop(1, "#ff880000");
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = glowGradient;
-      ctx.fill();
-
-      // Diamond shape instead of circle
-      ctx.save();
-      ctx.translate(bullet.x, bullet.y);
-      ctx.rotate(Math.atan2(bullet.vy || 0, bullet.vx || 0));
-      ctx.beginPath();
-      ctx.moveTo(4, 0);
-      ctx.lineTo(0, 2);
-      ctx.lineTo(-3, 0);
-      ctx.lineTo(0, -2);
-      ctx.closePath();
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      ctx.strokeStyle = "#ffd700";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
-    } else {
-      // Normal bullet: full glow + core + ring
-      const glowGradient = ctx.createRadialGradient(
-        bullet.x, bullet.y, 0,
-        bullet.x, bullet.y, 10
-      );
-      glowGradient.addColorStop(0, `${shooterColor}cc`);
-      glowGradient.addColorStop(0.5, `${shooterColor}60`);
-      glowGradient.addColorStop(1, `${shooterColor}00`);
-      
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
-      ctx.fillStyle = glowGradient;
-      ctx.fill();
-      
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
-      ctx.fillStyle = shooterColor;
-      ctx.fill();
-    }
+    // Bullet glow + core + ring
+    const glowGradient = ctx.createRadialGradient(
+      bullet.x, bullet.y, 0,
+      bullet.x, bullet.y, 10
+    );
+    glowGradient.addColorStop(0, `${shooterColor}cc`);
+    glowGradient.addColorStop(0.5, `${shooterColor}60`);
+    glowGradient.addColorStop(1, `${shooterColor}00`);
+    
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = glowGradient;
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = shooterColor;
+    ctx.fill();
   });
 }
 
@@ -863,6 +841,53 @@ function drawDamageNumbers(ctx: CanvasRenderingContext2D, damageNumbers: DamageN
     }
     ctx.globalAlpha = 1;
   });
+}
+
+// Draw a jagged lightning bolt
+function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alpha: number) {
+  if (arc.points.length < 2) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Outer glow
+  ctx.strokeStyle = arc.color;
+  ctx.lineWidth = 4;
+  ctx.shadowColor = arc.color;
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.moveTo(arc.points[0].x, arc.points[0].y);
+  for (let i = 1; i < arc.points.length; i++) {
+    ctx.lineTo(arc.points[i].x, arc.points[i].y);
+  }
+  ctx.stroke();
+
+  // Bright core
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.shadowBlur = 6;
+  ctx.shadowColor = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(arc.points[0].x, arc.points[0].y);
+  for (let i = 1; i < arc.points.length; i++) {
+    ctx.lineTo(arc.points[i].x, arc.points[i].y);
+  }
+  ctx.stroke();
+
+  // Branches
+  ctx.strokeStyle = arc.color;
+  ctx.lineWidth = 1.5;
+  ctx.shadowBlur = 6;
+  for (const branch of arc.branches) {
+    if (branch.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(branch[0].x, branch[0].y);
+    for (let i = 1; i < branch.length; i++) {
+      ctx.lineTo(branch[i].x, branch[i].y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 // Helper function to adjust color brightness
