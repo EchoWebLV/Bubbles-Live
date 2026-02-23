@@ -44,7 +44,7 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
-const TESTING_OVERRIDE_LEVEL = 20; // Set to null to disable
+const TESTING_OVERRIDE_LEVEL = null; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
@@ -455,6 +455,7 @@ class GameState {
           lastHitTarget: null,
           focusFireStacks: 0,
           shotCounter: 0,
+          talentResets: 0,
           // Brawler state
           _lastDash: 0,
           _lastDashHit: 0,
@@ -515,9 +516,10 @@ class GameState {
       const bb = this.battleBubbles.get(holder.address);
       const killRushActive = bb && bb.killRushUntil && now < bb.killRushUntil;
       const killRushSpeedBonus = killRushActive ? getTalentValue('killRush', bb.talents?.killRush || 0) : 0;
-      const momentumActive = bb && bb._momentumUntil && now < bb._momentumUntil;
-      const momentumBonus = momentumActive ? (bb._momentumBonus || 0) : 0;
-      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + killRushSpeedBonus + momentumBonus);
+      const berserkRank = bb?.talents?.berserker || 0;
+      const berserkMoveBonus = (berserkRank > 0 && bb && bb.health < bb.maxHealth * ALL_TALENTS.berserker.hpThreshold)
+        ? ALL_TALENTS.berserker.moveSpeedBonus[berserkRank - 1] : 0;
+      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + killRushSpeedBonus + berserkMoveBonus);
       if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
@@ -527,6 +529,9 @@ class GameState {
 
     // Body Slam: check contacts BEFORE physics pushes them apart
     this._processBrawlerCollisions(now, deltaTime);
+
+    // Orbit: orbiting orbs deal damage to nearby enemies
+    this._processOrbitDamage(now);
 
     // Bubble collisions + soft repulsion
     for (let i = 0; i < this.holders.length; i++) {
@@ -614,12 +619,7 @@ class GameState {
               holder.vy = Math.sin(angle) * ALL_TALENTS.dash.dashStrength;
             }
 
-            // Momentum: speed buff after dashing
-            const momRank = bb.talents?.momentum || 0;
-            if (momRank > 0) {
-              bb._momentumUntil = now + ALL_TALENTS.momentum.durationMs;
-              bb._momentumBonus = getTalentValue('momentum', momRank);
-            }
+            
           }
         }
       }
@@ -687,7 +687,10 @@ class GameState {
       const rapidFireVal = getTalentValue('rapidFire', battleBubble.talents?.rapidFire || 0);
       const killRushActive = battleBubble.killRushUntil && now < battleBubble.killRushUntil;
       const killRushVal = killRushActive ? getTalentValue('killRush', battleBubble.talents?.killRush || 0) : 0;
-      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal);
+      const berserkRank = battleBubble.talents?.berserker || 0;
+      const berserkActive = berserkRank > 0 && battleBubble.health < battleBubble.maxHealth * ALL_TALENTS.berserker.hpThreshold;
+      const berserkAtkSpeed = berserkActive ? ALL_TALENTS.berserker.atkSpeedBonus[berserkRank - 1] : 0;
+      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed);
       effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs || 80);
       if (now - battleBubble.lastShotTime < effectiveFireRate) return;
 
@@ -731,6 +734,11 @@ class GameState {
         // Heavy Hitter talent: flat damage boost
         const heavyHitterVal = getTalentValue('heavyHitter', battleBubble.talents.heavyHitter || 0);
         if (heavyHitterVal > 0) damage *= (1 + heavyHitterVal);
+
+        // Berserker talent: bonus damage below 50% HP
+        if (berserkActive) {
+          damage *= (1 + ALL_TALENTS.berserker.dmgBonus[berserkRank - 1]);
+        }
 
         // Vitality Strike talent: bonus damage from max HP
         const vitalityVal = getTalentValue('vitalityStrike', battleBubble.talents?.vitalityStrike || 0);
@@ -986,15 +994,6 @@ class GameState {
 
         targetBattle.health -= actualDmg;
 
-        // Spikes talent: reflect % of damage TAKEN (after armor) back to attacker
-        if (shooterBattle && !shooterBattle.isGhost) {
-          const spikesVal = getTalentValue('spikes', targetBattle.talents?.spikes || 0);
-          if (spikesVal > 0) {
-            const reflectDmg = actualDmg * spikesVal;
-            shooterBattle.health -= reflectDmg;
-          }
-        }
-
         // Counter Attack talent: chance to fire straight bullet back at attacker
         if (!bullet.isCounterAttack) {
           const counterChance = getTalentValue('counterAttack', targetBattle.talents?.counterAttack || 0);
@@ -1185,36 +1184,7 @@ class GameState {
               shooterBattle.shieldUntil = now + ALL_TALENTS.crimsonShield.durationMs;
             }
 
-            // Bloodbath talent: blood nova on kill
-            const bloodbathRank = shooterBattle.talents?.bloodbath || 0;
-            if (bloodbathRank > 0) {
-              const bbVal = getTalentValue('bloodbath', bloodbathRank);
-              const bbRadius = ALL_TALENTS.bloodbath.radius[bloodbathRank - 1];
-              const novaDmg = shooterBattle.maxHealth * bbVal;
-              this.vfx.push({ type: 'bloodbath', x: target.x, y: target.y, radius: bbRadius, color: '#cc0000', createdAt: now });
-              this.holders.forEach(h => {
-                if (h.address === target.address || h.address === bullet.shooterAddress || h.x === undefined) return;
-                const hBattle = this.battleBubbles.get(h.address);
-                if (!hBattle || hBattle.isGhost) return;
-                const edx = h.x - target.x;
-                const edy = h.y - target.y;
-                const eDist = Math.sqrt(edx * edx + edy * edy);
-                if (eDist < bbRadius) {
-                  const falloff = 1 - (eDist / bbRadius);
-                  const dmg = novaDmg * falloff;
-                  hBattle.health -= dmg;
-                  if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, h.address, dmg);
-                  this.damageNumbers.push({
-                    id: `dmg-${now}-${Math.random()}`,
-                    x: h.x + (Math.random() - 0.5) * 20,
-                    y: h.y - 10,
-                    damage: dmg,
-                    createdAt: now,
-                    alpha: 1,
-                  });
-                }
-              });
-            }
+            // Berserker: passive talent, no on-kill effect needed
           }
           targetBattle.deaths++;
           const deathXp = PROGRESSION.xpPerDeath;
@@ -1285,7 +1255,7 @@ class GameState {
         for (const [attacker, victim, aH, vH] of pairs) {
           const bodyRank = attacker.talents?.bodySlam || 0;
           if (bodyRank > 0) {
-            if (!attacker._lastBodySlam || now - attacker._lastBodySlam >= 500) {
+            if (!attacker._lastBodySlam || now - attacker._lastBodySlam >= 1500) {
               attacker._lastBodySlam = now;
               const pct = getTalentValue('bodySlam', bodyRank);
               const dmg = attacker.maxHealth * pct;
@@ -1296,6 +1266,13 @@ class GameState {
                 color: '#ff8800', fontSize: 26, type: 'bodySlam',
               });
               if (this.magicBlockReady) this._queueAttack(aH.address, vH.address, dmg);
+
+              // Relentless: reduce Dash cooldown on Body Slam hit
+              const relentlessRank = attacker.talents?.relentless || 0;
+              if (relentlessRank > 0 && attacker._lastDash) {
+                const cdReduction = ALL_TALENTS.relentless.cdReduction[relentlessRank - 1];
+                attacker._lastDash -= cdReduction;
+              }
 
               // Shockwave: AoE on body hit
               const swRank = attacker.talents?.shockwave || 0;
@@ -1325,6 +1302,55 @@ class GameState {
         }
       }
     }
+  }
+
+  // ─── Orbit: orbiting orbs deal contact damage ──────────────────────
+  _processOrbitDamage(now) {
+    const cfg = ALL_TALENTS.orbit;
+    this.battleBubbles.forEach((bubble, address) => {
+      if (bubble.isGhost) return;
+      const rank = bubble.talents?.orbit || 0;
+      if (rank <= 0) return;
+
+      const owner = this.holders.find(h => h.address === address);
+      if (!owner || owner.x === undefined) return;
+
+      const dmgPct = cfg.perRank[rank - 1];
+      const orbitR = owner.radius + cfg.orbRadius;
+      const hitR = cfg.orbSize + 4;
+
+      if (!bubble._orbitHitTimers) bubble._orbitHitTimers = {};
+
+      for (let i = 0; i < cfg.orbCount; i++) {
+        const angle = (now / 1000) * cfg.orbRotationSpeed + (i * 2 * Math.PI / cfg.orbCount);
+        const ox = owner.x + Math.cos(angle) * orbitR;
+        const oy = owner.y + Math.sin(angle) * orbitR;
+
+        this.holders.forEach(target => {
+          if (target.address === address || target.x === undefined) return;
+          const tb = this.battleBubbles.get(target.address);
+          if (!tb || tb.isGhost) return;
+
+          const dx = target.x - ox;
+          const dy = target.y - oy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > target.radius + hitR) return;
+
+          const key = `${address}_${target.address}`;
+          if (bubble._orbitHitTimers[key] && now - bubble._orbitHitTimers[key] < cfg.orbHitCooldown) return;
+          bubble._orbitHitTimers[key] = now;
+
+          const dmg = bubble.maxHealth * dmgPct;
+          tb.health -= dmg;
+          this.damageNumbers.push({
+            id: `dmg-${now}-${Math.random()}`, x: target.x, y: target.y - 15,
+            damage: dmg, createdAt: now, alpha: 1,
+            color: '#88ffcc', fontSize: 14, type: 'orbit',
+          });
+          if (this.magicBlockReady) this._queueAttack(address, target.address, dmg);
+        });
+      }
+    });
   }
 
   // ─── Nova: periodic burst of straight-line bullets in all directions ───
@@ -1806,6 +1832,7 @@ class GameState {
       success: true,
       talents: { ...bubble.talents },
       talentPoints: calcTalentPoints(level),
+    
     };
   }
 

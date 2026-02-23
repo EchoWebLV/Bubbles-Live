@@ -28,8 +28,7 @@ const TANK = {
     tier: 2,
     requires: 'armor',
     maxRank: MAX_RANK,
-    perRank: 0.10,
-    hardCap: 0.50,
+    perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
   },
   regeneration: {
     id: 'regeneration',
@@ -51,8 +50,7 @@ const TANK = {
     tier: 4,
     requires: 'regeneration',
     maxRank: MAX_RANK,
-    perRank: 0.08,
-    hardCap: 0.40,
+    perRank: [0.05, 0.10, 0.15, 0.20, 0.25],
     healCeiling: 0.80,
   },
   vitalityStrike: {
@@ -63,8 +61,7 @@ const TANK = {
     tier: 5,
     requires: 'lifesteal',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: 0.005,
-    hardCap: 0.015,
+    perRank: [0.002, 0.0035, 0.005],
   },
 };
 
@@ -141,7 +138,7 @@ const BRAWLER = {
     requires: null,
     maxRank: MAX_RANK,
     cooldownMs: [12000, 10000, 8000, 6000, 4000],
-    dashStrength: 5,
+    dashStrength: 7,
   },
   bodySlam: {
     id: 'bodySlam',
@@ -151,28 +148,32 @@ const BRAWLER = {
     tier: 2,
     requires: 'dash',
     maxRank: MAX_RANK,
-    perRank: [0.03, 0.05, 0.07, 0.09, 0.11],
+    perRank: [0.015, 0.025, 0.035, 0.045, 0.055],
   },
-  momentum: {
-    id: 'momentum',
-    name: 'Momentum',
-    description: '+{value}% move speed for 3s after dash',
+  relentless: {
+    id: 'relentless',
+    name: 'Relentless',
+    description: 'Body Slam hit reduces Dash cooldown by {value}s',
     tree: 'brawler',
     tier: 3,
     requires: 'bodySlam',
     maxRank: MAX_RANK,
-    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
-    durationMs: 3000,
+    cdReduction: [500, 1000, 1500, 2000, 2500],
   },
-  spikes: {
-    id: 'spikes',
-    name: 'Spikes',
-    description: 'Return {value}% of damage taken to attacker',
+  orbit: {
+    id: 'orbit',
+    name: 'Orbit',
+    description: '2 orbs circle you, dealing {value}% max HP on contact (0.5s cd)',
     tree: 'brawler',
     tier: 4,
-    requires: 'momentum',
+    requires: 'relentless',
     maxRank: MAX_RANK,
-    perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
+    perRank: [0.01, 0.015, 0.02, 0.025, 0.03],
+    orbCount: 2,
+    orbRadius: 40,
+    orbHitCooldown: 500,
+    orbRotationSpeed: 4 * Math.PI,
+    orbSize: 6,
   },
   shockwave: {
     id: 'shockwave',
@@ -180,9 +181,9 @@ const BRAWLER = {
     description: 'Body hits deal {value}% max HP AoE damage',
     tree: 'brawler',
     tier: 5,
-    requires: 'spikes',
+    requires: 'orbit',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.12, 0.16, 0.20],
+    perRank: [0.04, 0.08, 0.11],
     radius: [100, 150, 200],
   },
 };
@@ -197,7 +198,7 @@ const MASS_DAMAGE = {
     tier: 1,
     requires: null,
     maxRank: MAX_RANK,
-    perRank: [0.15, 0.25, 0.35, 0.45, 0.65],
+    perRank: [0.11, 0.19, 0.26, 0.34, 0.49],
     bounceDamage: 1.0,
   },
   counterAttack: {
@@ -230,11 +231,11 @@ const MASS_DAMAGE = {
     tier: 4,
     requires: 'focusFire',
     maxRank: MAX_RANK,
-    projectiles: [3, 6, 9, 12, 15],
-    intervalMs: 2000,
+    projectiles: [5, 8, 11, 14, 18],
+    intervalMs: 1500,
     novaDamageMultiplier: 1.0,
     novaSpeed: 6,
-    novaRange: 350,
+    novaRange: 500,
   },
   chainLightning: {
     id: 'chainLightning',
@@ -244,9 +245,9 @@ const MASS_DAMAGE = {
     tier: 5,
     requires: 'nova',
     maxRank: MAX_RANK_CAPSTONE,
-    procChance: [0.10, 0.15, 0.20],
+    procChance: [0.05, 0.10, 0.15],
     arcTargets: [2, 3, 4],
-    arcDamage: 3.0,
+    arcDamage: 4.0,
     arcDecay: 0.50,
     arcRange: 900,
   },
@@ -262,8 +263,7 @@ const BLOOD_THIRST = {
     tier: 1,
     requires: null,
     maxRank: MAX_RANK,
-    perRank: 0.05,
-    hardCap: 0.25,
+    perRank: [0.10, 0.17, 0.24, 0.32, 0.40],
   },
   execute: {
     id: 'execute',
@@ -299,16 +299,18 @@ const BLOOD_THIRST = {
     perRank: [0.10, 0.15, 0.20, 0.25, 0.30],
     durationMs: 5000,
   },
-  bloodbath: {
-    id: 'bloodbath',
-    name: 'Bloodbath',
-    description: 'On kill: blood nova deals {value}% max HP to nearby enemies',
+  berserker: {
+    id: 'berserker',
+    name: 'Berserker',
+    description: 'Below 50% HP: +{value}% attack speed & bullet dmg. R3: +20% move speed',
     tree: 'bloodThirst',
     tier: 5,
     requires: 'crimsonShield',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.05, 0.08, 0.12],
-    radius: [100, 150, 200],
+    atkSpeedBonus: [0.15, 0.25, 0.35],
+    dmgBonus: [0.15, 0.25, 0.35],
+    moveSpeedBonus: [0, 0, 0.20],
+    hpThreshold: 0.50,
   },
 };
 
@@ -325,27 +327,27 @@ const ALL_TALENTS = {
 const TREE_ORDER = {
   tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
-  brawler:     ['dash', 'bodySlam', 'momentum', 'spikes', 'shockwave'],
+  brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
   massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
-  bloodThirst: ['experience', 'execute', 'killRush', 'crimsonShield', 'bloodbath'],
+  bloodThirst: ['experience', 'execute', 'killRush', 'crimsonShield', 'berserker'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
   'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
   'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
-  'regeneration', 'criticalStrike', 'momentum', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'spikes', 'nova', 'crimsonShield',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'bloodbath',
+  'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
+  'lifesteal', 'multiShot', 'orbit', 'nova', 'crimsonShield',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
 ];
 
 // ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
 const TALENT_NAME_TO_CHAIN_ID = {
   armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
-  dash: 10, bodySlam: 11, momentum: 12, spikes: 13, shockwave: 14,
+  dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
   ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
-  experience: 20, execute: 21, killRush: 22, crimsonShield: 23, bloodbath: 24,
+  experience: 20, execute: 21, killRush: 22, crimsonShield: 23, berserker: 24,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(

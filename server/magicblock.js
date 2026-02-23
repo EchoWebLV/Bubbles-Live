@@ -779,8 +779,8 @@ class MagicBlockService {
           // Chain slots 10-14: Brawler tree
           dash: account.talentWeakspot || 0,
           bodySlam: account.talentCriticalStrike || 0,
-          momentum: account.talentFocusFire || 0,
-          spikes: account.talentMultiShot || 0,
+          relentless: account.talentFocusFire || 0,
+          orbit: account.talentMultiShot || 0,
           shockwave: account.talentDualCannon || 0,
           // Chain slots 15-19: Mass Damage tree
           ricochet: account.talentDeflect || 0,
@@ -793,7 +793,7 @@ class MagicBlockService {
           execute: account.talentHoming || 0,
           killRush: account.talentRicochet || 0,
           crimsonShield: account.talentDeathbomb || 0,
-          bloodbath: account.talentFrenzy || 0,
+          berserker: account.talentFrenzy || 0,
         },
         manualBuild: account.manualBuild || false,
       };

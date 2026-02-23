@@ -20,6 +20,8 @@ interface BubbleCanvasProps {
   holders: Holder[];
   width: number;
   height: number;
+  worldWidth?: number;
+  worldHeight?: number;
   hoveredHolder: Holder | null;
   effectsState: EffectsState;
   battleState: BattleState;
@@ -46,6 +48,8 @@ export function BubbleCanvas({
   holders,
   width,
   height,
+  worldWidth = 3840,
+  worldHeight = 2160,
   hoveredHolder,
   effectsState,
   battleState,
@@ -124,6 +128,15 @@ export function BubbleCanvas({
       ctx.lineTo(viewRight, y);
     }
     ctx.stroke();
+
+    // Draw world boundary walls (double line)
+    const wallLineWidth = 2 / camera.zoom;
+    const wallGap = 6 / camera.zoom;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
+    ctx.lineWidth = wallLineWidth;
+    ctx.strokeRect(0, 0, worldWidth, worldHeight);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.strokeRect(-wallGap, -wallGap, worldWidth + wallGap * 2, worldHeight + wallGap * 2);
 
     // Draw effects background (ripples, global effects)
     drawEffects(ctx, effectsState, width, height);
@@ -417,6 +430,41 @@ export function BubbleCanvas({
       }
     });
 
+    // Draw orbit orbs for bubbles with orbit talent
+    holders.forEach((holder) => {
+      if (holder.x === undefined || holder.y === undefined) return;
+      const bb = battleState.bubbles.get(holder.address);
+      if (!bb || bb.isGhost) return;
+      const orbitRank = bb.talents?.orbit || 0;
+      if (orbitRank <= 0) return;
+
+      const orbCount = 2;
+      const orbitR = holder.radius + 40;
+      const orbSize = 6;
+      const rotSpeed = 4 * Math.PI;
+
+      for (let i = 0; i < orbCount; i++) {
+        const angle = (now / 1000) * rotSpeed + (i * 2 * Math.PI / orbCount);
+        const ox = holder.x + Math.cos(angle) * orbitR;
+        const oy = holder.y + Math.sin(angle) * orbitR;
+
+        const orbGrad = ctx.createRadialGradient(ox, oy, 0, ox, oy, orbSize);
+        orbGrad.addColorStop(0, 'rgba(136, 255, 204, 0.95)');
+        orbGrad.addColorStop(0.6, `${holder.color}cc`);
+        orbGrad.addColorStop(1, `${holder.color}00`);
+        ctx.beginPath();
+        ctx.arc(ox, oy, orbSize, 0, Math.PI * 2);
+        ctx.fillStyle = orbGrad;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(ox, oy, orbSize + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(136, 255, 204, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    });
+
     // Draw lightning arcs
     const nowMs = Date.now();
     for (const arc of lightningArcs) {
@@ -556,7 +604,7 @@ export function BubbleCanvas({
       }
     });
     
-  }, [holders, width, height, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs]);
+  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);

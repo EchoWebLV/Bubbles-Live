@@ -53,10 +53,10 @@ const TALENT_TREES = {
     icon: '🛡️',
     talents: [
       { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
-      { id: 'ironSkin', name: 'Iron Skin', desc: '+10/20/30/40/50% max HP', maxRank: 5 },
+      { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
       { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 8/16/24/32/40% of dmg dealt', maxRank: 5 },
-      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.5/1.0/1.5% max HP as bullet dmg', maxRank: 3 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
+      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.2/0.35/0.5% max HP as bullet dmg', maxRank: 3 },
     ],
   },
   firepower: {
@@ -77,10 +77,10 @@ const TALENT_TREES = {
     icon: '💨',
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
-      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 3/5/7/9/11% max HP dmg', maxRank: 5 },
-      { id: 'momentum', name: 'Momentum', desc: '+10/20/30/40/50% move speed for 3s after dash', maxRank: 5 },
-      { id: 'spikes', name: 'Spikes', desc: 'Return 10/15/20/25/30% dmg to attacker', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 12/16/20% max HP', maxRank: 3 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
+      { id: 'relentless', name: 'Relentless', desc: 'Body Slam hit reduces Dash CD by 0.5/1/1.5/2/2.5s', maxRank: 5 },
+      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 1/1.5/2/2.5/3% max HP on contact', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/8/11% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -88,11 +88,11 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '💥',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '15/25/35/45/65% chance to bounce', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Burst 3/6/9/12/15 bullets in all directions every 2s', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '10/15/20% chance: lightning to 2/3/4 enemies (300% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'nova', name: 'Nova', desc: 'Burst 5/8/11/14/18 bullets every 1.5s', maxRank: 5 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '5/10/15% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -100,11 +100,11 @@ const TALENT_TREES = {
     color: 'purple',
     icon: '🩸',
     talents: [
-      { id: 'experience', name: 'Experience', desc: '+5/10/15/20/25% XP gained', maxRank: 5 },
+      { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +10/20/30/40/50% speed & fire rate 4s', maxRank: 5 },
       { id: 'crimsonShield', name: 'Crimson Shield', desc: 'On kill: 10/15/20/25/30% victim HP as shield for 5s', maxRank: 5 },
-      { id: 'bloodbath', name: 'Bloodbath', desc: 'On kill: AoE 5/8/12% max HP', maxRank: 3 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +15/25/35% atk speed & dmg. R3: +20% move speed', maxRank: 3 },
     ],
   },
 } as const;
@@ -1356,6 +1356,8 @@ export function BubbleMapClient() {
           holders={holders}
           width={dimensions.width}
           height={dimensions.height}
+          worldWidth={gameState?.dimensions?.width || 3840}
+          worldHeight={gameState?.dimensions?.height || 2160}
           hoveredHolder={hoveredHolder}
           effectsState={effectsState}
           battleState={battleState}

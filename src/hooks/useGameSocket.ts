@@ -33,8 +33,8 @@ export interface TalentRanks {
   // Brawler
   dash: number;
   bodySlam: number;
-  momentum: number;
-  spikes: number;
+  relentless: number;
+  orbit: number;
   shockwave: number;
   // Mass Damage
   ricochet: number;
@@ -47,7 +47,7 @@ export interface TalentRanks {
   execute: number;
   killRush: number;
   crimsonShield: number;
-  bloodbath: number;
+  berserker: number;
   [key: string]: number;
 }
 
