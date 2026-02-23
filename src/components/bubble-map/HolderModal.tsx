@@ -72,7 +72,7 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'bloodBolt', name: 'Blood Bolt', desc: 'Homing shots that cost 1.5/1.25/1/0.75/0.5% max HP per shot', maxRank: 5 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 8th hit: 270° sweep (~200px). 100/200/300/400/500% dmg, costs 1% HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +25/40/55% atk speed & dmg. R3: +30% move speed', maxRank: 3 },
     ],
   },

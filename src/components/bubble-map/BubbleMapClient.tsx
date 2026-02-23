@@ -22,6 +22,7 @@ import {
   createLightningArc,
   createLightningArcData,
   type LightningArc,
+  type ReaperArcVfx,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 
@@ -103,7 +104,7 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'bloodBolt', name: 'Blood Bolt', desc: 'Homing shots that cost 1.5/1.25/1/0.75/0.5% max HP per shot', maxRank: 5 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 8th hit: 270° sweep (~200px). 100/200/300/400/500% dmg, costs 1% HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +25/40/55% atk speed & dmg. R3: +30% move speed', maxRank: 3 },
     ],
   },
@@ -711,11 +712,13 @@ export function BubbleMapClient() {
 
   const processedVfxRef = useRef<Set<string>>(new Set());
   const [lightningArcs, setLightningArcs] = useState<LightningArc[]>([]);
+  const [reaperArcs, setReaperArcs] = useState<ReaperArcVfx[]>([]);
   const vfxList = gameState?.vfx || [];
   useEffect(() => {
     if (vfxList.length === 0) return;
     const newEffects: ReturnType<typeof createDeathbombExplosion>[] = [];
     const newArcs: LightningArc[] = [];
+    const newReaperArcs: ReaperArcVfx[] = [];
     for (const v of vfxList) {
       const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
       if (processedVfxRef.current.has(key)) continue;
@@ -727,6 +730,8 @@ export function BubbleMapClient() {
       } else if (v.type === 'lightning' && v.targetX !== undefined && v.targetY !== undefined) {
         newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
         newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
+      } else if (v.type === 'reaperArc') {
+        newReaperArcs.push({ x: v.x, y: v.y, angle: v.angle ?? 0, range: v.range ?? 200, color: v.color, createdAt: Date.now(), duration: 400 });
       }
     }
     if (newEffects.length > 0) {
@@ -738,16 +743,20 @@ export function BubbleMapClient() {
     if (newArcs.length > 0) {
       setLightningArcs(prev => [...prev, ...newArcs].filter(a => Date.now() - a.createdAt < a.duration));
     }
+    if (newReaperArcs.length > 0) {
+      setReaperArcs(prev => [...prev, ...newReaperArcs].filter(a => Date.now() - a.createdAt < a.duration));
+    }
     if (processedVfxRef.current.size > 500) {
       const entries = Array.from(processedVfxRef.current);
       processedVfxRef.current = new Set(entries.slice(-200));
     }
   }, [vfxList]);
 
-  // Clean up expired lightning arcs
+  // Clean up expired lightning arcs and reaper arcs
   useEffect(() => {
     const interval = setInterval(() => {
       setLightningArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
+      setReaperArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
     }, 100);
     return () => clearInterval(interval);
   }, []);
@@ -1365,6 +1374,7 @@ export function BubbleMapClient() {
           camera={camera}
           connectedWallet={connectedWalletAddress}
           lightningArcs={lightningArcs}
+          reaperArcs={reaperArcs}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />

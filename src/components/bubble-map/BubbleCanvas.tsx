@@ -4,7 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import type { Holder, PopEffect } from "./types";
 import type { EffectsState } from "./effects";
 import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
-import type { LightningArc } from "./effects";
+import type { LightningArc, ReaperArcVfx } from "./effects";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
 import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
 
@@ -29,6 +29,7 @@ interface BubbleCanvasProps {
   camera?: Camera;
   connectedWallet?: string | null;
   lightningArcs?: LightningArc[];
+  reaperArcs?: ReaperArcVfx[];
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -57,6 +58,7 @@ export function BubbleCanvas({
   camera = DEFAULT_CAMERA,
   connectedWallet,
   lightningArcs = [],
+  reaperArcs = [],
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -474,6 +476,62 @@ export function BubbleCanvas({
       drawLightningBolt(ctx, arc, alpha);
     }
 
+    // Draw Reaper's Arc VFX — animated 180° sweep in bubble color
+    for (const arc of reaperArcs) {
+      const age = nowMs - arc.createdAt;
+      if (age > arc.duration) continue;
+      const progress = age / arc.duration;
+      const alpha = 1 - progress;
+      const col = arc.color || '#ff2233';
+      const range = arc.range;
+      const totalSweep = Math.PI * 1.5;
+
+      const sweepProgress = Math.min(progress * 2.5, 1);
+      const sweepStart = arc.angle - totalSweep / 2;
+      const currentEnd = sweepStart + totalSweep * sweepProgress;
+
+      const r = parseInt(col.slice(1, 3), 16) || 200;
+      const g = parseInt(col.slice(3, 5), 16) || 0;
+      const b = parseInt(col.slice(5, 7), 16) || 20;
+
+      ctx.save();
+
+      ctx.beginPath();
+      ctx.moveTo(arc.x, arc.y);
+      ctx.arc(arc.x, arc.y, range + 8, sweepStart, currentEnd, false);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.1})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(arc.x, arc.y, range, sweepStart, currentEnd, false);
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.85})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(arc.x, arc.y, range + 5, sweepStart, currentEnd, false);
+      ctx.strokeStyle = `rgba(${Math.min(r + 60, 255)}, ${Math.min(g + 60, 255)}, ${Math.min(b + 60, 255)}, ${alpha * 0.35})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const edgeX = arc.x + Math.cos(currentEnd) * range;
+      const edgeY = arc.y + Math.sin(currentEnd) * range;
+      ctx.beginPath();
+      ctx.arc(edgeX, edgeY, 5 * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(arc.x, arc.y);
+      ctx.lineTo(edgeX, edgeY);
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.3})`;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
     // Draw damage numbers on top
     drawDamageNumbers(ctx, battleState.damageNumbers);
 
@@ -604,7 +662,7 @@ export function BubbleCanvas({
       }
     });
     
-  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs]);
+  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs, reaperArcs]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);
@@ -835,17 +893,43 @@ function drawBullets(
       ctx.fill();
     }
 
-    // Blood Bolt: extra blood drip trail behind the bullet
+    // Blood Bolt: fading blood trace behind the bullet
     if (bullet.isBloodBolt) {
-      for (let i = trailPoints.length - 1; i >= 0; i--) {
-        const point = trailPoints[i];
-        const t = 1 - (i / trailPoints.length);
-        const dripSize = 1.5 + t * 3;
-        const offsetY = Math.sin(i * 1.5) * 3;
+      const bloodTrailLen = 16;
+      for (let i = 0; i < bloodTrailLen; i++) {
+        const tp = Math.max(0, bullet.progress - (i * 0.02));
+        if (tp <= 0) break;
+
+        const dx = bullet.targetX - bullet.startX;
+        const dy = bullet.targetY - bullet.startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const perpX = -dy / dist;
+        const perpY = dx / dist;
+        const midX = (bullet.startX + bullet.targetX) / 2;
+        const midY = (bullet.startY + bullet.targetY) / 2;
+        const controlX = midX + perpX * bullet.curveStrength * bullet.curveDirection;
+        const controlY = midY + perpY * bullet.curveStrength * bullet.curveDirection;
+
+        const omt = 1 - tp;
+        const bx = omt * omt * bullet.startX + 2 * omt * tp * controlX + tp * tp * bullet.targetX;
+        const by = omt * omt * bullet.startY + 2 * omt * tp * controlY + tp * tp * bullet.targetY;
+
+        const fade = 1 - (i / bloodTrailLen);
+        const dripY = i * 0.8;
+        const size = 3.5 * fade + 0.5;
+
         ctx.beginPath();
-        ctx.arc(point.x, point.y + offsetY, dripSize, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(180, 0, 20, ${t * 0.6})`;
+        ctx.arc(bx, by + dripY, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(160, 0, 10, ${fade * 0.7})`;
         ctx.fill();
+
+        if (i > 2 && i % 3 === 0) {
+          const dropSize = size * 0.6;
+          ctx.beginPath();
+          ctx.arc(bx + (i % 2 === 0 ? 2 : -2), by + dripY + size + 2, dropSize, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(120, 0, 0, ${fade * 0.4})`;
+          ctx.fill();
+        }
       }
     }
 

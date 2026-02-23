@@ -46,7 +46,7 @@ export interface TalentRanks {
   experience: number;
   execute: number;
   killRush: number;
-  bloodBolt: number;
+  reaperArc: number;
   berserker: number;
   [key: string]: number;
 }
@@ -111,12 +111,14 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc';
   x: number;
   y: number;
   targetX?: number;
   targetY?: number;
   radius?: number;
+  angle?: number;
+  range?: number;
   color: string;
   createdAt: number;
   small?: boolean;

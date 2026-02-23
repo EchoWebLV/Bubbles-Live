@@ -792,7 +792,7 @@ class MagicBlockService {
           experience: account.talentRampage || 0,
           execute: account.talentHoming || 0,
           killRush: account.talentRicochet || 0,
-          bloodBolt: account.talentDeathbomb || 0,
+          reaperArc: account.talentDeathbomb || 0,
           berserker: account.talentFrenzy || 0,
         },
         manualBuild: account.manualBuild || false,

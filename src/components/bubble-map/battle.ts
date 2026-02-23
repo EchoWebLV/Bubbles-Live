@@ -39,6 +39,8 @@ export interface Bullet {
   damage: number;
   createdAt: number;
   isBloodBolt?: boolean;
+  isLifeTap?: boolean;
+  isBloodWave?: boolean;
   isShrapnel?: boolean;
   radius?: number;
 }

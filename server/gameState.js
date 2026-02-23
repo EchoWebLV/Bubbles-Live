@@ -734,14 +734,6 @@ class GameState {
         const vitalityVal = getTalentValue('vitalityStrike', battleBubble.talents?.vitalityStrike || 0);
         if (vitalityVal > 0) damage += battleBubble.maxHealth * vitalityVal;
 
-        const bloodBoltRank = battleBubble.talents?.bloodBolt || 0;
-        const isBloodBolt = bloodBoltRank > 0;
-
-        if (isBloodBolt) {
-          const hpCost = battleBubble.maxHealth * ALL_TALENTS.bloodBolt.hpCost[bloodBoltRank - 1] * 0.5;
-          battleBubble.health = Math.max(1, battleBubble.health - hpCost);
-        }
-
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
           shooterAddress: holder.address,
@@ -761,7 +753,6 @@ class GameState {
           vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
           damage: damage,
           createdAt: now,
-          isBloodBolt: isBloodBolt,
         });
 
         battleBubble.shotCounter = (battleBubble.shotCounter || 0) + 1;
@@ -876,6 +867,7 @@ class GameState {
         bullet.targetAddress = novaHit.address;
         // Fall through to normal hit detection below
       }
+
 
       // Blood Bolt: homing — lock onto target, only re-target if dead/ghost
       if (bullet.isBloodBolt) {
@@ -1121,6 +1113,71 @@ class GameState {
                   prevY = arcTarget.holder.y;
                   currentMult *= decay;
                 }
+              }
+            }
+          }
+        }
+
+        // Reaper's Arc: every Nth hit, instant 180° sweep around the shooter
+        if (shooterBattle) {
+          const arcRank = shooterBattle.talents?.reaperArc || 0;
+          if (arcRank > 0) {
+            shooterBattle._reaperHits = (shooterBattle._reaperHits || 0) + 1;
+            const interval = ALL_TALENTS.reaperArc.hitInterval[arcRank - 1];
+            if (shooterBattle._reaperHits >= interval) {
+              shooterBattle._reaperHits = 0;
+              const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
+              if (shooter && shooter.x !== undefined) {
+                const sweepRange = ALL_TALENTS.reaperArc.sweepRange;
+                const halfAngle = ALL_TALENTS.reaperArc.sweepAngle / 2;
+                const dmgMult = ALL_TALENTS.reaperArc.damageMultiplier[arcRank - 1];
+                const facingAngle = Math.atan2(target.y - shooter.y, target.x - shooter.x);
+
+                // HP cost
+                const hpCost = shooterBattle.maxHealth * ALL_TALENTS.reaperArc.hpCost;
+                shooterBattle.health = Math.max(1, shooterBattle.health - hpCost);
+
+                this.holders.forEach(h => {
+                  if (h.address === shooter.address || h.x === undefined) return;
+                  const hb = this.battleBubbles.get(h.address);
+                  if (!hb || hb.isGhost) return;
+
+                  const edx = h.x - shooter.x;
+                  const edy = h.y - shooter.y;
+                  const eDist = Math.sqrt(edx * edx + edy * edy);
+                  if (eDist > sweepRange + h.radius) return;
+
+                  let angleToEnemy = Math.atan2(edy, edx) - facingAngle;
+                  while (angleToEnemy > Math.PI) angleToEnemy -= 2 * Math.PI;
+                  while (angleToEnemy < -Math.PI) angleToEnemy += 2 * Math.PI;
+                  if (Math.abs(angleToEnemy) > halfAngle) return;
+
+                  const arcDmg = Math.min(bullet.damage * dmgMult, 5);
+                  hb.health -= arcDmg;
+
+                  this.damageNumbers.push({
+                    id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 20,
+                    damage: arcDmg, createdAt: now, alpha: 1,
+                    color: '#ff1111', fontSize: 26, type: 'reaperArc',
+                  });
+
+                  if (this.magicBlockReady) this._queueAttack(shooter.address, h.address, arcDmg);
+
+                  if (hb.health <= 0) {
+                    hb.health = 0;
+                    hb.isGhost = true;
+                    hb.isAlive = false;
+                  }
+                });
+
+                this.vfx.push({
+                  type: 'reaperArc',
+                  x: shooter.x, y: shooter.y,
+                  angle: facingAngle,
+                  range: sweepRange,
+                  createdAt: now,
+                  color: shooter.color || '#ff2233',
+                });
               }
             }
           }
@@ -2063,6 +2120,8 @@ class GameState {
         curveDirection: b.curveDirection,
         curveStrength: b.curveStrength,
         isBloodBolt: b.isBloodBolt || false,
+        isLifeTap: b.isLifeTap || false,
+        isBloodWave: b.isBloodWave || false,
       })),
       damageNumbers: this.damageNumbers,
       vfx: this.vfx,

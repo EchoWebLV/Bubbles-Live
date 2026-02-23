@@ -301,13 +301,28 @@ const BLOOD_THIRST = {
     homingStrength: 0.12,
     minHpPct: 0.25,
   },
+  reaperArc: {
+    id: 'reaperArc',
+    name: "Reaper's Arc",
+    description: 'Every 8th hit: 270° sweep (~200px). 100/200/300/400/500% dmg, costs 1% HP',
+    tree: 'bloodThirst',
+    tier: 4,
+    requires: 'killRush',
+    maxRank: MAX_RANK,
+    hitInterval: [8, 8, 8, 8, 8],
+    damageMultiplier: [1.0, 2.0, 3.0, 4.0, 5.0],
+    hpCost: 0.01,
+    sweepRange: 200,
+    sweepAngle: Math.PI * 1.5,
+    sweepDurationMs: 300,
+  },
   berserker: {
     id: 'berserker',
     name: 'Berserker',
     description: 'Below 50% HP: +{value}% attack speed & bullet dmg. R3: +30% move speed',
     tree: 'bloodThirst',
     tier: 5,
-    requires: 'bloodBolt',
+    requires: 'reaperArc',
     maxRank: MAX_RANK_CAPSTONE,
     atkSpeedBonus: [0.25, 0.40, 0.55],
     dmgBonus: [0.25, 0.40, 0.55],
@@ -331,7 +346,7 @@ const TREE_ORDER = {
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
   massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
-  bloodThirst: ['experience', 'execute', 'killRush', 'bloodBolt', 'berserker'],
+  bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
@@ -339,7 +354,7 @@ const AUTO_ALLOCATE_ORDER = [
   'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
   'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
   'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'orbit', 'nova', 'bloodBolt',
+  'lifesteal', 'multiShot', 'orbit', 'nova', 'reaperArc',
   'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
 ];
 
@@ -349,7 +364,7 @@ const TALENT_NAME_TO_CHAIN_ID = {
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
   ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
-  experience: 20, execute: 21, killRush: 22, bloodBolt: 23, berserker: 24,
+  experience: 20, execute: 21, killRush: 22, reaperArc: 23, berserker: 24,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(

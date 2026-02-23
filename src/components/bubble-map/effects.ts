@@ -236,6 +236,16 @@ export function createSmallBulletPop(x: number, y: number, color: string): Explo
 }
 
 // Lightning arc data stored for direct canvas rendering
+export interface ReaperArcVfx {
+  x: number;
+  y: number;
+  angle: number;
+  range: number;
+  color: string;
+  createdAt: number;
+  duration: number;
+}
+
 export interface LightningArc {
   points: { x: number; y: number }[];
   branches: { x: number; y: number }[][];
