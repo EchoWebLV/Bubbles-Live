@@ -15,7 +15,7 @@ set -euo pipefail
 
 COMBAT_DIR="$(cd "$(dirname "$0")/../combat/hodlwarz_combat" && pwd)"
 DEV_KEYPAIR="$COMBAT_DIR/dev-program-keypair.json"
-PROD_PROGRAM_ID="7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
+PROD_PROGRAM_ID="9gPiGL7dCxC5oAQ21RSk9xBCYnoVGxUCghpRhM7ZUXgg"
 
 echo "=== Deploy Dev Combat Contract ==="
 echo ""

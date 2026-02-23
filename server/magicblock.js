@@ -9,7 +9,7 @@ const path = require('path');
 
 // Program IDs — configurable via env for dev/production split
 const COMBAT_PROGRAM_ID = new PublicKey(
-  process.env.COMBAT_PROGRAM_ID || '7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi'
+  process.env.COMBAT_PROGRAM_ID || '9gPiGL7dCxC5oAQ21RSk9xBCYnoVGxUCghpRhM7ZUXgg'
 );
 const DELEGATION_PROGRAM_ID = new PublicKey(
   process.env.DELEGATION_PROGRAM_ID || 'DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh'
