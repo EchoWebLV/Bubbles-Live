@@ -61,7 +61,7 @@ const TANK = {
     tier: 5,
     requires: 'lifesteal',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.002, 0.0035, 0.005],
+    perRank: [0.0025, 0.004, 0.006],
   },
 };
 
@@ -115,13 +115,13 @@ const FIREPOWER = {
   dualCannon: {
     id: 'dualCannon',
     name: 'Homing Cannon',
-    description: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 150% dmg',
+    description: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 200% dmg',
     tree: 'firepower',
     tier: 5,
     requires: 'multiShot',
     maxRank: MAX_RANK_CAPSTONE,
     fireFrequency: [16, 13, 10],
-    homingDamageMultiplier: 1.5,
+    homingDamageMultiplier: 2.0,
     homingStrength: 0.15,
   },
 };
@@ -151,13 +151,14 @@ const BRAWLER = {
   },
   relentless: {
     id: 'relentless',
-    name: 'Relentless',
-    description: 'Body Slam hit reduces Dash cooldown by {value}s',
+    name: 'Pinball',
+    description: 'Body Slam dashes you 50/100/150/200/250px toward the nearest enemy',
     tree: 'brawler',
     tier: 3,
     requires: 'bodySlam',
     maxRank: MAX_RANK,
-    cdReduction: [500, 1000, 1500, 2000, 2500],
+    bounceRange: [50, 100, 150, 200, 250],
+    bounceSpeed: 12,
   },
   orbit: {
     id: 'orbit',
@@ -247,7 +248,7 @@ const MASS_DAMAGE = {
     maxRank: MAX_RANK_CAPSTONE,
     procChance: [0.05, 0.10, 0.15],
     arcTargets: [2, 3, 4],
-    arcDamage: 4.0,
+    arcDamage: 4.5,
     arcDecay: 0.50,
     arcRange: 500,
   },
@@ -318,14 +319,14 @@ const BLOOD_THIRST = {
   berserker: {
     id: 'berserker',
     name: 'Berserker',
-    description: 'Below 33% HP: +{value}% atk speed & dmg. +1.5/2.5/3.5 HP/s regen',
+    description: 'Below 33% HP: +{value}% atk speed & dmg. +0.5/1/1.5 HP/s regen',
     tree: 'bloodThirst',
     tier: 5,
     requires: 'reaperArc',
     maxRank: MAX_RANK_CAPSTONE,
     atkSpeedBonus: [0.25, 0.40, 0.55],
     dmgBonus: [0.25, 0.40, 0.55],
-    regenPerSec: [1.5, 2.5, 3.5],
+    regenPerSec: [0.5, 1.0, 1.5],
     hpThreshold: 0.33,
   },
 };

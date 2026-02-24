@@ -1353,7 +1353,7 @@ class GameState {
     this._processAttackQueue();
   }
 
-  // ─── Brawler: Body Slam + Velocity Strike ──────────────────────
+  // ─── Brawler: Body Slam + Pinball + Shockwave ──────────────────────
   _processBrawlerCollisions(now, deltaTime) {
     for (let i = 0; i < this.holders.length; i++) {
       const a = this.holders[i];
@@ -1371,55 +1371,75 @@ class GameState {
         const minDist = a.radius + b.radius + 15;
         if (dist >= minDist) continue;
 
-        // Body Slam: deal % max HP damage on any body contact (500ms cooldown per attacker)
         const pairs = [[bbA, bbB, a, b], [bbB, bbA, b, a]];
         for (const [attacker, victim, aH, vH] of pairs) {
           const bodyRank = attacker.talents?.bodySlam || 0;
-          if (bodyRank > 0) {
-            if (!attacker._lastBodySlam || now - attacker._lastBodySlam >= 1500) {
-              attacker._lastBodySlam = now;
-              const pct = getTalentValue('bodySlam', bodyRank);
-              const dmg = attacker.maxHealth * pct;
-              victim.health -= dmg;
-              this.damageNumbers.push({
-                id: `dmg-${now}-${Math.random()}`, x: vH.x, y: vH.y - 20,
-                damage: dmg, createdAt: now, alpha: 1,
-                color: '#ff8800', fontSize: 26, type: 'bodySlam',
-              });
-              if (this.magicBlockReady) this._queueAttack(aH.address, vH.address, dmg);
+          if (bodyRank <= 0) continue;
 
-              // Relentless: reduce Dash cooldown on Body Slam hit
-              const relentlessRank = attacker.talents?.relentless || 0;
-              if (relentlessRank > 0 && attacker._lastDash) {
-                const cdReduction = ALL_TALENTS.relentless.cdReduction[relentlessRank - 1];
-                attacker._lastDash -= cdReduction;
-              }
+          if (attacker._lastBodySlam && now - attacker._lastBodySlam < 1500) continue;
 
-              // Shockwave: AoE on body hit
-              const swRank = attacker.talents?.shockwave || 0;
-              if (swRank > 0) {
-                const swPct = getTalentValue('shockwave', swRank);
-                const swRadius = ALL_TALENTS.shockwave.radius[swRank - 1];
-                const swDmg = attacker.maxHealth * swPct;
-                this.vfx.push({ type: 'shockwave', x: vH.x, y: vH.y, radius: swRadius, color: aH.color || '#ff8800', createdAt: now });
-                this.holders.forEach(h => {
-                  if (h.address === aH.address || h.x === undefined) return;
-                  const hb = this.battleBubbles.get(h.address);
-                  if (!hb || hb.isGhost) return;
-                  const sdx = h.x - vH.x;
-                  const sdy = h.y - vH.y;
-                  const sd = Math.sqrt(sdx * sdx + sdy * sdy);
-                  if (sd < swRadius) {
-                    const falloff = 1 - (sd / swRadius);
-                    const d = swDmg * falloff;
-                    hb.health -= d;
-                    if (this.magicBlockReady) this._queueAttack(aH.address, h.address, d);
-                  }
-                });
+          attacker._lastBodySlam = now;
+          const pct = getTalentValue('bodySlam', bodyRank);
+          const dmg = attacker.maxHealth * pct;
+          victim.health -= dmg;
+          this.damageNumbers.push({
+            id: `dmg-${now}-${Math.random()}`, x: vH.x, y: vH.y - 20,
+            damage: dmg, createdAt: now, alpha: 1,
+            color: '#ff8800', fontSize: 26, type: 'bodySlam',
+          });
+          if (this.magicBlockReady) this._queueAttack(aH.address, vH.address, dmg);
+
+          // Shockwave: AoE on body hit (no CD during pinball)
+          const swRank = attacker.talents?.shockwave || 0;
+          if (swRank > 0) {
+            const swPct = getTalentValue('shockwave', swRank);
+            const swRadius = ALL_TALENTS.shockwave.radius[swRank - 1];
+            const swDmg = attacker.maxHealth * swPct;
+            this.vfx.push({ type: 'shockwave', x: vH.x, y: vH.y, radius: swRadius, color: aH.color || '#ff8800', createdAt: now });
+            this.holders.forEach(h => {
+              if (h.address === aH.address || h.x === undefined) return;
+              const hb = this.battleBubbles.get(h.address);
+              if (!hb || hb.isGhost) return;
+              const sdx = h.x - vH.x;
+              const sdy = h.y - vH.y;
+              const sd = Math.sqrt(sdx * sdx + sdy * sdy);
+              if (sd < swRadius) {
+                const falloff = 1 - (sd / swRadius);
+                const d = swDmg * falloff;
+                hb.health -= d;
+                if (this.magicBlockReady) this._queueAttack(aH.address, h.address, d);
               }
-            }
+            });
           }
 
+          // Pinball: bounce off victim like a bumper (reflect away)
+          const pinballRank = attacker.talents?.relentless || 0;
+          if (pinballRank > 0) {
+            const bounceRange = ALL_TALENTS.relentless.bounceRange[pinballRank - 1];
+            // Direction from victim back to attacker (away from impact)
+            const awayX = aH.x - vH.x;
+            const awayY = aH.y - vH.y;
+            const awayDist = Math.sqrt(awayX * awayX + awayY * awayY) || 1;
+            const nx = awayX / awayDist;
+            const ny = awayY / awayDist;
+
+            // Pick a random side to bounce (perpendicular left or right)
+            const side = Math.random() < 0.5 ? 1 : -1;
+            const perpX = -ny * side;
+            const perpY = nx * side;
+
+            // 45° between away and perpendicular for a natural ricochet
+            const bx = (nx + perpX) * 0.707;
+            const by = (ny + perpY) * 0.707;
+
+            const strength = ALL_TALENTS.dash.dashStrength;
+            aH.vx = bx * strength;
+            aH.vy = by * strength;
+
+            // Teleport a bit in the bounce direction based on rank range
+            aH.x += bx * bounceRange * 0.4;
+            aH.y += by * bounceRange * 0.4;
+          }
         }
       }
     }

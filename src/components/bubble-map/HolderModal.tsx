@@ -25,7 +25,7 @@ const TALENT_TREES = {
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
       { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
       { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
-      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.2/0.35/0.5% max HP as bullet dmg', maxRank: 3 },
+      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.25/0.4/0.6% max HP as bullet dmg', maxRank: 3 },
     ],
   },
   firepower: {
@@ -37,7 +37,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 150% dmg', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 200% dmg', maxRank: 3 },
     ],
   },
   brawler: {
@@ -47,7 +47,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
       { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
-      { id: 'relentless', name: 'Relentless', desc: 'Body Slam hit reduces Dash CD by 0.5/1/1.5/2/2.5s', maxRank: 5 },
+      { id: 'relentless', name: 'Pinball', desc: 'Body Slam dashes you 50/100/150/200/250px toward nearest enemy', maxRank: 5 },
       { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
       { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
     ],
@@ -61,7 +61,7 @@ const TALENT_TREES = {
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '5/10/15% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '5/10/15% chance: lightning to 2/3/4 enemies (450% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -73,7 +73,7 @@ const TALENT_TREES = {
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
       { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 0.75/1.5/2.25/3/3.75% max HP dmg, costs 0.4/0.75/1.2/1.5/2% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +25/40/55% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +25/40/55% atk speed & dmg. +0.5/1/1.5 HP/s regen', maxRank: 3 },
     ],
   },
 } as const;
