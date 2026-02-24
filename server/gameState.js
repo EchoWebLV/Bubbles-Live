@@ -132,6 +132,9 @@ class GameState {
     this.isFlushingDamage = false;
     this.maxConcurrentFlush = 3; // max txs sent per flush cycle
 
+    // Guest players (max 10, removed on disconnect)
+    this.guestAddresses = new Set();
+
     // Player registration queue
     this.registerQueue = [];
     this.isProcessingRegistration = false;
@@ -2030,6 +2033,7 @@ class GameState {
     this.popEffects = this.popEffects.filter(p => (now - p.time) < 1000);
     
     for (const [address, holder] of oldHolders) {
+      if (address.startsWith('guest_')) continue;
       if (!newAddresses.has(address) && holder.x !== undefined) {
         const missingCount = (this.missingHolderCounts.get(address) || 0) + 1;
         this.missingHolderCounts.set(address, missingCount);
@@ -2084,9 +2088,11 @@ class GameState {
       }
     }
     
-    this.holders = newHolders;
+    // Preserve guest holders across refresh
+    const guestHolders = this.holders.filter(h => h.address.startsWith('guest_'));
+    this.holders = [...newHolders, ...guestHolders];
     this.initializePositions();
-    console.log(`Live refresh: ${this.holders.length} holders`);
+    console.log(`Live refresh: ${this.holders.length} holders (${guestHolders.length} guests)`);
   }
 
   // ─── Player Photos ──────────────────────────────────────────────
@@ -2115,6 +2121,78 @@ class GameState {
       photos[addr] = data;
     }
     return photos;
+  }
+
+  // ─── Guest Players ──────────────────────────────────────────────
+
+  addGuest(address) {
+    if (this.guestAddresses.size >= 10) return { success: false, error: 'Guest slots full' };
+    if (this.guestAddresses.has(address)) return { success: false, error: 'Already a guest' };
+
+    this.guestAddresses.add(address);
+
+    const { width, height } = this.dimensions;
+    const margin = 150;
+    const holder = {
+      address,
+      balance: 0,
+      percentage: 0,
+      color: `#${Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')}`,
+      radius: 18,
+      x: margin + Math.random() * (width - margin * 2),
+      y: margin + Math.random() * (height - margin * 2),
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      isGuest: true,
+    };
+    this.holders.push(holder);
+
+    const medianXp = this.getMedianXp();
+    const lvl = calcLevel(medianXp);
+    const maxHealth = calcMaxHealth(lvl);
+    const attackPower = calcAttackPower(lvl);
+
+    const bubble = {
+      address,
+      health: maxHealth,
+      maxHealth,
+      attackPower,
+      isGhost: false,
+      ghostUntil: null,
+      lastShotTime: 0,
+      kills: 0,
+      deaths: 0,
+      xp: medianXp,
+      healthLevel: lvl,
+      attackLevel: lvl,
+      isAlive: true,
+      talents: createEmptyTalents(),
+      manualBuild: false,
+      lastHitTarget: null,
+      focusFireStacks: 0,
+      shotCounter: 0,
+      talentResets: 0,
+      _lastDash: 0,
+      _lastDashHit: 0,
+      _lastContactDmg: 0,
+      killRushUntil: 0,
+      _lastNova: 0,
+    };
+    const newTalents = autoAllocateTalents(bubble);
+    this.battleBubbles.set(address, bubble);
+
+    this.eventLog.unshift(`Guest joined the arena!`);
+    if (this.eventLog.length > 50) this.eventLog.pop();
+
+    return { success: true, address };
+  }
+
+  removeGuest(address) {
+    if (!this.guestAddresses.has(address)) return;
+    this.guestAddresses.delete(address);
+    this.holders = this.holders.filter(h => h.address !== address);
+    this.battleBubbles.delete(address);
+    this.playerCache.delete(address);
   }
 
   // ─── Client State ────────────────────────────────────────────────

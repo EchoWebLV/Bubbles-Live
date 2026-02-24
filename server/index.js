@@ -363,7 +363,32 @@ app.prepare().then(async () => {
       gameState.removePlayerPhoto(data.walletAddress);
     });
 
+    socket.on('joinAsGuest', () => {
+      if (socket.guestAddress) {
+        socket.emit('guestJoined', { success: false, error: 'Already a guest' });
+        return;
+      }
+      const guestAddress = `guest_${socket.id.slice(0, 8)}_${Date.now()}`;
+      const result = gameState.addGuest(guestAddress);
+      if (result.success) {
+        socket.guestAddress = guestAddress;
+      }
+      socket.emit('guestJoined', result);
+    });
+
+    socket.on('leaveGuest', () => {
+      if (socket.guestAddress) {
+        gameState.removeGuest(socket.guestAddress);
+        socket.guestAddress = null;
+        socket.emit('guestLeft', { success: true });
+      }
+    });
+
     socket.on('disconnect', () => {
+      if (socket.guestAddress) {
+        gameState.removeGuest(socket.guestAddress);
+        socket.guestAddress = null;
+      }
       connectedClients--;
       const ip = socket.clientIP;
       if (ip) {

@@ -245,6 +245,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   const [connected, setConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
+  const [guestAddress, setGuestAddress] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const dimensionsSentRef = useRef(false);
 
@@ -318,6 +319,18 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     }
   }, []);
 
+  const joinAsGuest = useCallback(() => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("joinAsGuest");
+    }
+  }, []);
+
+  const leaveGuest = useCallback(() => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("leaveGuest");
+    }
+    setGuestAddress(null);
+  }, []);
 
   // Allocate a talent point
   const allocateTalent = useCallback((walletAddress: string, talentId: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
@@ -400,6 +413,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     socket.on("disconnect", (reason) => {
       console.log("Disconnected from game server:", reason);
       setConnected(false);
+      setGuestAddress(null);
     });
 
     socket.on("gameState", (state: GameState) => {
@@ -413,6 +427,16 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
 
     socket.on("playerPhotos", (photos: Record<string, string>) => {
       setPlayerPhotos(photos || {});
+    });
+
+    socket.on("guestJoined", (result: { success: boolean; address?: string; error?: string }) => {
+      if (result.success && result.address) {
+        setGuestAddress(result.address);
+      }
+    });
+
+    socket.on("guestLeft", () => {
+      setGuestAddress(null);
     });
 
     socket.on("connect_error", (error) => {
@@ -440,6 +464,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     connected,
     gameState,
     playerPhotos,
+    guestAddress,
     setDimensions,
     sendTransaction,
     upgradeStat,
@@ -448,5 +473,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     getOnchainStats,
     uploadPhoto,
     removePhoto,
+    joinAsGuest,
+    leaveGuest,
   };
 }

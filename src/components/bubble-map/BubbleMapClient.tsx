@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star, Camera } from "lucide-react";
+import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swords, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Volume2, VolumeX, Info, Wallet, Shield, Crosshair, Zap, Star, Camera, User, X } from "lucide-react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
@@ -219,7 +219,9 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, playerPhotos, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto } = useGameSocket();
+  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
+  const effectiveAddress = guestAddress || connectedWalletAddress;
+  const isGuest = !!guestAddress;
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -269,24 +271,24 @@ export function BubbleMapClient() {
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
 
   const handleAllocateTalent = useCallback(async (talentId: string) => {
-    if (!connectedWalletAddress || allocatingTalent) return;
+    if (!effectiveAddress || allocatingTalent) return;
     setAllocatingTalent(talentId);
     try {
-      await allocateTalent(connectedWalletAddress, talentId);
+      await allocateTalent(effectiveAddress, talentId);
     } finally {
       setAllocatingTalent(null);
     }
-  }, [connectedWalletAddress, allocatingTalent, allocateTalent]);
+  }, [effectiveAddress, allocatingTalent, allocateTalent]);
 
   const handleResetTalents = useCallback(async () => {
-    if (!connectedWalletAddress || allocatingTalent) return;
+    if (!effectiveAddress || allocatingTalent) return;
     setAllocatingTalent('reset');
     try {
-      await resetTalents(connectedWalletAddress);
+      await resetTalents(effectiveAddress);
     } finally {
       setAllocatingTalent(null);
     }
-  }, [connectedWalletAddress, allocatingTalent, resetTalents]);
+  }, [effectiveAddress, allocatingTalent, resetTalents]);
 
   // Kill streak announcements
   const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
@@ -364,7 +366,7 @@ export function BubbleMapClient() {
       prev.lastKillTime = now;
       streaks.set(kill.killer, prev);
 
-      const isMyKill = kill.killer === connectedWalletAddress;
+      const isMyKill = kill.killer === effectiveAddress;
       const killerLabel = kill.killer.slice(0, 6) + '...';
       const victimLabel = kill.victim.slice(0, 6) + '...';
 
@@ -405,7 +407,7 @@ export function BubbleMapClient() {
         setTimeout(() => setIsShaking(false), 400);
       }
     }
-  }, [gameState?.killFeed, connectedWalletAddress]);
+  }, [gameState?.killFeed, effectiveAddress]);
 
   // Clean up expired announcements
   useEffect(() => {
@@ -893,7 +895,7 @@ export function BubbleMapClient() {
             </button>
           )}
 
-          {/* Wallet Connect */}
+          {/* Wallet Connect / Guest */}
           {walletConnected && connectedWalletAddress ? (
             <button
               onClick={() => disconnectWallet()}
@@ -904,14 +906,32 @@ export function BubbleMapClient() {
                 {connectedWalletAddress.slice(0, 4)}..{connectedWalletAddress.slice(-3)}
               </span>
             </button>
-          ) : (
+          ) : isGuest ? (
             <button
-              onClick={() => setWalletModalVisible(true)}
-              className="bg-purple-600/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 border border-purple-500/50 flex items-center gap-1.5 hover:bg-purple-500/80 transition-colors"
+              onClick={() => leaveGuest()}
+              className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-orange-500/50 flex items-center gap-1.5 hover:border-orange-400/70 transition-colors"
             >
-              <Wallet className="w-3 h-3 text-white" />
-              <span className="text-[10px] sm:text-xs text-white font-medium">Connect</span>
+              <User className="w-3 h-3 text-orange-400" />
+              <span className="text-[10px] sm:text-xs text-orange-300 font-medium">Guest</span>
+              <X className="w-2.5 h-2.5 text-orange-400/70" />
             </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setWalletModalVisible(true)}
+                className="bg-purple-600/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 border border-purple-500/50 flex items-center gap-1.5 hover:bg-purple-500/80 transition-colors"
+              >
+                <Wallet className="w-3 h-3 text-white" />
+                <span className="text-[10px] sm:text-xs text-white font-medium">Connect</span>
+              </button>
+              <button
+                onClick={() => joinAsGuest()}
+                className="bg-orange-600/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 border border-orange-500/50 flex items-center gap-1.5 hover:bg-orange-500/80 transition-colors"
+              >
+                <User className="w-3 h-3 text-white" />
+                <span className="text-[10px] sm:text-xs text-white font-medium">Try as Guest</span>
+              </button>
+            </div>
           )}
 
           {/* Photo Upload */}
@@ -1128,17 +1148,17 @@ export function BubbleMapClient() {
         )}
       </AnimatePresence>
 
-      {/* Player Stats Panel (connected wallet) */}
-      {walletConnected && connectedWalletAddress && (
+      {/* Player Stats Panel (connected wallet or guest) */}
+      {(walletConnected && connectedWalletAddress || isGuest) && effectiveAddress && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="absolute bottom-14 sm:bottom-16 left-2 sm:left-4 z-10 w-56 sm:w-64"
         >
-          <div className="bg-slate-900/90 backdrop-blur-md rounded-xl p-3 border border-purple-500/30">
+          <div className={`bg-slate-900/90 backdrop-blur-md rounded-xl p-3 border ${isGuest ? 'border-orange-500/30' : 'border-purple-500/30'}`}>
             {(() => {
-              const myBubble = battleState.bubbles.get(connectedWalletAddress);
-              if (!myBubble) return <div className="text-xs text-slate-500">Not a holder of this token</div>;
+              const myBubble = battleState.bubbles.get(effectiveAddress);
+              if (!myBubble) return <div className="text-xs text-slate-500">{isGuest ? 'Joining...' : 'Not a holder of this token'}</div>;
 
               const xp = myBubble.xp ?? 0;
               const level = myBubble.level ?? 1;
@@ -1152,6 +1172,7 @@ export function BubbleMapClient() {
                     <div className="flex items-center gap-1.5">
                       <Star className="w-3 h-3 text-yellow-400" />
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
+                      {isGuest && <span className="text-[9px] text-orange-400 bg-orange-500/20 px-1 rounded">GUEST</span>}
                     </div>
                     <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
                   </div>
@@ -1161,15 +1182,15 @@ export function BubbleMapClient() {
                     <span className="text-slate-400">KD: {deaths > 0 ? (kills / deaths).toFixed(1) : kills.toFixed(0)}</span>
                   </div>
                   <button
-                    onClick={() => setFollowingAddress(followingAddress === connectedWalletAddress ? null : connectedWalletAddress)}
+                    onClick={() => setFollowingAddress(followingAddress === effectiveAddress ? null : effectiveAddress)}
                     className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border ${
-                      followingAddress === connectedWalletAddress
+                      followingAddress === effectiveAddress
                         ? 'bg-cyan-900/40 hover:bg-cyan-900/60 border-cyan-500/40 text-cyan-300'
                         : 'bg-slate-800/50 hover:bg-slate-700/50 border-slate-600/30 text-slate-300'
                     }`}
                   >
                     <Crosshair className="w-3 h-3" />
-                    {followingAddress === connectedWalletAddress ? 'Unfollow' : 'Follow Me'}
+                    {followingAddress === effectiveAddress ? 'Unfollow' : 'Follow Me'}
                   </button>
                   <button
                     onClick={() => setShowTalentTree(!showTalentTree)}
@@ -1200,7 +1221,7 @@ export function BubbleMapClient() {
         const level = bubble.level ?? 1;
         const kills = bubble.kills;
         const deaths = bubble.deaths;
-        const isMe = followingAddress === connectedWalletAddress;
+        const isMe = followingAddress === effectiveAddress;
         const shortAddr = followingAddress.slice(0, 4) + '...' + followingAddress.slice(-4);
 
         return (
@@ -1227,8 +1248,8 @@ export function BubbleMapClient() {
 
       {/* Talent Tree Modal */}
       <AnimatePresence>
-        {showTalentTree && walletConnected && connectedWalletAddress && (() => {
-          const myBubble = battleState.bubbles.get(connectedWalletAddress);
+        {showTalentTree && effectiveAddress && (walletConnected || isGuest) && (() => {
+          const myBubble = battleState.bubbles.get(effectiveAddress);
           if (!myBubble) return null;
           const talents = myBubble.talents || {} as TalentRanks;
           const tp = myBubble.talentPoints ?? 0;
@@ -1408,7 +1429,7 @@ export function BubbleMapClient() {
           battleState={battleState}
           popEffects={popEffects}
           camera={camera}
-          connectedWallet={connectedWalletAddress}
+          connectedWallet={effectiveAddress}
           lightningArcs={lightningArcs}
           reaperArcs={reaperArcs}
           onHolderClick={setSelectedHolder}
