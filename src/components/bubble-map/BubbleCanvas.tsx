@@ -484,7 +484,7 @@ export function BubbleCanvas({
       const alpha = 1 - progress;
       const col = arc.color || '#ff2233';
       const range = arc.range;
-      const totalSweep = Math.PI * 1.5;
+      const totalSweep = Math.PI * 2;
 
       const sweepProgress = Math.min(progress * 2.5, 1);
       const sweepStart = arc.angle - totalSweep / 2;

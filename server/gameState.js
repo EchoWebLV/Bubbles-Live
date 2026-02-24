@@ -15,7 +15,7 @@ const BATTLE_CONFIG = {
   maxHealth: 100,       // base — overridden by onchain PlayerState
   bulletDamage: 0.1,    // base damage per bullet
   fireRate: 200,        // ms between shots
-  bulletSpeed: 8,
+  bulletSpeed: 10,
   ghostBaseMs: 20000,   // 20s at level 1, +1s per level
   ghostPerLevelMs: 1000,
   curveStrength: { min: 25, max: 60 },
@@ -44,7 +44,7 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
-const TESTING_OVERRIDE_LEVEL = 30; // Set to a number to force all players to that level
+const TESTING_OVERRIDE_LEVEL = 60; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
@@ -511,11 +511,7 @@ class GameState {
         holder.vy = Math.sin(angle) * PHYSICS_CONFIG.minSpeed;
       }
       // Kill Rush talent: temporary speed boost after kills
-      const bb = this.battleBubbles.get(holder.address);
-      const berserkRank = bb?.talents?.berserker || 0;
-      const berserkMoveBonus = (berserkRank > 0 && bb && bb.health < bb.maxHealth * ALL_TALENTS.berserker.hpThreshold)
-        ? ALL_TALENTS.berserker.moveSpeedBonus[berserkRank - 1] : 0;
-      const effectiveMax = PHYSICS_CONFIG.maxSpeed * (1 + berserkMoveBonus);
+      const effectiveMax = PHYSICS_CONFIG.maxSpeed;
       if (speed > effectiveMax) {
         const scale = effectiveMax / speed;
         holder.vx *= scale;
@@ -662,6 +658,16 @@ class GameState {
       }
     });
 
+    // Berserker regen: heal per second when below 50% HP
+    this.battleBubbles.forEach((bubble) => {
+      if (bubble.isGhost || !bubble.isAlive) return;
+      const bRank = bubble.talents?.berserker || 0;
+      if (bRank <= 0) return;
+      if (bubble.health >= bubble.maxHealth * ALL_TALENTS.berserker.hpThreshold) return;
+      const hps = ALL_TALENTS.berserker.regenPerSec[bRank - 1];
+      const healCeiling = bubble.maxHealth * 0.50;
+      bubble.health = Math.min(bubble.health + hps * regenTickRate, healCeiling);
+    });
 
     // Nova talent: emit projectiles periodically
     this._processNova(now);
@@ -1130,11 +1136,11 @@ class GameState {
               if (shooter && shooter.x !== undefined) {
                 const sweepRange = ALL_TALENTS.reaperArc.sweepRange;
                 const halfAngle = ALL_TALENTS.reaperArc.sweepAngle / 2;
-                const dmgMult = ALL_TALENTS.reaperArc.damageMultiplier[arcRank - 1];
+                const sweepDmgPct = ALL_TALENTS.reaperArc.sweepDamagePct[arcRank - 1];
                 const facingAngle = Math.atan2(target.y - shooter.y, target.x - shooter.x);
 
-                // HP cost
-                const hpCost = shooterBattle.maxHealth * ALL_TALENTS.reaperArc.hpCost;
+                // HP cost scales with rank
+                const hpCost = shooterBattle.maxHealth * ALL_TALENTS.reaperArc.hpCost[arcRank - 1];
                 shooterBattle.health = Math.max(1, shooterBattle.health - hpCost);
 
                 this.holders.forEach(h => {
@@ -1152,7 +1158,7 @@ class GameState {
                   while (angleToEnemy < -Math.PI) angleToEnemy += 2 * Math.PI;
                   if (Math.abs(angleToEnemy) > halfAngle) return;
 
-                  const arcDmg = Math.min(bullet.damage * dmgMult, 5);
+                  const arcDmg = shooterBattle.maxHealth * sweepDmgPct;
                   hb.health -= arcDmg;
 
                   this.damageNumbers.push({
