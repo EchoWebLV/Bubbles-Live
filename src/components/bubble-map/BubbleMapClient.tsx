@@ -69,7 +69,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 200% dmg', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 333% dmg', maxRank: 3 },
     ],
   },
   brawler: {

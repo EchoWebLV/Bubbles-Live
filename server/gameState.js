@@ -47,15 +47,16 @@ const PROGRESSION = {
 const TESTING_OVERRIDE_LEVEL = 45; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
-  const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
-  if (baseLevel <= 50) return Math.min(baseLevel, MAX_LEVEL);
-  // After level 50, each level costs 30% more than the previous (exponential)
-  const level50Xp = 49 * 49 * PROGRESSION.levelScale; // XP needed to reach 50
-  const extraXp = xp - level50Xp;
-  const baseCost = 1000;
-  const ratio = 1.3;
-  const extraLevels = Math.floor(Math.log(1 + extraXp * (ratio - 1) / baseCost) / Math.log(ratio));
-  return Math.min(50 + extraLevels, MAX_LEVEL);
+  // Each level from 51-100 costs 1% more per level (cumulative)
+  // so level 100 requires ~49% more XP per level than level 51
+  let totalXp = 0;
+  for (let lvl = 1; lvl < MAX_LEVEL; lvl++) {
+    const baseCost = (2 * lvl - 1) * PROGRESSION.levelScale;
+    const penalty = lvl > 50 ? 1 + (lvl - 50) * 0.01 : 1;
+    totalXp += baseCost * penalty;
+    if (xp < totalXp) return lvl;
+  }
+  return MAX_LEVEL;
 }
 function calcMaxHealth(healthLevel) {
   return PROGRESSION.baseHealth + (healthLevel - 1) * PROGRESSION.healthPerLevel;
@@ -883,16 +884,8 @@ class GameState {
           const tdy = bestTarget.y - bullet.y;
           const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
           if (tDist > 0) {
-            const desiredVx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
-            const desiredVy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
-            const str = ALL_TALENTS.dualCannon.homingStrength;
-            bullet.vx += (desiredVx - bullet.vx) * str;
-            bullet.vy += (desiredVy - bullet.vy) * str;
-            const spd = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
-            if (spd > 0) {
-              bullet.vx = (bullet.vx / spd) * BATTLE_CONFIG.bulletSpeed;
-              bullet.vy = (bullet.vy / spd) * BATTLE_CONFIG.bulletSpeed;
-            }
+            bullet.vx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
+            bullet.vy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
             bullet.targetX = bestTarget.x;
             bullet.targetY = bestTarget.y;
           }
@@ -943,6 +936,36 @@ class GameState {
           bullet.targetAddress = homingTarget.address;
           bullet.targetX = homingTarget.x;
           bullet.targetY = homingTarget.y;
+        }
+      }
+
+      // Retarget if original target is dead — smoothly reroute the curve
+      if (!bullet.isHoming && !bullet.isBloodBolt && !bullet.isNova) {
+        const curTarget = this.holders.find(h => h.address === bullet.targetAddress);
+        const curBattle = curTarget ? this.battleBubbles.get(curTarget.address) : null;
+        const targetAlive = curTarget && curTarget.x !== undefined && curBattle && !curBattle.isGhost && curBattle.isAlive !== false;
+
+        if (!targetAlive) {
+          let nearest = null;
+          let nearestDist = 600;
+          for (const h of this.holders) {
+            if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+            const hb = this.battleBubbles.get(h.address);
+            if (!hb || hb.isGhost || hb.isAlive === false) continue;
+            const hdx = h.x - bullet.x;
+            const hdy = h.y - bullet.y;
+            const hd = Math.sqrt(hdx * hdx + hdy * hdy);
+            if (hd < nearestDist) { nearestDist = hd; nearest = h; }
+          }
+          if (nearest) {
+            bullet.startX = bullet.x;
+            bullet.startY = bullet.y;
+            bullet.targetX = nearest.x;
+            bullet.targetY = nearest.y;
+            bullet.targetAddress = nearest.address;
+            bullet.progress = 0;
+            bullet.curveStrength *= 0.5;
+          }
         }
       }
 
@@ -1452,13 +1475,9 @@ class GameState {
             const bx = (nx + perpX) * 0.707;
             const by = (ny + perpY) * 0.707;
 
-            const strength = ALL_TALENTS.dash.dashStrength;
+            const strength = ALL_TALENTS.dash.dashStrength * 0.5;
             aH.vx = bx * strength;
             aH.vy = by * strength;
-
-            // Teleport a bit in the bounce direction based on rank range
-            aH.x += bx * bounceRange * 0.4;
-            aH.y += by * bounceRange * 0.4;
           }
         }
       }

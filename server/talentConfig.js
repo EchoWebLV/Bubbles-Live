@@ -115,13 +115,13 @@ const FIREPOWER = {
   dualCannon: {
     id: 'dualCannon',
     name: 'Homing Cannon',
-    description: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 200% dmg',
+    description: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 333% dmg',
     tree: 'firepower',
     tier: 5,
     requires: 'multiShot',
     maxRank: MAX_RANK_CAPSTONE,
     fireFrequency: [16, 13, 10],
-    homingDamageMultiplier: 2.0,
+    homingDamageMultiplier: 3.33,
     homingStrength: 0.15,
   },
 };
