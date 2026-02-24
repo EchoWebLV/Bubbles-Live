@@ -37,7 +37,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 10/8/6th shot: homing bullet targeting lowest HP enemy, 400% dmg', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 150% dmg', maxRank: 3 },
     ],
   },
   brawler: {
@@ -72,7 +72,7 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 0.5/1/1.5/2/2.5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 0.75/1.5/2.25/3/3.75% max HP dmg, costs 0.4/0.75/1.2/1.5/2% HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +25/40/55% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
     ],
   },
