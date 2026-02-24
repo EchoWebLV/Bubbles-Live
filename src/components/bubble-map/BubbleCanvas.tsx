@@ -959,29 +959,32 @@ function drawBullets(
     const trailPoints: { x: number; y: number; alpha: number }[] = [];
     const numTrailPoints = 8;
     
+    const bDx = bullet.targetX - bullet.startX;
+    const bDy = bullet.targetY - bullet.startY;
+    const bDist = Math.sqrt(bDx * bDx + bDy * bDy) || 1;
+    const bPerpX = -bDy / bDist;
+    const bPerpY = bDx / bDist;
+    const bMidX = (bullet.startX + bullet.targetX) / 2;
+    const bMidY = (bullet.startY + bullet.targetY) / 2;
+    const bCtrlX = bMidX + bPerpX * bullet.curveStrength * bullet.curveDirection;
+    const bCtrlY = bMidY + bPerpY * bullet.curveStrength * bullet.curveDirection;
+
     for (let i = 0; i < numTrailPoints; i++) {
       const trailProgress = Math.max(0, bullet.progress - (i * 0.03));
       if (trailProgress <= 0) break;
-      
-      const t = trailProgress;
-      const dx = bullet.targetX - bullet.startX;
-      const dy = bullet.targetY - bullet.startY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const perpX = -dy / dist;
-      const perpY = dx / dist;
-      const midX = (bullet.startX + bullet.targetX) / 2;
-      const midY = (bullet.startY + bullet.targetY) / 2;
-      const controlX = midX + perpX * bullet.curveStrength * bullet.curveDirection;
-      const controlY = midY + perpY * bullet.curveStrength * bullet.curveDirection;
-      
-      const oneMinusT = 1 - t;
-      const x = oneMinusT * oneMinusT * bullet.startX + 
-                2 * oneMinusT * t * controlX + 
-                t * t * bullet.targetX;
-      const y = oneMinusT * oneMinusT * bullet.startY + 
-                2 * oneMinusT * t * controlY + 
-                t * t * bullet.targetY;
-      
+
+      let x: number, y: number;
+      if (trailProgress <= 1) {
+        const t = trailProgress;
+        const omt = 1 - t;
+        x = omt * omt * bullet.startX + 2 * omt * t * bCtrlX + t * t * bullet.targetX;
+        y = omt * omt * bullet.startY + 2 * omt * t * bCtrlY + t * t * bullet.targetY;
+      } else {
+        const overshoot = (trailProgress - 1) * bDist;
+        x = bullet.targetX + (bDx / bDist) * overshoot;
+        y = bullet.targetY + (bDy / bDist) * overshoot;
+      }
+
       trailPoints.push({ x, y, alpha: 1 - (i / numTrailPoints) });
     }
     

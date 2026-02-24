@@ -953,10 +953,10 @@ class GameState {
       const progressSpeed = BATTLE_CONFIG.bulletSpeed / totalDist;
       bullet.progress += progressSpeed;
 
-      const t = bullet.progress;
+      const t = Math.min(bullet.progress, 1);
       const dx = bullet.targetX - bullet.startX;
       const dy = bullet.targetY - bullet.startY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       const perpX = -dy / dist;
       const perpY = dx / dist;
       const midX = (bullet.startX + bullet.targetX) / 2;
@@ -965,14 +965,25 @@ class GameState {
       const controlY = midY + perpY * bullet.curveStrength * bullet.curveDirection;
 
       const oneMinusT = 1 - t;
-      bullet.x = oneMinusT * oneMinusT * bullet.startX +
+      const curveX = oneMinusT * oneMinusT * bullet.startX +
                  2 * oneMinusT * t * controlX +
                  t * t * bullet.targetX;
-      bullet.y = oneMinusT * oneMinusT * bullet.startY +
+      const curveY = oneMinusT * oneMinusT * bullet.startY +
                  2 * oneMinusT * t * controlY +
                  t * t * bullet.targetY;
 
-      if (bullet.progress >= 1.1 ||
+      if (bullet.progress <= 1) {
+        bullet.x = curveX;
+        bullet.y = curveY;
+      } else {
+        // Overshoot: continue straight past the target for 100px
+        const overshoot = (bullet.progress - 1) * dist;
+        bullet.x = bullet.targetX + (dx / dist) * overshoot;
+        bullet.y = bullet.targetY + (dy / dist) * overshoot;
+      }
+
+      const maxProgress = 1 + (100 / dist);
+      if (bullet.progress >= maxProgress ||
           bullet.x < -50 || bullet.x > width + 50 ||
           bullet.y < -50 || bullet.y > height + 50) {
         if (bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
@@ -982,19 +993,25 @@ class GameState {
         return;
       }
 
-      // Check for hits — only the intended target
-      const target = this.holders.find(h => h.address === bullet.targetAddress);
-      if (!target || target.x === undefined) return;
+      // Check for hits — any enemy the bullet collides with
+      let target = null;
+      let targetBattle = null;
+      for (let hi = 0; hi < this.holders.length; hi++) {
+        const h = this.holders[hi];
+        if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+        const hitDx = bullet.x - h.x;
+        const hitDy = bullet.y - h.y;
+        const hitDist = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
+        if (hitDist < h.radius + 3) {
+          target = h;
+          targetBattle = hb;
+          break;
+        }
+      }
 
-      const targetBattle = this.battleBubbles.get(target.address);
-      if (!targetBattle || targetBattle.isGhost) return;
-
-      const hitDx = bullet.x - target.x;
-      const hitDy = bullet.y - target.y;
-      const hitDist = Math.sqrt(hitDx * hitDx + hitDy * hitDy);
-      const effectiveHitRadius = target.radius + 3;
-
-      if (hitDist < effectiveHitRadius) {
+      if (target && targetBattle) {
         bulletsToRemove.add(bullet.id);
 
         let actualDmg = Math.min(bullet.damage, 5);
