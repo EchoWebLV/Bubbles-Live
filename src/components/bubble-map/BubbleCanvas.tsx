@@ -476,7 +476,7 @@ export function BubbleCanvas({
       drawLightningBolt(ctx, arc, alpha);
     }
 
-    // Draw Reaper's Arc VFX — animated 180° sweep in bubble color
+    // Draw Reaper's Arc VFX — rotating sword with trailing sweep
     for (const arc of reaperArcs) {
       const age = nowMs - arc.createdAt;
       if (age > arc.duration) continue;
@@ -489,6 +489,7 @@ export function BubbleCanvas({
       const sweepProgress = Math.min(progress * 2.5, 1);
       const sweepStart = arc.angle - totalSweep / 2;
       const currentEnd = sweepStart + totalSweep * sweepProgress;
+      const swordAngle = currentEnd;
 
       const r = parseInt(col.slice(1, 3), 16) || 200;
       const g = parseInt(col.slice(3, 5), 16) || 0;
@@ -496,38 +497,140 @@ export function BubbleCanvas({
 
       ctx.save();
 
+      // Trail: fading arc behind the sword
+      const trailSegments = 20;
+      for (let i = 0; i < trailSegments; i++) {
+        const t = i / trailSegments;
+        const segAngle = sweepStart + (currentEnd - sweepStart) * (1 - t);
+        const segFade = (1 - t) * alpha;
+        const segR = range * (1 - t * 0.15);
+
+        const sx = arc.x + Math.cos(segAngle) * segR;
+        const sy = arc.y + Math.sin(segAngle) * segR;
+
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3 * segFade + 1, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${segFade * 0.5})`;
+        ctx.fill();
+      }
+
+      // Swept area fill
       ctx.beginPath();
       ctx.moveTo(arc.x, arc.y);
-      ctx.arc(arc.x, arc.y, range + 8, sweepStart, currentEnd, false);
+      ctx.arc(arc.x, arc.y, range + 5, sweepStart, currentEnd, false);
       ctx.closePath();
-      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.1})`;
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.07})`;
       ctx.fill();
 
+      // Outer arc stroke
       ctx.beginPath();
       ctx.arc(arc.x, arc.y, range, sweepStart, currentEnd, false);
-      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.85})`;
-      ctx.lineWidth = 4;
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(arc.x, arc.y, range + 5, sweepStart, currentEnd, false);
-      ctx.strokeStyle = `rgba(${Math.min(r + 60, 255)}, ${Math.min(g + 60, 255)}, ${Math.min(b + 60, 255)}, ${alpha * 0.35})`;
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.5})`;
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      const edgeX = arc.x + Math.cos(currentEnd) * range;
-      const edgeY = arc.y + Math.sin(currentEnd) * range;
+      // Detailed sword at leading edge
+      const perpAngle = swordAngle + Math.PI / 2;
+      const cosS = Math.cos(swordAngle);
+      const sinS = Math.sin(swordAngle);
+      const cosP = Math.cos(perpAngle);
+      const sinP = Math.sin(perpAngle);
+
+      const handleStart = 8;
+      const guardPos = 22;
+      const bladeStart = 26;
+      const bladeWidenPos = range * 0.45;
+      const bladeNarrowPos = range * 0.8;
+      const tipPos = range + 12;
+
+      const hx = (d: number) => arc.x + cosS * d;
+      const hy = (d: number) => arc.y + sinS * d;
+      const ox = (d: number, w: number) => hx(d) + cosP * w;
+      const oy = (d: number, w: number) => hy(d) + sinP * w;
+
+      // Handle (pommel to guard)
       ctx.beginPath();
-      ctx.arc(edgeX, edgeY, 5 * alpha, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+      ctx.moveTo(ox(handleStart, 2.5), oy(handleStart, 2.5));
+      ctx.lineTo(ox(guardPos, 2.5), oy(guardPos, 2.5));
+      ctx.lineTo(ox(guardPos, -2.5), oy(guardPos, -2.5));
+      ctx.lineTo(ox(handleStart, -2.5), oy(handleStart, -2.5));
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${Math.min(r + 30, 255)}, ${Math.min(g + 20, 255)}, ${Math.min(b + 10, 255)}, ${alpha * 0.8})`;
       ctx.fill();
 
+      // Pommel circle
       ctx.beginPath();
-      ctx.moveTo(arc.x, arc.y);
-      ctx.lineTo(edgeX, edgeY);
-      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.3})`;
+      ctx.arc(hx(handleStart - 1), hy(handleStart - 1), 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.9})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.4})`;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Guard (crossguard)
+      ctx.beginPath();
+      ctx.moveTo(ox(guardPos - 1, 8), oy(guardPos - 1, 8));
+      ctx.lineTo(ox(guardPos + 2, 6), oy(guardPos + 2, 6));
+      ctx.lineTo(ox(guardPos + 2, -6), oy(guardPos + 2, -6));
+      ctx.lineTo(ox(guardPos - 1, -8), oy(guardPos - 1, -8));
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.9})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.5})`;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      // Blade body
+      ctx.beginPath();
+      ctx.moveTo(ox(bladeStart, 3), oy(bladeStart, 3));
+      ctx.lineTo(ox(bladeWidenPos, 5), oy(bladeWidenPos, 5));
+      ctx.lineTo(ox(bladeNarrowPos, 4), oy(bladeNarrowPos, 4));
+      ctx.lineTo(hx(tipPos), hy(tipPos));
+      ctx.lineTo(ox(bladeNarrowPos, -4), oy(bladeNarrowPos, -4));
+      ctx.lineTo(ox(bladeWidenPos, -5), oy(bladeWidenPos, -5));
+      ctx.lineTo(ox(bladeStart, -3), oy(bladeStart, -3));
+      ctx.closePath();
+
+      const bladeGrad = ctx.createLinearGradient(hx(bladeStart), hy(bladeStart), hx(tipPos), hy(tipPos));
+      bladeGrad.addColorStop(0, `rgba(200, 210, 220, ${alpha * 0.9})`);
+      bladeGrad.addColorStop(0.3, `rgba(240, 245, 255, ${alpha * 0.95})`);
+      bladeGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, ${alpha * 0.5})`);
+      bladeGrad.addColorStop(1, `rgba(255, 255, 255, ${alpha * 0.9})`);
+      ctx.fillStyle = bladeGrad;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.7})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Center fuller (groove line down the blade)
+      ctx.beginPath();
+      ctx.moveTo(hx(bladeStart + 4), hy(bladeStart + 4));
+      ctx.lineTo(hx(bladeNarrowPos - 5), hy(bladeNarrowPos - 5));
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.35})`;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
+      // Blade edge highlight
+      ctx.beginPath();
+      ctx.moveTo(ox(bladeStart, 3), oy(bladeStart, 3));
+      ctx.lineTo(ox(bladeWidenPos, 5), oy(bladeWidenPos, 5));
+      ctx.lineTo(ox(bladeNarrowPos, 4), oy(bladeNarrowPos, 4));
+      ctx.lineTo(hx(tipPos), hy(tipPos));
+      ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.6})`;
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+
+      // Tip glow
+      const tipX = hx(tipPos);
+      const tipY = hy(tipPos);
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 3 * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 7 * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.25})`;
+      ctx.fill();
 
       ctx.restore();
     }

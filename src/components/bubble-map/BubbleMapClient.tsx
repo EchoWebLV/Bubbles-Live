@@ -731,7 +731,7 @@ export function BubbleMapClient() {
         newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
         newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
       } else if (v.type === 'reaperArc') {
-        newReaperArcs.push({ x: v.x, y: v.y, angle: v.angle ?? 0, range: v.range ?? 200, color: v.color, createdAt: Date.now(), duration: 400 });
+        newReaperArcs.push({ x: v.x, y: v.y, angle: v.angle ?? 0, range: v.range ?? 200, color: v.color, createdAt: Date.now(), duration: 800 });
       }
     }
     if (newEffects.length > 0) {
@@ -1146,18 +1146,32 @@ export function BubbleMapClient() {
               const deaths = myBubble.deaths;
               const tp = myBubble.talentPoints ?? 0;
 
+              const health = myBubble.health ?? 0;
+              const maxHealth = myBubble.maxHealth ?? 1;
+              const hpPct = Math.min(100, Math.max(0, (health / maxHealth) * 100));
+              const hpBarColor = hpPct > 50 ? 'bg-green-500' : hpPct > 25 ? 'bg-yellow-500' : 'bg-red-500';
+              const hpTextColor = hpPct > 50 ? 'text-green-400' : hpPct > 25 ? 'text-yellow-400' : 'text-red-400';
+
               return (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <Star className="w-3 h-3 text-yellow-400" />
-                      <span className="text-sm font-bold text-white">Level {level}</span>
+                      <span className="text-sm font-bold text-white">Lv. {level}</span>
                     </div>
                     <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
                   </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className={`text-xs font-bold ${hpTextColor}`}>❤️ {Math.round(hpPct)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
+                      <div className={`h-full ${hpBarColor} rounded-full transition-all duration-150`} style={{ width: `${hpPct}%` }} />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-3 text-xs">
-                    <span className="text-green-400">Kills: {kills}</span>
-                    <span className="text-red-400">Deaths: {deaths}</span>
+                    <span className="text-green-400">☠️ {kills}</span>
+                    <span className="text-red-400">💀 {deaths}</span>
                     <span className="text-slate-400">KD: {deaths > 0 ? (kills / deaths).toFixed(1) : kills.toFixed(0)}</span>
                   </div>
                   <button
@@ -1188,6 +1202,42 @@ export function BubbleMapClient() {
           </div>
         </motion.div>
       )}
+
+      {/* Bottom-center HUD — shows stats of followed bubble */}
+      {followingAddress && (() => {
+        const bubble = battleState.bubbles.get(followingAddress);
+        if (!bubble) return null;
+        const health = bubble.health ?? 0;
+        const maxHealth = bubble.maxHealth ?? 1;
+        const hpPct = Math.min(100, Math.max(0, (health / maxHealth) * 100));
+        const hpBarColor = hpPct > 50 ? 'bg-green-500' : hpPct > 25 ? 'bg-yellow-500' : 'bg-red-500';
+        const level = bubble.level ?? 1;
+        const kills = bubble.kills;
+        const deaths = bubble.deaths;
+        const isMe = followingAddress === connectedWalletAddress;
+        const shortAddr = followingAddress.slice(0, 4) + '...' + followingAddress.slice(-4);
+
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-10"
+          >
+            <div className="bg-slate-900/80 backdrop-blur-md rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 border border-slate-700/50 flex items-center gap-1.5 sm:gap-3 text-[9px] sm:text-[11px]">
+              <span className="text-slate-500 font-mono hidden sm:inline">{isMe ? 'YOU' : shortAddr}</span>
+              <span className="text-yellow-400 font-bold">Lv.{level}</span>
+              <div className="flex items-center gap-1 sm:gap-1.5 min-w-[60px] sm:min-w-[110px]">
+                <span className="text-slate-400 font-mono whitespace-nowrap">{Math.round(health)}/{Math.round(maxHealth)}</span>
+                <div className="flex-1 h-1.5 sm:h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
+                  <div className={`h-full ${hpBarColor} rounded-full transition-all duration-150`} style={{ width: `${hpPct}%` }} />
+                </div>
+              </div>
+              <span className="text-green-400">{kills}k</span>
+              <span className="text-red-400">{deaths}d</span>
+            </div>
+          </motion.div>
+        );
+      })()}
 
       {/* Talent Tree Modal */}
       <AnimatePresence>
