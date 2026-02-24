@@ -44,7 +44,7 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
-const TESTING_OVERRIDE_LEVEL = 60; // Set to a number to force all players to that level
+const TESTING_OVERRIDE_LEVEL = 45; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   const baseLevel = 1 + Math.floor(Math.sqrt(xp / PROGRESSION.levelScale));
@@ -98,7 +98,7 @@ class GameState {
     this.killFeed = [];
     this.eventLog = [];
     this.topKillers = [];
-    this.dimensions = { width: 3840, height: 2160 };
+    this.dimensions = { width: 4224, height: 2376 };
     this.lastUpdateTime = Date.now();
     this.bulletIdCounter = 0;
     this.isRunning = false;
@@ -695,7 +695,6 @@ class GameState {
       let closestDist = Infinity;
       let secondClosest = null;
       let secondClosestDist = Infinity;
-
       this.holders.forEach(target => {
         if (target.address === holder.address || target.x === undefined) return;
         const targetBattle = this.battleBubbles.get(target.address);
@@ -789,32 +788,16 @@ class GameState {
           });
         }
 
-        // Dual Cannon talent: straight bullet at second target
-        const dualCannonRank = battleBubble.talents.dualCannon || 0;
-        if (dualCannonRank > 0 && secondClosest) {
-          const freq = ALL_TALENTS.dualCannon.fireFrequency[dualCannonRank - 1];
+        // Homing Cannon: every Nth shot becomes a homing bullet with 400% dmg
+        const homingRank = battleBubble.talents.dualCannon || 0;
+        if (homingRank > 0) {
+          const freq = ALL_TALENTS.dualCannon.fireFrequency[homingRank - 1];
           if (battleBubble.shotCounter % freq === 0) {
-            const dx2 = secondClosest.x - holder.x;
-            const dy2 = secondClosest.y - holder.y;
-            const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-            const cannonSpeed = BATTLE_CONFIG.bulletSpeed * ALL_TALENTS.dualCannon.secondCannonSpeed;
-            this.bullets.push({
-              id: `b-${this.bulletIdCounter++}`,
-              shooterAddress: holder.address,
-              targetAddress: secondClosest.address,
-              shooterColor: holder.color,
-              x: holder.x, y: holder.y,
-              startX: holder.x, startY: holder.y,
-              targetX: secondClosest.x, targetY: secondClosest.y,
-              progress: 0,
-              curveDirection: 0,
-              curveStrength: 0,
-              vx: (dx2 / dist2) * cannonSpeed,
-              vy: (dy2 / dist2) * cannonSpeed,
-              damage: damage * ALL_TALENTS.dualCannon.secondCannonDamage,
-              createdAt: now,
-              isDualCannon: true,
-            });
+            const lastIdx = this.bullets.length - 1;
+            if (lastIdx >= 0 && this.bullets[lastIdx].shooterAddress === holder.address) {
+              this.bullets[lastIdx].isHoming = true;
+              this.bullets[lastIdx].damage = damage * ALL_TALENTS.dualCannon.homingDamageMultiplier;
+            }
           }
         }
 
@@ -874,6 +857,44 @@ class GameState {
         // Fall through to normal hit detection below
       }
 
+
+      // Homing Cannon: home toward lowest HP enemy within 1000px
+      if (bullet.isHoming) {
+        let bestTarget = null;
+        let bestHp = Infinity;
+        for (const h of this.holders) {
+          if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+          const hb = this.battleBubbles.get(h.address);
+          if (!hb || hb.isGhost) continue;
+          const hdx = h.x - bullet.x;
+          const hdy = h.y - bullet.y;
+          const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
+          if (hDist <= 1000 && hb.health < bestHp) {
+            bestHp = hb.health;
+            bestTarget = h;
+          }
+        }
+        if (bestTarget) {
+          bullet.targetAddress = bestTarget.address;
+          const tdx = bestTarget.x - bullet.x;
+          const tdy = bestTarget.y - bullet.y;
+          const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
+          if (tDist > 0) {
+            const desiredVx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const desiredVy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const str = ALL_TALENTS.dualCannon.homingStrength;
+            bullet.vx += (desiredVx - bullet.vx) * str;
+            bullet.vy += (desiredVy - bullet.vy) * str;
+            const spd = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
+            if (spd > 0) {
+              bullet.vx = (bullet.vx / spd) * BATTLE_CONFIG.bulletSpeed;
+              bullet.vy = (bullet.vy / spd) * BATTLE_CONFIG.bulletSpeed;
+            }
+            bullet.targetX = bestTarget.x;
+            bullet.targetY = bestTarget.y;
+          }
+        }
+      }
 
       // Blood Bolt: homing — lock onto target, only re-target if dead/ghost
       if (bullet.isBloodBolt) {
@@ -976,11 +997,15 @@ class GameState {
         let actualDmg = Math.min(bullet.damage, 5);
         const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
 
-        // Critical Strike talent (not on dual cannon bullets)
-        if (shooterBattle && !bullet.isDualCannon) {
-          const critChance = getTalentValue('criticalStrike', shooterBattle.talents?.criticalStrike || 0);
+        // Critical Strike talent
+        if (shooterBattle) {
+          const critRank = shooterBattle.talents?.criticalStrike || 0;
+          const critChance = getTalentValue('criticalStrike', critRank);
           if (critChance > 0 && Math.random() < critChance) {
-            actualDmg *= ALL_TALENTS.criticalStrike.critMultiplier;
+            const critMult = Array.isArray(ALL_TALENTS.criticalStrike.critMultiplier)
+              ? ALL_TALENTS.criticalStrike.critMultiplier[critRank - 1]
+              : ALL_TALENTS.criticalStrike.critMultiplier;
+            actualDmg *= critMult;
           }
         }
 
@@ -1193,7 +1218,7 @@ class GameState {
           id: `dmg-${now}-${Math.random()}`,
           x: target.x + (Math.random() - 0.5) * 20,
           y: target.y - 10,
-          damage: actualDmg + (targetBattle.shieldHP > 0 ? 0 : 0),
+          damage: actualDmg,
           createdAt: now,
           alpha: 1,
         });

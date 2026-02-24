@@ -67,9 +67,9 @@ const TALENT_TREES = {
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% chance for 2x dmg', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Dual Cannon', desc: 'Straight shot at 2nd target every 4/2/1 shots (70% dmg)', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 10/8/6th shot: homing bullet targeting lowest HP enemy, 400% dmg', maxRank: 3 },
     ],
   },
   brawler: {
@@ -105,7 +105,7 @@ const TALENT_TREES = {
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
       { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 0.5/1/1.5/2/2.5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 50% HP: +25/40/55% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +25/40/55% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
     ],
   },
 } as const;
@@ -1146,12 +1146,6 @@ export function BubbleMapClient() {
               const deaths = myBubble.deaths;
               const tp = myBubble.talentPoints ?? 0;
 
-              const health = myBubble.health ?? 0;
-              const maxHealth = myBubble.maxHealth ?? 1;
-              const hpPct = Math.min(100, Math.max(0, (health / maxHealth) * 100));
-              const hpBarColor = hpPct > 50 ? 'bg-green-500' : hpPct > 25 ? 'bg-yellow-500' : 'bg-red-500';
-              const hpTextColor = hpPct > 50 ? 'text-green-400' : hpPct > 25 ? 'text-yellow-400' : 'text-red-400';
-
               return (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -1160,14 +1154,6 @@ export function BubbleMapClient() {
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
                     </div>
                     <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className={`text-xs font-bold ${hpTextColor}`}>❤️ {Math.round(hpPct)}%</span>
-                    </div>
-                    <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700/50">
-                      <div className={`h-full ${hpBarColor} rounded-full transition-all duration-150`} style={{ width: `${hpPct}%` }} />
-                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-green-400">☠️ {kills}</span>

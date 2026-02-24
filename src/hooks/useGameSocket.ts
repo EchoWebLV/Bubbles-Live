@@ -318,6 +318,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     }
   }, []);
 
+
   // Allocate a talent point
   const allocateTalent = useCallback((walletAddress: string, talentId: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
     return new Promise((resolve) => {
