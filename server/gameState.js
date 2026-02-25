@@ -793,7 +793,7 @@ class GameState {
           });
         }
 
-        // Homing Cannon: every Nth shot becomes a homing bullet with 400% dmg
+        // Homing Cannon: every Nth shot becomes a homing bullet toward your target, 333% dmg
         const homingRank = battleBubble.talents.dualCannon || 0;
         if (homingRank > 0) {
           const freq = ALL_TALENTS.dualCannon.fireFrequency[homingRank - 1];
@@ -801,6 +801,7 @@ class GameState {
             const lastIdx = this.bullets.length - 1;
             if (lastIdx >= 0 && this.bullets[lastIdx].shooterAddress === holder.address) {
               this.bullets[lastIdx].isHoming = true;
+              this.bullets[lastIdx].homingLockedTarget = true;
               this.bullets[lastIdx].damage = damage * ALL_TALENTS.dualCannon.homingDamageMultiplier;
             }
           }
@@ -863,32 +864,29 @@ class GameState {
       }
 
 
-      // Homing Cannon: home toward lowest HP enemy within 1000px
+      // Homing Cannon: home toward the shooter's current target
       if (bullet.isHoming) {
-        let bestTarget = null;
-        let bestHp = Infinity;
-        for (const h of this.holders) {
-          if (h.address === bullet.shooterAddress || h.x === undefined) continue;
-          const hb = this.battleBubbles.get(h.address);
-          if (!hb || hb.isGhost) continue;
-          const hdx = h.x - bullet.x;
-          const hdy = h.y - bullet.y;
-          const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
-          if (hDist <= 1000 && hb.health < bestHp) {
-            bestHp = hb.health;
-            bestTarget = h;
-          }
-        }
-        if (bestTarget) {
-          bullet.targetAddress = bestTarget.address;
-          const tdx = bestTarget.x - bullet.x;
-          const tdy = bestTarget.y - bullet.y;
+        const lockedTarget = this.holders.find(h => h.address === bullet.targetAddress);
+        const lockedBattle = lockedTarget ? this.battleBubbles.get(lockedTarget.address) : null;
+        const lockedAlive = lockedTarget && lockedTarget.x !== undefined && lockedBattle && !lockedBattle.isGhost && lockedBattle.isAlive !== false;
+
+        if (lockedAlive) {
+          const tdx = lockedTarget.x - bullet.x;
+          const tdy = lockedTarget.y - bullet.y;
           const tDist = Math.sqrt(tdx * tdx + tdy * tdy);
           if (tDist > 0) {
-            bullet.vx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
-            bullet.vy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
-            bullet.targetX = bestTarget.x;
-            bullet.targetY = bestTarget.y;
+            const desiredVx = (tdx / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const desiredVy = (tdy / tDist) * BATTLE_CONFIG.bulletSpeed;
+            const strength = ALL_TALENTS.dualCannon.homingStrength;
+            bullet.vx += (desiredVx - bullet.vx) * strength;
+            bullet.vy += (desiredVy - bullet.vy) * strength;
+            const spd = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
+            if (spd > BATTLE_CONFIG.bulletSpeed) {
+              bullet.vx = (bullet.vx / spd) * BATTLE_CONFIG.bulletSpeed;
+              bullet.vy = (bullet.vy / spd) * BATTLE_CONFIG.bulletSpeed;
+            }
+            bullet.targetX = lockedTarget.x;
+            bullet.targetY = lockedTarget.y;
           }
         }
       }
@@ -940,33 +938,18 @@ class GameState {
         }
       }
 
-      // Retarget if original target is dead — smoothly reroute the curve
+      // If original target died, expire the bullet (explode mid-air)
       if (!bullet.isHoming && !bullet.isBloodBolt && !bullet.isNova) {
         const curTarget = this.holders.find(h => h.address === bullet.targetAddress);
         const curBattle = curTarget ? this.battleBubbles.get(curTarget.address) : null;
         const targetAlive = curTarget && curTarget.x !== undefined && curBattle && !curBattle.isGhost && curBattle.isAlive !== false;
 
         if (!targetAlive) {
-          let nearest = null;
-          let nearestDist = 600;
-          for (const h of this.holders) {
-            if (h.address === bullet.shooterAddress || h.x === undefined) continue;
-            const hb = this.battleBubbles.get(h.address);
-            if (!hb || hb.isGhost || hb.isAlive === false) continue;
-            const hdx = h.x - bullet.x;
-            const hdy = h.y - bullet.y;
-            const hd = Math.sqrt(hdx * hdx + hdy * hdy);
-            if (hd < nearestDist) { nearestDist = hd; nearest = h; }
+          if (bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
+            this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now, small: true });
           }
-          if (nearest) {
-            bullet.startX = bullet.x;
-            bullet.startY = bullet.y;
-            bullet.targetX = nearest.x;
-            bullet.targetY = nearest.y;
-            bullet.targetAddress = nearest.address;
-            bullet.progress = 0;
-            bullet.curveStrength *= 0.5;
-          }
+          bulletsToRemove.add(bullet.id);
+          return;
         }
       }
 
@@ -1460,7 +1443,6 @@ class GameState {
           // Pinball: bounce off victim like a bumper (reflect away)
           const pinballRank = attacker.talents?.relentless || 0;
           if (pinballRank > 0) {
-            const bounceRange = ALL_TALENTS.relentless.bounceRange[pinballRank - 1];
             // Direction from victim back to attacker (away from impact)
             const awayX = aH.x - vH.x;
             const awayY = aH.y - vH.y;

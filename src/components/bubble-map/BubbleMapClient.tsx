@@ -69,7 +69,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 333% dmg', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 6/5/4th shot: homing bullet toward your target, 333% dmg', maxRank: 3 },
     ],
   },
   brawler: {
@@ -81,7 +81,7 @@ const TALENT_TREES = {
       { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
       { id: 'relentless', name: 'Pinball', desc: 'Body Slam dashes you 50/100/150/200/250px toward nearest enemy', maxRank: 5 },
       { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -104,8 +104,8 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 0.75/1.5/2.25/3/3.75% max HP dmg, costs 0.4/0.75/1.2/1.5/2% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +25/40/55% atk speed & dmg. +0.5/1/1.5 HP/s regen', maxRank: 3 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +20/30/40% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
     ],
   },
 } as const;

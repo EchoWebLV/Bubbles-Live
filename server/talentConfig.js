@@ -61,7 +61,7 @@ const TANK = {
     tier: 5,
     requires: 'lifesteal',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.0025, 0.004, 0.006],
+    perRank: [0.002, 0.0035, 0.005],
   },
 };
 
@@ -115,12 +115,12 @@ const FIREPOWER = {
   dualCannon: {
     id: 'dualCannon',
     name: 'Homing Cannon',
-    description: 'Every 16/13/10th shot: homing bullet targeting lowest HP enemy, 333% dmg',
+    description: 'Every 6/5/4th shot: homing bullet toward your target, 333% dmg',
     tree: 'firepower',
     tier: 5,
     requires: 'multiShot',
     maxRank: MAX_RANK_CAPSTONE,
-    fireFrequency: [16, 13, 10],
+    fireFrequency: [6, 5, 4],
     homingDamageMultiplier: 3.33,
     homingStrength: 0.15,
   },
@@ -151,14 +151,13 @@ const BRAWLER = {
   },
   relentless: {
     id: 'relentless',
-    name: 'Pinball',
-    description: 'Body Slam dashes you 50/100/150/200/250px toward the nearest enemy',
+    name: 'Relentless',
+    description: 'Body Slam hit reduces Dash cooldown by {value}s',
     tree: 'brawler',
     tier: 3,
     requires: 'bodySlam',
     maxRank: MAX_RANK,
-    bounceRange: [50, 100, 150, 200, 250],
-    bounceSpeed: 12,
+    cdReduction: [500, 1000, 1500, 2000, 2500],
   },
   orbit: {
     id: 'orbit',
@@ -183,7 +182,7 @@ const BRAWLER = {
     tier: 5,
     requires: 'orbit',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.05, 0.07, 0.09],
+    perRank: [0.04, 0.06, 0.08],
     radius: [100, 150, 200],
   },
 };
@@ -248,7 +247,7 @@ const MASS_DAMAGE = {
     maxRank: MAX_RANK_CAPSTONE,
     procChance: [0.05, 0.10, 0.15],
     arcTargets: [2, 3, 4],
-    arcDamage: 4.5,
+    arcDamage: 4.0,
     arcDecay: 0.50,
     arcRange: 500,
   },
@@ -304,14 +303,14 @@ const BLOOD_THIRST = {
   reaperArc: {
     id: 'reaperArc',
     name: "Reaper's Arc",
-    description: 'Every 15th hit: 360° sweep. Deals 0.75-3.75% max HP, costs 0.4-2% HP',
+    description: 'Every 15th hit: 360° sweep. Deals 1/2/3/4/5% max HP, costs 0.5/1/1.5/2/2.5% HP',
     tree: 'bloodThirst',
     tier: 4,
     requires: 'killRush',
     maxRank: MAX_RANK,
     hitInterval: [15, 15, 15, 15, 15],
-    sweepDamagePct: [0.0075, 0.015, 0.0225, 0.03, 0.0375],
-    hpCost: [0.004, 0.0075, 0.012, 0.015, 0.02],
+    sweepDamagePct: [0.01, 0.02, 0.03, 0.04, 0.05],
+    hpCost: [0.005, 0.01, 0.015, 0.02, 0.025],
     sweepRange: 200,
     sweepAngle: Math.PI * 2,
     sweepDurationMs: 300,
@@ -319,14 +318,14 @@ const BLOOD_THIRST = {
   berserker: {
     id: 'berserker',
     name: 'Berserker',
-    description: 'Below 33% HP: +{value}% atk speed & dmg. +0.5/1/1.5 HP/s regen',
+    description: 'Below 33% HP: +{value}% atk speed & dmg. +1.5/2.5/3.5 HP/s regen',
     tree: 'bloodThirst',
     tier: 5,
     requires: 'reaperArc',
     maxRank: MAX_RANK_CAPSTONE,
-    atkSpeedBonus: [0.25, 0.40, 0.55],
-    dmgBonus: [0.25, 0.40, 0.55],
-    regenPerSec: [0.5, 1.0, 1.5],
+    atkSpeedBonus: [0.20, 0.30, 0.40],
+    dmgBonus: [0.20, 0.30, 0.40],
+    regenPerSec: [1.5, 2.5, 3.5],
     hpThreshold: 0.33,
   },
 };
@@ -339,10 +338,6 @@ const ALL_TALENTS = {
   ...MASS_DAMAGE,
   ...BLOOD_THIRST,
 };
-
-// ─── Capstone (tier 5) restriction: pick at most 2 out of 5 ─────────────
-const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker'];
-const MAX_CAPSTONES = 2;
 
 // UI order per tree
 const TREE_ORDER = {
@@ -403,12 +398,6 @@ function canAllocate(talentId, talents) {
   if (!t) return false;
   if ((talents[talentId] || 0) >= t.maxRank) return false;
   if (t.requires && (talents[t.requires] || 0) < 1) return false;
-
-  if (CAPSTONE_TALENTS.includes(talentId) && (talents[talentId] || 0) === 0) {
-    const capstonesChosen = CAPSTONE_TALENTS.filter(id => (talents[id] || 0) > 0).length;
-    if (capstonesChosen >= MAX_CAPSTONES) return false;
-  }
-
   return true;
 }
 
@@ -449,8 +438,6 @@ module.exports = {
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
-  CAPSTONE_TALENTS,
-  MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID,
   CHAIN_ID_TO_TALENT_NAME,
   CHAIN_SLOT_FIELDS,

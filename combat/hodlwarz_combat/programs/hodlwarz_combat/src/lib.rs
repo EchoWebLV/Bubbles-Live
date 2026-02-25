@@ -78,8 +78,8 @@ const EXECUTE_BPS: [u32; 5] = [800, 1600, 2400, 3200, 4800];
 // Vitality Strike (slot 4, capstone): +% of max HP as bonus dmg [0.25%, 0.4%, 0.6%]
 const VITALITY_STRIKE_BPS: [u32; 3] = [25, 40, 60];
 
-// Berserker (slot 24, capstone): +dmg below 33% HP [25%, 40%, 55%]
-const BERSERKER_DMG_BPS: [u32; 3] = [2500, 4000, 5500];
+// Berserker (slot 24, capstone): +dmg below 33% HP [20%, 30%, 40%]
+const BERSERKER_DMG_BPS: [u32; 3] = [2000, 3000, 4000];
 
 // Experience (slot 20): +XP gained [10%, 17%, 24%, 32%, 40%]
 const EXPERIENCE_BPS: [u32; 5] = [1000, 1700, 2400, 3200, 4000];
