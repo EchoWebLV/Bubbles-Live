@@ -45,7 +45,7 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
-const TESTING_OVERRIDE_LEVEL = 45; // Set to a number to force all players to that level
+const TESTING_OVERRIDE_LEVEL = 0; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
   // Each level from 51-100 costs 1% more per level (cumulative)

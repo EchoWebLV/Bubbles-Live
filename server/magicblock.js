@@ -8,8 +8,10 @@ const fs = require('fs');
 const path = require('path');
 
 // Program IDs — configurable via env for dev/production split
+// Dev:  8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie
+// Prod: AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw
 const COMBAT_PROGRAM_ID = new PublicKey(
-  process.env.COMBAT_PROGRAM_ID || '9gPiGL7dCxC5oAQ21RSk9xBCYnoVGxUCghpRhM7ZUXgg'
+  process.env.COMBAT_PROGRAM_ID || '8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie'
 );
 const DELEGATION_PROGRAM_ID = new PublicKey(
   process.env.DELEGATION_PROGRAM_ID || 'DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh'
