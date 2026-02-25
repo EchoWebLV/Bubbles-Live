@@ -898,7 +898,7 @@ export function BubbleMapClient() {
               }`}
             >
               <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-              <span className="text-[10px] sm:text-xs text-amber-400">{showOnchainPanel ? 'HIDE' : 'ONCHAIN'}</span>
+              <span className="text-[10px] sm:text-xs text-amber-400">{showOnchainPanel ? 'HIDE' : 'ER PANEL'}</span>
             </button>
           )}
 
@@ -1072,10 +1072,10 @@ export function BubbleMapClient() {
               <div className="px-3 py-1.5 flex items-center gap-3 border-b border-amber-500/15 bg-gradient-to-r from-amber-500/5 to-orange-500/5">
                 <div className="flex items-center gap-1.5 shrink-0">
                   <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                  <span className="text-[11px] font-bold text-amber-400">On-Chain Records</span>
+                  <span className="text-[11px] font-bold text-amber-400">Ephemeral Rollup</span>
                 </div>
                 <div className="flex items-center gap-3 text-[9px] text-slate-500">
-                  <span>ER <span className="text-amber-400 font-bold">{gameState.magicBlock.stats?.erLatencyMs ?? 0}ms</span></span>
+                  <span>Latency <span className="text-amber-400 font-bold">{gameState.magicBlock.stats?.erLatencyMs ?? 0}ms</span></span>
                 </div>
                 <div className="ml-auto flex items-center gap-2">
                   <a
@@ -1094,6 +1094,75 @@ export function BubbleMapClient() {
                   </button>
                 </div>
               </div>
+
+              {/* Chain authority badge */}
+              <div className="px-3 py-1.5 border-b border-amber-500/10 bg-gradient-to-r from-green-900/10 to-emerald-900/5">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+                    <span className="text-[9px] font-semibold text-green-400">CHAIN AUTHORITY</span>
+                  </div>
+                  <span className="text-[8px] text-slate-500">Damage, XP & Kills computed on-chain</span>
+                </div>
+              </div>
+
+              {/* Live stats grid */}
+              {(() => {
+                const stats = gameState.magicBlock.stats;
+                const sent = stats?.attacksSent ?? 0;
+                const confirmed = stats?.attacksConfirmed ?? 0;
+                const rejected = stats?.attacksRejected ?? 0;
+                const failed = stats?.attacksFailed ?? 0;
+                const processed = confirmed + rejected;
+                const successRate = processed > 0 ? Math.round((confirmed / processed) * 100) : 0;
+                const commits = stats?.commits ?? 0;
+                const lastCommit = stats?.lastCommitTime;
+                const lastCommitAgo = lastCommit ? Math.floor((Date.now() - lastCommit) / 1000) : null;
+                const lastCommitStr = lastCommitAgo === null ? '—' : lastCommitAgo < 60 ? `${lastCommitAgo}s ago` : `${Math.floor(lastCommitAgo / 60)}m ago`;
+                const registered = gameState.magicBlock.playersRegistered ?? 0;
+                const delegated = gameState.magicBlock.playersDelegated ?? 0;
+
+                return (
+                  <div className="px-3 py-2 border-b border-amber-500/10 space-y-1.5">
+                    {/* Attacks row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Combat TXs</span>
+                      <div className="flex items-center gap-2 text-[9px] font-mono">
+                        <span className="text-emerald-400">{confirmed}</span>
+                        <span className="text-slate-600">verified</span>
+                        {rejected > 0 && <span className="text-slate-500">({rejected} stale)</span>}
+                        {failed > 0 && <span className="text-red-400/70">({failed} err)</span>}
+                      </div>
+                    </div>
+                    {/* Chain verification rate */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Chain Verify Rate</span>
+                      <span className={`text-[9px] font-mono font-bold ${successRate >= 80 ? 'text-emerald-400' : successRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {successRate}%
+                      </span>
+                    </div>
+                    {/* Players on ER */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Players on ER</span>
+                      <div className="flex items-center gap-2 text-[9px] font-mono">
+                        <span className="text-cyan-400">{delegated}</span>
+                        <span className="text-slate-600">delegated</span>
+                        <span className="text-slate-600">/</span>
+                        <span className="text-slate-400">{registered}</span>
+                        <span className="text-slate-600">registered</span>
+                      </div>
+                    </div>
+                    {/* Commits row */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-slate-500">Base Layer Commits</span>
+                      <div className="flex items-center gap-2 text-[9px] font-mono">
+                        <span className="text-orange-400">{commits}</span>
+                        {lastCommit ? <span className="text-slate-600">(last: {lastCommitStr})</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Scrollable event log */}
               <div className="max-h-28 sm:max-h-36 overflow-y-auto scrollbar-thin">

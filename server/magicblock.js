@@ -99,6 +99,7 @@ class MagicBlockService {
       attacksSent: 0,
       attacksConfirmed: 0,
       attacksFailed: 0,
+      attacksRejected: 0,
       commits: 0,
       lastCommitTime: 0,
       erLatencyMs: 0,
@@ -555,10 +556,12 @@ class MagicBlockService {
 
       return tx;
     } catch (err) {
-      this.stats.attacksFailed++;
       const msg = extractTxError(err);
       const expected = ['blockhash', 'VictimDead', 'AttackerDead', 'NotInitialized'];
-      if (!expected.some(e => msg.includes(e))) {
+      if (expected.some(e => msg.includes(e))) {
+        this.stats.attacksRejected++;
+      } else {
+        this.stats.attacksFailed++;
         console.error(`MagicBlock: Attack failed (${attackerAddress.slice(0, 6)} → ${victimAddress.slice(0, 6)}):`, msg);
       }
       return null;
