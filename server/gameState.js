@@ -1022,7 +1022,7 @@ class GameState {
       let targetBattle = null;
       for (let hi = 0; hi < this.holders.length; hi++) {
         const h = this.holders[hi];
-        if (h.address === bullet.shooterAddress || h.x === undefined) continue;
+        if (h.address === bullet.shooterAddress || h.address === bullet.ricochetSkipAddress || h.x === undefined) continue;
         const hb = this.battleBubbles.get(h.address);
         if (!hb || hb.isGhost) continue;
         const hitDx = bullet.x - h.x;
@@ -1275,6 +1275,7 @@ class GameState {
         if (shooterBattle && !bullet.isRicochet) {
           const ricochetChance = getTalentValue('ricochet', shooterBattle.talents?.ricochet || 0);
           if (ricochetChance > 0 && Math.random() < ricochetChance) {
+            const RICOCHET_RANGE = 500;
             let bounceTarget = null;
             let bounceDist = Infinity;
             this.holders.forEach(h => {
@@ -1284,7 +1285,7 @@ class GameState {
               const bdx = h.x - target.x;
               const bdy = h.y - target.y;
               const bd = Math.sqrt(bdx * bdx + bdy * bdy);
-              if (bd < bounceDist) {
+              if (bd < bounceDist && bd <= RICOCHET_RANGE) {
                 bounceDist = bd;
                 bounceTarget = h;
               }
@@ -1306,6 +1307,7 @@ class GameState {
                 damage: baseDmg,
                 createdAt: now,
                 isRicochet: true,
+                ricochetSkipAddress: target.address,
               });
             }
           }
