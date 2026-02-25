@@ -1225,6 +1225,17 @@ class GameState {
                     hb.health = 0;
                     hb.isGhost = true;
                     hb.isAlive = false;
+                    const arcVictimLevel = calcLevel(hb.xp || 0);
+                    const arcGhostMs = BATTLE_CONFIG.ghostBaseMs + (arcVictimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
+                    hb.ghostUntil = now + arcGhostMs;
+
+                    shooterBattle.kills++;
+                    hb.deaths = (hb.deaths || 0) + 1;
+                    let arcKillXp = PROGRESSION.xpPerKillBase + (arcVictimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+                    if (arcVictimLevel >= 50) arcKillXp *= 2;
+                    const arcExpVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
+                    if (arcExpVal > 0) arcKillXp = Math.round(arcKillXp * (1 + arcExpVal));
+                    shooterBattle.xp = (shooterBattle.xp || 0) + arcKillXp;
                   }
                 });
 
@@ -1818,6 +1829,31 @@ class GameState {
         }
       }
     }
+  }
+
+  // ─── Force Respawn Stuck Players ────────────────────────────────
+
+  forceRespawnStuckPlayers() {
+    const now = Date.now();
+    let revived = 0;
+    this.battleBubbles.forEach((bubble, address) => {
+      if ((bubble.isGhost || bubble.isAlive === false) && !bubble.ghostUntil) {
+        bubble.isGhost = false;
+        bubble.ghostUntil = null;
+        bubble.health = bubble.maxHealth;
+        bubble.isAlive = true;
+        bubble.respawnedAt = now;
+        revived++;
+        console.log(`Force respawned stuck player: ${address.slice(0, 8)}...`);
+
+        if (this.magicBlockReady) {
+          this.magicBlock.deathLogged.delete(address);
+          this.magicBlock.respawnPlayer(address).catch(() => {});
+        }
+      }
+    });
+    console.log(`Force respawned ${revived} stuck players`);
+    return { success: true, revived };
   }
 
   // ─── Season Reset ──────────────────────────────────────────────

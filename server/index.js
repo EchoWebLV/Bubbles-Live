@@ -139,6 +139,24 @@ app.prepare().then(async () => {
       return;
     }
 
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/force-respawn') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      try {
+        const result = gameState.forceRespawnStuckPlayers();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/remove-photo') {
       const authHeader = req.headers['authorization'] || '';
       if (authHeader !== `Bearer ${ADMIN_SECRET}`) {

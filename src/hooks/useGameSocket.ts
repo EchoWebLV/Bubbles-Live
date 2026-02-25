@@ -162,6 +162,7 @@ export interface GameState {
       attacksSent: number;
       attacksConfirmed: number;
       attacksFailed: number;
+      attacksRejected: number;
       commits: number;
       lastCommitTime: number;
       erLatencyMs: number;
