@@ -10,7 +10,11 @@
     {
       "name": "allocate_talent",
       "docs": [
-        "Allocate a talent point. talent_id: 0-24. Runs on ER."
+        "Allocate a talent point with full on-chain validation:",
+        "- Level-based point budget",
+        "- Max rank per talent",
+        "- Prerequisite chain (tier N requires tier N-1)",
+        "- Capstone limit (max 2 of 5 capstones)"
       ],
       "discriminator": [
         157,
@@ -37,9 +41,6 @@
     },
     {
       "name": "commit_player",
-      "docs": [
-        "Commit a single player's state from ER to base layer (keeps delegation)."
-      ],
       "discriminator": [
         240,
         196,
@@ -74,10 +75,6 @@
     },
     {
       "name": "commit_state",
-      "docs": [
-        "Commit ER state back to base layer (keeps delegation active).",
-        "Pass player state accounts as remaining_accounts to commit them too."
-      ],
       "discriminator": [
         201,
         80,
@@ -126,9 +123,6 @@
     },
     {
       "name": "delegate_arena",
-      "docs": [
-        "Delegate the arena account to an Ephemeral Rollup."
-      ],
       "discriminator": [
         216,
         55,
@@ -310,9 +304,6 @@
     },
     {
       "name": "delegate_player",
-      "docs": [
-        "Delegate a player account to an Ephemeral Rollup."
-      ],
       "discriminator": [
         235,
         159,
@@ -507,10 +498,6 @@
     },
     {
       "name": "end_session",
-      "docs": [
-        "Commit and undelegate - returns accounts to base layer.",
-        "Pass player state accounts as remaining_accounts to undelegate them too."
-      ],
       "discriminator": [
         11,
         244,
@@ -559,9 +546,6 @@
     },
     {
       "name": "init_arena",
-      "docs": [
-        "Initialize the arena on the base layer."
-      ],
       "discriminator": [
         24,
         246,
@@ -605,10 +589,6 @@
     },
     {
       "name": "migrate_player",
-      "docs": [
-        "Migrate an old player account from 82 bytes to 108 bytes (adds talent + manual_build fields).",
-        "Uses UncheckedAccount because Anchor can't deserialize the old smaller struct."
-      ],
       "discriminator": [
         194,
         21,
@@ -639,7 +619,9 @@
     {
       "name": "process_attack",
       "docs": [
-        "Process an attack: attacker deals damage to victim. Runs on ER."
+        "Process combat: the ER computes damage from on-chain talent state.",
+        "Server sends hit_count (how many bullets connected), chain resolves damage.",
+        "The server CANNOT dictate damage — the chain is authoritative."
       ],
       "discriminator": [
         109,
@@ -681,7 +663,7 @@
       ],
       "args": [
         {
-          "name": "damage",
+          "name": "hit_count",
           "type": "u16"
         }
       ]
@@ -725,9 +707,6 @@
     },
     {
       "name": "register_player",
-      "docs": [
-        "Register a new player on the base layer (no arena needed)."
-      ],
       "discriminator": [
         242,
         146,
@@ -784,9 +763,6 @@
     },
     {
       "name": "reset_player",
-      "docs": [
-        "Reset a player's stats to base values (season reset). Runs on ER."
-      ],
       "discriminator": [
         173,
         181,
@@ -807,9 +783,6 @@
     },
     {
       "name": "reset_talents",
-      "docs": [
-        "Reset all talent points. Runs on ER."
-      ],
       "discriminator": [
         83,
         23,
@@ -830,9 +803,6 @@
     },
     {
       "name": "respawn_player",
-      "docs": [
-        "Respawn a dead player after the respawn timer has elapsed. Runs on ER."
-      ],
       "discriminator": [
         93,
         210,
@@ -853,9 +823,6 @@
     },
     {
       "name": "upgrade_stat",
-      "docs": [
-        "Upgrade a player stat. stat_type: 0 = health, 1 = attack. Runs on ER."
-      ],
       "discriminator": [
         2,
         15,
@@ -971,6 +938,21 @@
     },
     {
       "code": 6012,
+      "name": "PrerequisiteNotMet",
+      "msg": "Prerequisite talent not met"
+    },
+    {
+      "code": 6013,
+      "name": "MaxCapstones",
+      "msg": "Maximum capstone talents (2) already chosen"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidHitCount",
+      "msg": "Invalid hit count"
+    },
+    {
+      "code": 6015,
       "name": "InvalidMigration",
       "msg": "Invalid migration: account is not a valid old-format PlayerState"
     }

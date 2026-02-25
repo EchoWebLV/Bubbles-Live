@@ -126,8 +126,8 @@ class GameState {
     this.magicBlock = new MagicBlockService();
     this.magicBlockReady = false;
 
-    // Damage aggregation buffer: "attacker|victim" → { attacker, victim, damage, isLocalKill }
-    // Instead of sending one tx per bullet, we accumulate damage and flush every N seconds.
+    // Hit-count buffer: "attacker|victim" → { attacker, victim, hitCount }
+    // Server tracks hits, ER computes damage from on-chain talent state.
     this.damageBuffer = new Map();
     this.lastDamageFlush = Date.now();
     this.damageFlushInterval = 3000; // flush every 3 seconds
@@ -1170,7 +1170,7 @@ class GameState {
                   const arcTarget = nearbyTargets[ai];
                   const arcDmg = Math.min(bullet.damage * currentMult, 5);
                   arcTarget.battle.health -= arcDmg;
-                  if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, arcTarget.holder.address, arcDmg);
+                  if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, arcTarget.holder.address);
                   this.damageNumbers.push({
                     id: `dmg-${now}-${Math.random()}`,
                     x: arcTarget.holder.x + (Math.random() - 0.5) * 10,
@@ -1236,7 +1236,7 @@ class GameState {
                     color: '#ff1111', fontSize: 26, type: 'reaperArc',
                   });
 
-                  if (this.magicBlockReady) this._queueAttack(shooter.address, h.address, arcDmg);
+                  if (this.magicBlockReady) this._queueAttack(shooter.address, h.address);
 
                   if (hb.health <= 0) {
                     hb.health = 0;
@@ -1268,7 +1268,7 @@ class GameState {
         });
 
         if (this.magicBlockReady) {
-          this._queueAttack(bullet.shooterAddress, target.address, actualDmg);
+          this._queueAttack(bullet.shooterAddress, target.address);
         }
 
         // Ricochet talent: chance to bounce to a second target (base damage only)
@@ -1432,7 +1432,7 @@ class GameState {
             damage: dmg, createdAt: now, alpha: 1,
             color: '#ff8800', fontSize: 26, type: 'bodySlam',
           });
-          if (this.magicBlockReady) this._queueAttack(aH.address, vH.address, dmg);
+          if (this.magicBlockReady) this._queueAttack(aH.address, vH.address);
 
           // Shockwave: AoE on body hit (no CD during pinball)
           const swRank = attacker.talents?.shockwave || 0;
@@ -1452,7 +1452,7 @@ class GameState {
                 const falloff = 1 - (sd / swRadius);
                 const d = swDmg * falloff;
                 hb.health -= d;
-                if (this.magicBlockReady) this._queueAttack(aH.address, h.address, d);
+                if (this.magicBlockReady) this._queueAttack(aH.address, h.address);
               }
             });
           }
@@ -1529,7 +1529,7 @@ class GameState {
             damage: dmg, createdAt: now, alpha: 1,
             color: '#88ffcc', fontSize: 14, type: 'orbit',
           });
-          if (this.magicBlockReady) this._queueAttack(address, target.address, dmg);
+          if (this.magicBlockReady) this._queueAttack(address, target.address);
         });
       }
     });
@@ -1584,25 +1584,24 @@ class GameState {
     });
   }
 
-  // ─── ER Damage Aggregation ───────────────────────────────────────
-  // Instead of sending one processAttack tx per bullet (hundreds/sec),
-  // we accumulate damage per attacker→victim pair and flush every few
-  // seconds.  This keeps ER tx count manageable (~1-5 txs per flush).
+  // ─── ER Hit-Count Aggregation ────────────────────────────────────
+  // Server tracks how many times attacker hit victim, then sends the
+  // hit count to the ER. The chain computes damage from on-chain
+  // talent state — the server cannot dictate damage amounts.
 
-  _queueAttack(attackerAddress, victimAddress, damage) {
-    // Don't queue damage against bubbles that are dead or just respawned
+  _queueAttack(attackerAddress, victimAddress) {
     const victimBubble = this.battleBubbles.get(victimAddress);
     if (victimBubble && (victimBubble.isGhost || !victimBubble.isAlive)) return;
 
     const key = `${attackerAddress}|${victimAddress}`;
     const existing = this.damageBuffer.get(key);
     if (existing) {
-      existing.damage += damage;
+      existing.hitCount++;
     } else {
       this.damageBuffer.set(key, {
         attacker: attackerAddress,
         victim: victimAddress,
-        damage,
+        hitCount: 1,
       });
     }
   }
@@ -1616,28 +1615,23 @@ class GameState {
     this.isFlushingDamage = true;
     this.lastDamageFlush = now;
 
-    // Take the current buffer and clear it so new damage accumulates fresh
     const batch = Array.from(this.damageBuffer.values());
     this.damageBuffer.clear();
 
-    // Send up to maxConcurrentFlush txs in parallel, then the rest sequentially
-    // to avoid overwhelming the ER
     const toSend = batch.slice(0, this.maxConcurrentFlush);
     const overflow = batch.slice(this.maxConcurrentFlush);
 
-    // Send first batch in parallel
     await Promise.allSettled(
       toSend.map(attack =>
         this.magicBlock.processAttack(
-          attack.attacker, attack.victim, attack.damage
+          attack.attacker, attack.victim, attack.hitCount
         ).catch(() => {})
       )
     );
 
-    // Send overflow sequentially with a small gap
     for (const attack of overflow) {
       await this.magicBlock.processAttack(
-        attack.attacker, attack.victim, attack.damage
+        attack.attacker, attack.victim, attack.hitCount
       ).catch(() => {});
     }
 

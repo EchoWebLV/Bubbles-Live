@@ -486,7 +486,7 @@ class MagicBlockService {
 
   // ─── Combat (runs on ER) ─────────────────────────────────────────
 
-  async processAttack(attackerAddress, victimAddress, damage) {
+  async processAttack(attackerAddress, victimAddress, hitCount) {
     if (!this.ready || !this.arenaDelegated) return null;
 
     const attacker = this.playerMap.get(attackerAddress);
@@ -494,22 +494,20 @@ class MagicBlockService {
     if (!attacker || !victim) return null;
     if (!this.playerDelegated.has(attackerAddress) || !this.playerDelegated.has(victimAddress)) return null;
 
-    // Skip if victim already confirmed dead on-chain (avoid VictimDead errors)
     if (this.deathLogged.has(victimAddress)) return null;
 
-    if (typeof damage !== 'number' || !isFinite(damage) || damage <= 0) return null;
+    if (typeof hitCount !== 'number' || !isFinite(hitCount) || hitCount <= 0) return null;
+    const clampedHits = Math.min(Math.max(1, Math.round(hitCount)), 500);
 
     this.stats.attacksSent++;
 
     try {
       const start = Date.now();
 
-      // Scale local float damage (0.1) → on-chain u16 (10)
-      const onchainDamage = Math.max(1, Math.round(damage * DAMAGE_SCALE));
-      if (!isFinite(onchainDamage) || onchainDamage <= 0) return null;
-
+      // Server sends hit count — the chain computes damage from on-chain talent state.
+      // The server CANNOT dictate damage amounts.
       const tx = await this.erProgram.methods
-        .processAttack(onchainDamage)
+        .processAttack(clampedHits)
         .accounts({
           attacker: attacker.playerPda,
           victim: victim.playerPda,
