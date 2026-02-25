@@ -1318,8 +1318,7 @@ class GameState {
 
           // Ghost duration scales with level: 20s base + 1s per level
           const victimLevel = calcLevel(targetBattle.xp || 0);
-          let baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
-          if (victimLevel >= 50) baseGhostMs += 2000;
+          const baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
           targetBattle.ghostUntil = now + baseGhostMs;
 
           if (shooterBattle) {
