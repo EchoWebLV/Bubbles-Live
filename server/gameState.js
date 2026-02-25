@@ -7,6 +7,7 @@ const { loadAllPhotos, savePhoto, deletePhoto } = require('./playerStore');
 const {
   MAX_LEVEL, LEVEL_SCALE, MAX_RANK,
   ALL_TALENTS, TREE_ORDER, AUTO_ALLOCATE_ORDER,
+  CAPSTONE_TALENTS, MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID, CHAIN_ID_TO_TALENT_NAME,
   getTalentValue, canAllocate, createEmptyTalents, totalPointsSpent,
 } = require('./talentConfig');
@@ -1967,6 +1968,12 @@ class GameState {
     const talent = ALL_TALENTS[talentId];
     if (!talent) return { success: false, error: 'Unknown talent' };
     if (!canAllocate(talentId, bubble.talents)) {
+      if (CAPSTONE_TALENTS.includes(talentId) && (bubble.talents[talentId] || 0) === 0) {
+        const chosen = CAPSTONE_TALENTS.filter(id => (bubble.talents[id] || 0) > 0).length;
+        if (chosen >= MAX_CAPSTONES) {
+          return { success: false, error: `Max ${MAX_CAPSTONES} ultimates allowed` };
+        }
+      }
       return { success: false, error: talent.requires ? 'Prerequisite not met' : 'Already maxed' };
     }
     const level = calcLevel(bubble.xp);

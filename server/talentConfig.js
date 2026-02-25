@@ -340,6 +340,10 @@ const ALL_TALENTS = {
   ...BLOOD_THIRST,
 };
 
+// ─── Capstone (tier 5) restriction: pick at most 2 out of 5 ─────────────
+const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker'];
+const MAX_CAPSTONES = 2;
+
 // UI order per tree
 const TREE_ORDER = {
   tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
@@ -399,6 +403,12 @@ function canAllocate(talentId, talents) {
   if (!t) return false;
   if ((talents[talentId] || 0) >= t.maxRank) return false;
   if (t.requires && (talents[t.requires] || 0) < 1) return false;
+
+  if (CAPSTONE_TALENTS.includes(talentId) && (talents[talentId] || 0) === 0) {
+    const capstonesChosen = CAPSTONE_TALENTS.filter(id => (talents[id] || 0) > 0).length;
+    if (capstonesChosen >= MAX_CAPSTONES) return false;
+  }
+
   return true;
 }
 
@@ -439,6 +449,8 @@ module.exports = {
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
+  CAPSTONE_TALENTS,
+  MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID,
   CHAIN_ID_TO_TALENT_NAME,
   CHAIN_SLOT_FIELDS,

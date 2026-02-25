@@ -116,6 +116,13 @@ function totalPointsSpentClient(talents: Record<string, number>): number {
   return total;
 }
 
+const CAPSTONE_IDS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker'];
+const MAX_CAPSTONES = 2;
+
+function capstonesChosen(talents: Record<string, number>): number {
+  return CAPSTONE_IDS.filter(id => (talents[id] || 0) > 0).length;
+}
+
 // Camera/viewport state
 interface Camera {
   x: number;
@@ -1277,6 +1284,9 @@ export function BubbleMapClient() {
                     <span className="text-sm font-mono text-amber-400">
                       {tp > 0 ? `${tp} points available` : 'No points available'}
                     </span>
+                    <span className="text-xs font-mono text-purple-400/80">
+                      Ultimates: {capstonesChosen(talents)}/{MAX_CAPSTONES}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1309,8 +1319,10 @@ export function BubbleMapClient() {
                             const rank = talents[talent.id] ?? 0;
                             const isMaxed = rank >= talent.maxRank;
                             const prereqMet = talentIdx === 0 || (talents[tree.talents[talentIdx - 1].id] ?? 0) >= 1;
-                            const canUpgrade = tp > 0 && !isMaxed && prereqMet;
-                            const isLocked = !prereqMet && rank === 0;
+                            const isCapstone = CAPSTONE_IDS.includes(talent.id);
+                            const capstoneLocked = isCapstone && rank === 0 && capstonesChosen(talents) >= MAX_CAPSTONES;
+                            const canUpgrade = tp > 0 && !isMaxed && prereqMet && !capstoneLocked;
+                            const isLocked = (!prereqMet && rank === 0) || capstoneLocked;
                             return (
                               <button
                                 key={talent.id}
@@ -1328,7 +1340,7 @@ export function BubbleMapClient() {
                               >
                                 <div className="flex items-center justify-between mb-1">
                                   <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
-                                    {isLocked ? '🔒 ' : ''}{talent.name}
+                                    {capstoneLocked ? '🚫 ' : isLocked ? '🔒 ' : ''}{talent.name}
                                   </span>
                                   <div className="flex gap-0.5">
                                     {Array.from({ length: talent.maxRank }).map((_, i) => (
@@ -1339,7 +1351,9 @@ export function BubbleMapClient() {
                                     ))}
                                   </div>
                                 </div>
-                                <div className="text-[10px] text-slate-400">{talent.desc}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  {capstoneLocked ? 'Max 2 ultimates chosen' : talent.desc}
+                                </div>
                               </button>
                             );
                           })}
