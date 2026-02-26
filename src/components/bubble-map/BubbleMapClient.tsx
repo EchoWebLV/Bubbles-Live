@@ -57,7 +57,7 @@ const TALENT_TREES = {
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
       { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
       { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
-      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.25/0.4/0.6% max HP as bullet dmg', maxRank: 3 },
+      { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
   },
   firepower: {
@@ -93,7 +93,7 @@ const TALENT_TREES = {
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '5/10/15% chance: lightning to 2/3/4 enemies (450% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (450% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
