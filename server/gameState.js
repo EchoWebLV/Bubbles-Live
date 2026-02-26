@@ -672,17 +672,6 @@ class GameState {
       }
     });
 
-    // Berserker regen: heal per second when below 50% HP
-    this.battleBubbles.forEach((bubble) => {
-      if (bubble.isGhost || !bubble.isAlive) return;
-      const bRank = bubble.talents?.berserker || 0;
-      if (bRank <= 0) return;
-      if (bubble.health >= bubble.maxHealth * ALL_TALENTS.berserker.hpThreshold) return;
-      const hps = ALL_TALENTS.berserker.regenPerSec[bRank - 1];
-      const healCeiling = bubble.maxHealth * 0.50;
-      bubble.health = Math.min(bubble.health + hps * regenTickRate, healCeiling);
-    });
-
     // Nova talent: emit projectiles periodically
     this._processNova(now);
 

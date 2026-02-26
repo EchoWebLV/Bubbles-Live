@@ -37,7 +37,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 6/5/4th shot: homing bullet toward your target, 333% dmg', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
     ],
   },
   brawler: {
@@ -60,8 +60,8 @@ const TALENT_TREES = {
       { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
       { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (450% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -73,7 +73,7 @@ const TALENT_TREES = {
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
       { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +20/30/40% atk speed & dmg. +1.5/2.5/3.5 HP/s regen', maxRank: 3 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
     ],
   },
 } as const;
