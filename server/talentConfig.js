@@ -61,7 +61,7 @@ const TANK = {
     tier: 5,
     requires: 'lifesteal',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.002, 0.0035, 0.005],
+    perRank: [0.0015, 0.003, 0.004],
   },
 };
 
@@ -245,7 +245,7 @@ const MASS_DAMAGE = {
     tier: 5,
     requires: 'nova',
     maxRank: MAX_RANK_CAPSTONE,
-    procChance: [0.05, 0.10, 0.15],
+    procChance: [0.04, 0.08, 0.12],
     arcTargets: [2, 3, 4],
     arcDamage: 4.0,
     arcDecay: 0.50,

@@ -12,7 +12,9 @@ const BASE_HEALTH: u16 = 100;
 const BASE_ATTACK: u16 = 10; // 0.1 * DAMAGE_SCALE(100)
 const LEVEL_SCALE: u64 = 10;
 const MAX_LEVEL: u8 = 100;
-const RESPAWN_DELAY_SECS: i64 = 5;
+const GHOST_BASE_SECS: i64 = 20;
+const GHOST_PER_LEVEL_SECS: i64 = 1;
+const GHOST_PER_LEVEL_SECS_50PLUS: i64 = 3;
 const DAMAGE_CAP: u32 = 500; // 5.0 * 100
 
 const XP_PER_KILL_BASE: u64 = 10;
@@ -75,8 +77,8 @@ const CRIT_EXPECTED_BPS: [u32; 5] = [700, 1680, 3360, 5040, 7000];
 // Execute (slot 21): +damage vs ≤50% HP [8%, 16%, 24%, 32%, 48%]
 const EXECUTE_BPS: [u32; 5] = [800, 1600, 2400, 3200, 4800];
 
-// Vitality Strike (slot 4, capstone): +% of max HP as bonus dmg [0.25%, 0.4%, 0.6%]
-const VITALITY_STRIKE_BPS: [u32; 3] = [25, 40, 60];
+// Vitality Strike (slot 4, capstone): +% of max HP as bonus dmg [0.20%, 0.30%, 0.50%]
+const VITALITY_STRIKE_BPS: [u32; 3] = [20, 30, 50];
 
 // Berserker (slot 24, capstone): +dmg below 33% HP [20%, 30%, 40%]
 const BERSERKER_DMG_BPS: [u32; 3] = [2000, 3000, 4000];
@@ -94,20 +96,28 @@ fn lookup_bps(rank: u8, table: &[u32]) -> u32 {
 
 fn calc_level(xp: u64) -> u8 {
     let mut total_xp: u64 = 0;
+    let mut penalty_bp: u64 = 10000; // basis points (10000 = 1.0x)
     for lvl in 1..(MAX_LEVEL as u64) {
         let base_cost = (2 * lvl - 1) * LEVEL_SCALE;
-        // Above level 50: each level costs 1% more per level (cumulative)
-        let cost = if lvl > 50 {
-            base_cost * (10000 + (lvl - 50) * 100) / 10000
-        } else {
-            base_cost
-        };
+        if lvl > 50 {
+            penalty_bp = penalty_bp * 106 / 100; // compound 6% per level
+        }
+        let cost = base_cost * penalty_bp / 10000;
         total_xp += cost;
         if xp < total_xp {
             return lvl as u8;
         }
     }
     MAX_LEVEL
+}
+
+fn calc_ghost_secs(level: u8) -> i64 {
+    let lvl = level as i64;
+    if lvl <= 50 {
+        GHOST_BASE_SECS + (lvl - 1) * GHOST_PER_LEVEL_SECS
+    } else {
+        GHOST_BASE_SECS + 49 * GHOST_PER_LEVEL_SECS + (lvl - 50) * GHOST_PER_LEVEL_SECS_50PLUS
+    }
 }
 
 fn calc_talent_points(level: u8) -> u16 {
@@ -295,7 +305,8 @@ pub mod hodlwarz_combat {
             victim.is_alive = false;
             victim.deaths += 1;
             victim.xp += XP_PER_DEATH;
-            victim.respawn_at = Clock::get()?.unix_timestamp + RESPAWN_DELAY_SECS;
+            let victim_lvl = calc_level(victim.xp.saturating_sub(XP_PER_DEATH));
+            victim.respawn_at = Clock::get()?.unix_timestamp + calc_ghost_secs(victim_lvl);
 
             attacker.kills += 1;
 

@@ -17,8 +17,9 @@ const BATTLE_CONFIG = {
   bulletDamage: 0.1,    // base damage per bullet
   fireRate: 200,        // ms between shots
   bulletSpeed: 10,
-  ghostBaseMs: 20000,   // 20s at level 1, +1s per level
-  ghostPerLevelMs: 1000,
+  ghostBaseMs: 20000,        // 20s at level 1
+  ghostPerLevelMs: 1000,     // +1s per level (1-50)
+  ghostPerLevelMs50Plus: 3000, // +3s per level (51-100)
   curveStrength: { min: 25, max: 60 },
 };
 
@@ -48,16 +49,24 @@ const PROGRESSION = {
 const TESTING_OVERRIDE_LEVEL = 0; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
-  // Each level from 51-100 costs 1% more per level (cumulative)
-  // so level 100 requires ~49% more XP per level than level 51
   let totalXp = 0;
+  let penalty = 1;
   for (let lvl = 1; lvl < MAX_LEVEL; lvl++) {
     const baseCost = (2 * lvl - 1) * PROGRESSION.levelScale;
-    const penalty = lvl > 50 ? 1 + (lvl - 50) * 0.01 : 1;
+    if (lvl > 50) penalty *= 1.06;
     totalXp += baseCost * penalty;
     if (xp < totalXp) return lvl;
   }
   return MAX_LEVEL;
+}
+function calcGhostMs(level) {
+  const base = BATTLE_CONFIG.ghostBaseMs;
+  if (level <= 50) {
+    return base + (level - 1) * BATTLE_CONFIG.ghostPerLevelMs;
+  }
+  const first50 = 49 * BATTLE_CONFIG.ghostPerLevelMs;
+  const extra = (level - 50) * BATTLE_CONFIG.ghostPerLevelMs50Plus;
+  return base + first50 + extra;
 }
 function calcMaxHealth(healthLevel) {
   return PROGRESSION.baseHealth + (healthLevel - 1) * PROGRESSION.healthPerLevel;
@@ -1226,8 +1235,7 @@ class GameState {
                     hb.isGhost = true;
                     hb.isAlive = false;
                     const arcVictimLevel = calcLevel(hb.xp || 0);
-                    const arcGhostMs = BATTLE_CONFIG.ghostBaseMs + (arcVictimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
-                    hb.ghostUntil = now + arcGhostMs;
+                    hb.ghostUntil = now + calcGhostMs(arcVictimLevel);
 
                     shooterBattle.kills++;
                     hb.deaths = (hb.deaths || 0) + 1;
@@ -1312,10 +1320,8 @@ class GameState {
           targetBattle.isGhost = true;
           targetBattle.isAlive = false;
 
-          // Ghost duration scales with level: 20s base + 1s per level
           const victimLevel = calcLevel(targetBattle.xp || 0);
-          const baseGhostMs = BATTLE_CONFIG.ghostBaseMs + (victimLevel - 1) * BATTLE_CONFIG.ghostPerLevelMs;
-          targetBattle.ghostUntil = now + baseGhostMs;
+          targetBattle.ghostUntil = now + calcGhostMs(victimLevel);
 
           if (shooterBattle) {
             shooterBattle.kills++;
