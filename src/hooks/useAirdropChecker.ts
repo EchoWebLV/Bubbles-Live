@@ -62,11 +62,12 @@ async function fetchDistributors(addresses: string[]): Promise<Map<string, Distr
 
 function filterWarzClaims(
   claims: AirdropClaim[],
-  distributors: Map<string, DistributorInfo>
+  distributors: Map<string, DistributorInfo>,
+  mint: string
 ): AirdropClaim[] {
   return claims.filter((c) => {
     const dist = distributors.get(c.distributorAddress);
-    if (!dist || dist.mint !== WARZ_MINT) return false;
+    if (!dist || dist.mint !== mint) return false;
     const total = BigInt(c.amountUnlocked) + BigInt(c.amountLocked);
     const claimed = BigInt(c.amountClaimed ?? "0");
     return total - claimed > BigInt(0);
@@ -92,16 +93,26 @@ export function useAirdropChecker(): AirdropInfo {
   const walletAddress = publicKey?.toBase58() ?? null;
 
   const fetchClaims = useCallback(async () => {
-    if (!walletAddress || !WARZ_MINT) return;
+    if (!walletAddress) return;
+    const mint = WARZ_MINT;
+    console.log("[AirdropChecker] checking wallet:", walletAddress, "mint:", mint);
+    if (!mint) {
+      console.warn("[AirdropChecker] NEXT_PUBLIC_TOKEN_ADDRESS not set, skipping");
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const allClaims = await checkEligibility(walletAddress);
+      console.log("[AirdropChecker] raw claims:", allClaims.length);
       const uniqueDistAddrs = [...new Set(allClaims.map((c) => c.distributorAddress))];
       const distributors = await fetchDistributors(uniqueDistAddrs);
-      const warzClaims = filterWarzClaims(allClaims, distributors);
+      console.log("[AirdropChecker] distributors fetched:", distributors.size);
+      const warzClaims = filterWarzClaims(allClaims, distributors, mint);
+      console.log("[AirdropChecker] WARZ claims:", warzClaims.length, "total unclaimed:", computeUnclaimed(warzClaims));
       setClaims(warzClaims);
     } catch (err) {
+      console.error("[AirdropChecker] error:", err);
       setError(err instanceof Error ? err.message : "Failed to check airdrops");
       setClaims([]);
     } finally {
@@ -141,7 +152,8 @@ export function useAirdropChecker(): AirdropInfo {
  * Returns a Set of addresses that have unclaimed WARZ airdrops.
  */
 export async function checkBatchEligibility(addresses: string[]): Promise<Set<string>> {
-  if (addresses.length === 0 || !WARZ_MINT) return new Set();
+  const mint = WARZ_MINT;
+  if (addresses.length === 0 || !mint) return new Set();
 
   const batch = addresses.slice(0, 100);
   try {
@@ -161,7 +173,7 @@ export async function checkBatchEligibility(addresses: string[]): Promise<Set<st
     const eligible = new Set<string>();
     for (const c of data) {
       const dist = distributors.get(c.distributorAddress);
-      if (!dist || dist.mint !== WARZ_MINT) continue;
+      if (!dist || dist.mint !== mint) continue;
       const total = BigInt(c.amountUnlocked) + BigInt(c.amountLocked);
       const claimed = BigInt(c.amountClaimed ?? "0");
       if (total - claimed > BigInt(0)) {
