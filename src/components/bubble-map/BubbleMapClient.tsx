@@ -25,6 +25,8 @@ import {
   type ReaperArcVfx,
 } from "./effects";
 import { Button } from "@/components/ui/button";
+import { AirdropBanner } from "@/components/AirdropBanner";
+import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
 
 // Kill streak announcement
 interface KillAnnouncement {
@@ -174,6 +176,24 @@ export function BubbleMapClient() {
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
   const lastPinchDist = useRef<number | null>(null);
+  const [showMobileWalletPrompt, setShowMobileWalletPrompt] = useState(false);
+
+  const isIOSMobile = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    return /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window as any).phantom?.solana;
+  }, []);
+
+  const handleConnectClick = useCallback(() => {
+    if (isIOSMobile) {
+      setShowMobileWalletPrompt(true);
+    } else {
+      setWalletModalVisible(true);
+    }
+  }, [isIOSMobile, setWalletModalVisible]);
+
+  // Airdrop checker — notifies connected wallet of unclaimed Streamflow airdrops
+  const airdropInfo = useAirdropChecker();
+  const [leaderboardAirdropAddrs, setLeaderboardAirdropAddrs] = useState<Set<string>>(new Set());
 
   // Initialize audio element and autoplay
   useEffect(() => {
@@ -717,6 +737,13 @@ export function BubbleMapClient() {
   const topKillers = gameState?.topKillers || [];
   const killFeed = gameState?.killFeed || [];
 
+  const topKillerAddrsKey = topKillers.map((k: { address: string }) => k.address).join(',');
+  useEffect(() => {
+    if (topKillers.length === 0) return;
+    const addrs = topKillers.map((k: { address: string }) => k.address);
+    checkBatchEligibility(addrs).then(setLeaderboardAirdropAddrs);
+  }, [topKillerAddrsKey]);
+
   const isLoading = !gameState;
 
   const processedVfxRef = useRef<Set<string>>(new Set());
@@ -925,7 +952,7 @@ export function BubbleMapClient() {
           ) : (
             <div className="flex items-center gap-1.5">
               <button
-                onClick={() => setWalletModalVisible(true)}
+                onClick={handleConnectClick}
                 className="bg-purple-600/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2.5 sm:px-4 py-1.5 sm:py-2 border border-purple-500/50 flex items-center gap-1.5 hover:bg-purple-500/80 transition-colors"
               >
                 <Wallet className="w-3 h-3 text-white" />
@@ -1025,6 +1052,9 @@ export function BubbleMapClient() {
                   <span className="text-slate-300 font-mono truncate">
                     {killer.address.slice(0, 6)}..
                   </span>
+                  {leaderboardAirdropAddrs.has(killer.address) && (
+                    <span className="shrink-0 text-emerald-400 animate-pulse" title="Unclaimed airdrop!">🎁</span>
+                  )}
                   <span className="text-yellow-400 font-bold ml-auto shrink-0">{killer.kills}</span>
                 </button>
               ))}
@@ -1701,6 +1731,69 @@ export function BubbleMapClient() {
       >
         <Info className="w-4 h-4 text-purple-300" />
       </button>
+
+      {/* Airdrop claim notification */}
+      <AirdropBanner airdropInfo={airdropInfo} />
+
+      {/* Mobile wallet prompt — iOS deep links */}
+      <AnimatePresence>
+        {showMobileWalletPrompt && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowMobileWalletPrompt(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.85, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            >
+              <div className="relative w-full max-w-xs overflow-hidden rounded-2xl border border-purple-500/40 bg-slate-900/95 backdrop-blur-xl shadow-2xl">
+                <div className="absolute inset-x-0 top-0 h-1" style={{ background: "linear-gradient(90deg, transparent, #a78bfa, #7c3aed, #a78bfa, transparent)", backgroundSize: "200% 100%", animation: "shimmer 2s linear infinite" }} />
+                <button
+                  onClick={() => setShowMobileWalletPrompt(false)}
+                  className="absolute top-3 right-3 z-10 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="flex flex-col items-center px-6 py-8 text-center">
+                  <Wallet className="h-10 w-10 text-purple-400 mb-4" />
+                  <h2 className="text-base font-bold text-white">Connect Wallet</h2>
+                  <p className="mt-2 text-xs text-slate-400">Open this page in your wallet app to connect</p>
+                  <div className="mt-5 flex flex-col gap-3 w-full">
+                    <a
+                      href={`https://phantom.app/ul/browse/${typeof window !== "undefined" ? encodeURIComponent(window.location.href) : ""}?ref=${typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : ""}`}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-purple-600/30 px-4 py-3 text-sm font-semibold text-purple-200 transition-all hover:bg-purple-600/40 border border-purple-500/30"
+                    >
+                      Open in Phantom
+                    </a>
+                    <a
+                      href={`https://solflare.com/ul/browse/${typeof window !== "undefined" ? encodeURIComponent(window.location.href) : ""}?ref=${typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : ""}`}
+                      className="flex items-center justify-center gap-2 rounded-xl bg-orange-600/30 px-4 py-3 text-sm font-semibold text-orange-200 transition-all hover:bg-orange-600/40 border border-orange-500/30"
+                    >
+                      Open in Solflare
+                    </a>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowMobileWalletPrompt(false);
+                      setWalletModalVisible(true);
+                    }}
+                    className="mt-4 text-xs text-slate-500 transition-colors hover:text-slate-400"
+                  >
+                    I have a wallet extension installed
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Welcome modal — shows once per device */}
       <WelcomeModal />
