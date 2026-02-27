@@ -18,6 +18,8 @@ export interface Holder extends SimulationNodeDatum {
   spawnTime?: number;
   // Profile photo
   photo?: string | null;
+  // Boss flag
+  isBoss?: boolean;
 }
 
 export interface PopEffect {

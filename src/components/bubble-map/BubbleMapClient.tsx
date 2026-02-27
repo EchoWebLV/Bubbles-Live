@@ -679,7 +679,10 @@ export function BubbleMapClient() {
     isNew: h.isNew,
     spawnTime: h.spawnTime,
     photo: playerPhotos[h.address] || null,
+    isBoss: h.isBoss || false,
   })) || [];
+
+  const boss = gameState?.boss || null;
 
   // Pop effects for holders who sold
   const popEffects = gameState?.popEffects || [];
@@ -1008,6 +1011,43 @@ export function BubbleMapClient() {
           </button>
         </div>
       </motion.div>
+
+      {/* Boss Health Bar */}
+      {boss && (
+        <motion.div
+          initial={{ opacity: 0, y: -30, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="absolute top-14 sm:top-20 left-1/2 -translate-x-1/2 z-20 w-64 sm:w-80"
+        >
+          <div className="bg-slate-900/90 backdrop-blur-md rounded-xl border border-red-500/50 overflow-hidden shadow-lg shadow-red-900/30">
+            <div className="px-3 py-1.5 flex items-center justify-between border-b border-red-500/20">
+              <span className="text-xs sm:text-sm font-bold text-red-400 flex items-center gap-1.5">
+                <span className="text-base">👹</span> DEMON LORD
+              </span>
+              {boss.enraged && (
+                <span className="text-[10px] font-bold text-orange-400 animate-pulse">ENRAGED!</span>
+              )}
+            </div>
+            <div className="px-3 py-2">
+              <div className="relative h-4 bg-slate-800 rounded-full overflow-hidden border border-red-900/50">
+                <div
+                  className={`absolute inset-y-0 left-0 rounded-full transition-all duration-300 ${
+                    boss.enraged
+                      ? 'bg-gradient-to-r from-orange-600 to-yellow-500'
+                      : 'bg-gradient-to-r from-red-700 to-red-500'
+                  }`}
+                  style={{ width: `${Math.max(0, (boss.health / boss.maxHealth) * 100)}%` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[10px] sm:text-xs font-bold text-white drop-shadow-md">
+                    {boss.health.toLocaleString()} / {boss.maxHealth.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Top Killers Leaderboard — scrollable, click to follow */}
       {topKillers.length > 0 && (

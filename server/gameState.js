@@ -46,6 +46,27 @@ const PROGRESSION = {
   baseDamage: 0.1,
 };
 
+const BOSS_CONFIG = {
+  address: 'BOSS_DEMON_LORD',
+  spawnInterval: 60 * 60 * 1000,   // every hour
+  baseHealth: 5000,
+  healthGrowthPerSpawn: 1000,
+  attackPower: 15,
+  fireRate: 100,
+  radius: 75,
+  color: '#ff2222',
+  aggroRange: 1000,
+  retargetInterval: 2000,
+  hitListSize: 10,
+  enrageAfterMs: 180000,
+  enrageDmgMultiplier: 2.5,
+  enrageFireRateMultiplier: 0.4,
+  killBlowXp: 5000,
+  participationXpPerPct: 100,
+  minDamagePctForReward: 0.01,
+  bulletColor: '#ff4444',
+};
+
 const TESTING_OVERRIDE_LEVEL = 0; // Set to a number to force all players to that level
 function calcLevel(xp) {
   if (TESTING_OVERRIDE_LEVEL) return TESTING_OVERRIDE_LEVEL;
@@ -158,6 +179,13 @@ class GameState {
     this.erSyncInterval = null;
     this._isSyncingER = false;
     this._lastTalentCatchUp = 0;
+
+    // Boss fight
+    this.boss = null;
+    this.bossHolder = null;
+    this.lastBossSpawn = 0;
+    this.bossSpawnCount = 0;
+    this.bossDamageMap = new Map();
   }
 
   // Fast price-only update (doesn't fetch full metadata)
@@ -678,6 +706,7 @@ class GameState {
     // Shooting logic
     this.holders.forEach(holder => {
       if (holder.x === undefined) return;
+      if (holder.address === BOSS_CONFIG.address) return;
       
       const battleBubble = this.battleBubbles.get(holder.address);
       if (!battleBubble || battleBubble.isGhost) return;
@@ -1082,6 +1111,11 @@ class GameState {
 
         targetBattle.health -= actualDmg;
 
+        // Track boss damage for reward distribution
+        if (target.address === BOSS_CONFIG.address && shooterBattle) {
+          this._bossRecordDamage(bullet.shooterAddress, actualDmg);
+        }
+
         // Counter Attack talent: chance to fire straight bullet back at attacker
         if (!bullet.isCounterAttack) {
           const counterChance = getTalentValue('counterAttack', targetBattle.talents?.counterAttack || 0);
@@ -1305,72 +1339,72 @@ class GameState {
         }
 
         if (targetBattle.health <= 0) {
-          targetBattle.health = 0;
-          targetBattle.isGhost = true;
-          targetBattle.isAlive = false;
+          // Boss death: special reward flow instead of normal ghost logic
+          if (target.address === BOSS_CONFIG.address) {
+            targetBattle.health = 0;
+            this._bossKilled(bullet.shooterAddress, now);
+          } else {
+            targetBattle.health = 0;
+            targetBattle.isGhost = true;
+            targetBattle.isAlive = false;
 
-          const victimLevel = calcLevel(targetBattle.xp || 0);
-          targetBattle.ghostUntil = now + calcGhostMs(victimLevel);
+            const victimLevel = calcLevel(targetBattle.xp || 0);
+            targetBattle.ghostUntil = now + calcGhostMs(victimLevel);
 
-          if (shooterBattle) {
-            shooterBattle.kills++;
-            let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
-            if (victimLevel >= 50) killXp *= 2;
+            if (shooterBattle && bullet.shooterAddress !== BOSS_CONFIG.address) {
+              shooterBattle.kills++;
+              let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+              if (victimLevel >= 50) killXp *= 2;
 
-            // Experience talent: bonus XP %
-            const expVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
-            if (expVal > 0) killXp = Math.round(killXp * (1 + expVal));
+              const expVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
+              if (expVal > 0) killXp = Math.round(killXp * (1 + expVal));
 
-            shooterBattle.xp += killXp;
-            const newLevel = calcLevel(shooterBattle.xp);
-            shooterBattle.healthLevel = newLevel;
-            shooterBattle.attackLevel = newLevel;
-            shooterBattle.maxHealth = calcMaxHealth(newLevel);
-            shooterBattle.attackPower = calcAttackPower(newLevel);
-            shooterBattle.health = Math.min(shooterBattle.health, shooterBattle.maxHealth);
-            if (!shooterBattle.manualBuild) {
-              const newTalents = autoAllocateTalents(shooterBattle);
-              this._queueTalentSync(bullet.shooterAddress, newTalents);
+              shooterBattle.xp += killXp;
+              const newLevel = calcLevel(shooterBattle.xp);
+              shooterBattle.healthLevel = newLevel;
+              shooterBattle.attackLevel = newLevel;
+              shooterBattle.maxHealth = calcMaxHealth(newLevel);
+              shooterBattle.attackPower = calcAttackPower(newLevel);
+              shooterBattle.health = Math.min(shooterBattle.health, shooterBattle.maxHealth);
+              if (!shooterBattle.manualBuild) {
+                const newTalents = autoAllocateTalents(shooterBattle);
+                this._queueTalentSync(bullet.shooterAddress, newTalents);
+              }
+
+              const killRushRank = shooterBattle.talents?.killRush || 0;
+              if (killRushRank > 0) {
+                shooterBattle.killRushUntil = now + ALL_TALENTS.killRush.durationMs;
+              }
+            }
+            targetBattle.deaths++;
+            const deathXp = PROGRESSION.xpPerDeath;
+            targetBattle.xp += deathXp;
+            if (!targetBattle.manualBuild) {
+              const newTalents = autoAllocateTalents(targetBattle);
+              this._queueTalentSync(target.address, newTalents);
             }
 
-            // Kill Rush talent: temporary speed + fire rate boost
-            const killRushRank = shooterBattle.talents?.killRush || 0;
-            if (killRushRank > 0) {
-              shooterBattle.killRushUntil = now + ALL_TALENTS.killRush.durationMs;
+            this.killFeed.unshift({
+              killer: bullet.shooterAddress,
+              victim: target.address,
+              time: now,
+            });
+            this.killFeed = this.killFeed.slice(0, 20);
+            this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
+
+            if (this.magicBlockReady && this.magicBlock) {
+              this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
+                killer: bullet.shooterAddress,
+                victim: target.address,
+              });
+              this.magicBlock._logEvent('death', `${target.address.slice(0, 6)}... was eliminated`, null, {
+                victim: target.address,
+                killer: bullet.shooterAddress,
+              });
             }
 
-            // Berserker: passive talent, no on-kill effect needed
+            this.updateTopKillers();
           }
-          targetBattle.deaths++;
-          const deathXp = PROGRESSION.xpPerDeath;
-          targetBattle.xp += deathXp;
-          if (!targetBattle.manualBuild) {
-            const newTalents = autoAllocateTalents(targetBattle);
-            this._queueTalentSync(target.address, newTalents);
-          }
-
-          this.killFeed.unshift({
-            killer: bullet.shooterAddress,
-            victim: target.address,
-            time: now,
-          });
-          this.killFeed = this.killFeed.slice(0, 20);
-          this.addEventLog(`${target.address.slice(0, 6)}... killed by ${bullet.shooterAddress.slice(0, 6)}...`);
-
-          // Log kill/death to on-chain records immediately (no tx yet).
-          // The ER will later detect the death and patch in the tx signature.
-          if (this.magicBlockReady && this.magicBlock) {
-            this.magicBlock._logEvent('kill', `${bullet.shooterAddress.slice(0, 6)}... killed ${target.address.slice(0, 6)}...`, null, {
-              killer: bullet.shooterAddress,
-              victim: target.address,
-            });
-            this.magicBlock._logEvent('death', `${target.address.slice(0, 6)}... was eliminated`, null, {
-              victim: target.address,
-              killer: bullet.shooterAddress,
-            });
-          }
-
-          this.updateTopKillers();
         }
       }
     });
@@ -1382,6 +1416,60 @@ class GameState {
       .filter(dn => dn.alpha > 0);
 
     this.vfx = this.vfx.filter(v => now - v.createdAt < 1500);
+
+    // Boss tick: spawn check, retarget, shooting
+    this._bossTick(now);
+    if (this.boss && this.bossHolder && this.bossHolder.x !== undefined) {
+      const bossEnraged = this.boss.enraged;
+      const bossFireRate = bossEnraged
+        ? BOSS_CONFIG.fireRate * BOSS_CONFIG.enrageFireRateMultiplier
+        : BOSS_CONFIG.fireRate;
+      if (this.boss.currentTarget && now - this.boss.lastShotTime >= bossFireRate) {
+        const target = this.holders.find(h => h.address === this.boss.currentTarget);
+        if (target && target.x !== undefined) {
+          const dx = target.x - this.bossHolder.x;
+          const dy = target.y - this.bossHolder.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          this.bullets.push({
+            id: `b-${this.bulletIdCounter++}`,
+            shooterAddress: BOSS_CONFIG.address,
+            targetAddress: target.address,
+            shooterColor: BOSS_CONFIG.bulletColor,
+            x: this.bossHolder.x, y: this.bossHolder.y,
+            startX: this.bossHolder.x, startY: this.bossHolder.y,
+            targetX: target.x, targetY: target.y,
+            progress: 0,
+            curveDirection: Math.random() > 0.5 ? 1 : -1,
+            curveStrength: BATTLE_CONFIG.curveStrength.min + Math.random() * 20,
+            vx: (dx / dist) * BATTLE_CONFIG.bulletSpeed,
+            vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
+            damage: this.boss.attackPower,
+            createdAt: now,
+            isBoss: true,
+          });
+          this.boss.lastShotTime = now;
+        }
+      }
+
+      // Slow boss wander toward current target
+      if (this.boss.currentTarget) {
+        const target = this.holders.find(h => h.address === this.boss.currentTarget);
+        if (target && target.x !== undefined) {
+          const dx = target.x - this.bossHolder.x;
+          const dy = target.y - this.bossHolder.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const wanderSpeed = 0.3;
+          this.bossHolder.vx += (dx / dist) * wanderSpeed;
+          this.bossHolder.vy += (dy / dist) * wanderSpeed;
+          const spd = Math.sqrt(this.bossHolder.vx ** 2 + this.bossHolder.vy ** 2);
+          const maxSpd = 1.2;
+          if (spd > maxSpd) {
+            this.bossHolder.vx = (this.bossHolder.vx / spd) * maxSpd;
+            this.bossHolder.vy = (this.bossHolder.vy / spd) * maxSpd;
+          }
+        }
+      }
+    }
 
     // Process attack queue (send to ER)
     this._processAttackQueue();
@@ -1578,6 +1666,7 @@ class GameState {
   // talent state — the server cannot dictate damage amounts.
 
   _queueAttack(attackerAddress, victimAddress) {
+    if (attackerAddress === BOSS_CONFIG.address || victimAddress === BOSS_CONFIG.address) return;
     const victimBubble = this.battleBubbles.get(victimAddress);
     if (victimBubble && (victimBubble.isGhost || !victimBubble.isAlive)) return;
 
@@ -1694,6 +1783,7 @@ class GameState {
       let synced = 0;
 
       for (const [walletAddress, state] of erStates) {
+        if (walletAddress === BOSS_CONFIG.address) continue;
         const bubble = this.battleBubbles.get(walletAddress);
         if (bubble) {
           bubble.kills = Math.max(bubble.kills, state.kills);
@@ -1786,6 +1876,7 @@ class GameState {
     const pendingWallets = new Set(this.talentSyncQueue.map(item => item.wallet));
 
     for (const [walletAddress, bubble] of this.battleBubbles) {
+      if (walletAddress === BOSS_CONFIG.address) continue;
       if (pendingWallets.has(walletAddress)) continue;
 
       const chainState = erStates.get(walletAddress);
@@ -1826,12 +1917,236 @@ class GameState {
     }
   }
 
+  // ─── Boss Fight System ──────────────────────────────────────────
+
+  _getAverageLevel() {
+    let total = 0, count = 0;
+    this.battleBubbles.forEach((b, addr) => {
+      if (addr === BOSS_CONFIG.address) return;
+      total += calcLevel(b.xp || 0);
+      count++;
+    });
+    return count > 0 ? Math.round(total / count) : 1;
+  }
+
+  _checkBossSpawn(now) {
+    if (this.boss) return;
+    if (now - this.lastBossSpawn < BOSS_CONFIG.spawnInterval) return;
+    if (this.battleBubbles.size < 5) return;
+    console.log(`Boss spawning! Spawn #${this.bossSpawnCount + 1}, HP: ${BOSS_CONFIG.baseHealth + this.bossSpawnCount * BOSS_CONFIG.healthGrowthPerSpawn}`);
+    this._spawnBoss(now);
+  }
+
+  _spawnBoss(now) {
+    const { width, height } = this.dimensions;
+
+    const bossHp = BOSS_CONFIG.baseHealth + this.bossSpawnCount * BOSS_CONFIG.healthGrowthPerSpawn;
+    this.bossSpawnCount++;
+
+    this.bossHolder = {
+      address: BOSS_CONFIG.address,
+      balance: 0,
+      percentage: 0,
+      color: BOSS_CONFIG.color,
+      radius: BOSS_CONFIG.radius,
+      x: width / 2 + (Math.random() - 0.5) * 200,
+      y: height / 2 + (Math.random() - 0.5) * 200,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: (Math.random() - 0.5) * 1.5,
+      isBoss: true,
+    };
+    this.holders.push(this.bossHolder);
+
+    this.boss = {
+      address: BOSS_CONFIG.address,
+      health: bossHp,
+      maxHealth: bossHp,
+      attackPower: BOSS_CONFIG.attackPower,
+      isGhost: false,
+      ghostUntil: null,
+      lastShotTime: 0,
+      kills: 0,
+      deaths: 0,
+      xp: 0,
+      healthLevel: 100,
+      attackLevel: 100,
+      isAlive: true,
+      talents: { ...createEmptyTalents(), ricochet: 5, counterAttack: 5, chainLightning: 3 },
+      manualBuild: true,
+      isBoss: true,
+      spawnedAt: now,
+      hitList: new Set(),
+      lastRetarget: 0,
+      currentTarget: null,
+      enraged: false,
+    };
+    this.battleBubbles.set(BOSS_CONFIG.address, this.boss);
+    this.bossDamageMap.clear();
+    this.lastBossSpawn = now;
+
+    this.addEventLog(`BOSS SPAWNED! A Demon Lord has entered the arena!`);
+    if (this.magicBlockReady && this.magicBlock) {
+      this.magicBlock._logEvent('system', 'Boss Demon Lord spawned!');
+    }
+  }
+
+  _getBossHitListLevels() {
+    const ranked = [];
+    this.battleBubbles.forEach((b, addr) => {
+      if (addr === BOSS_CONFIG.address) return;
+      if (b.isGhost || !b.isAlive) return;
+      ranked.push(calcLevel(b.xp || 0));
+    });
+    ranked.sort((a, b) => b - a);
+    return ranked.slice(0, BOSS_CONFIG.hitListSize);
+  }
+
+  _bossUpdateHitList(now) {
+    if (!this.boss || now - this.boss.lastRetarget < BOSS_CONFIG.retargetInterval) return;
+    this.boss.lastRetarget = now;
+
+    const ranked = [];
+    this.battleBubbles.forEach((bubble, address) => {
+      if (address === BOSS_CONFIG.address) return;
+      if (bubble.isGhost || !bubble.isAlive) return;
+      ranked.push({ address, level: calcLevel(bubble.xp || 0), kills: bubble.kills });
+    });
+    ranked.sort((a, b) => b.level - a.level || b.kills - a.kills);
+    this.boss.hitList = new Set(ranked.slice(0, BOSS_CONFIG.hitListSize).map(r => r.address));
+  }
+
+  _bossPickTarget() {
+    if (!this.boss || !this.bossHolder || this.bossHolder.x === undefined) return;
+
+    const bx = this.bossHolder.x;
+    const by = this.bossHolder.y;
+    let bestTarget = null;
+    let bestDist = Infinity;
+    let fallbackTarget = null;
+    let fallbackDist = Infinity;
+
+    this.holders.forEach(h => {
+      if (h.address === BOSS_CONFIG.address || h.x === undefined) return;
+      const bb = this.battleBubbles.get(h.address);
+      if (!bb || bb.isGhost || !bb.isAlive) return;
+
+      const dx = h.x - bx;
+      const dy = h.y - by;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > BOSS_CONFIG.aggroRange) return;
+
+      if (this.boss.hitList.has(h.address) && dist < bestDist) {
+        bestDist = dist;
+        bestTarget = h.address;
+      }
+      if (dist < fallbackDist) {
+        fallbackDist = dist;
+        fallbackTarget = h.address;
+      }
+    });
+
+    this.boss.currentTarget = bestTarget || fallbackTarget || null;
+  }
+
+  _bossCheckEnrage(now) {
+    if (!this.boss || this.boss.enraged) return;
+    if (now - this.boss.spawnedAt > BOSS_CONFIG.enrageAfterMs) {
+      this.boss.enraged = true;
+      this.boss.attackPower = BOSS_CONFIG.attackPower * BOSS_CONFIG.enrageDmgMultiplier;
+      this.addEventLog('BOSS ENRAGED! Damage doubled!');
+    }
+  }
+
+  _bossRecordDamage(attackerAddress, damage) {
+    if (!this.bossDamageMap) return;
+    const prev = this.bossDamageMap.get(attackerAddress) || 0;
+    this.bossDamageMap.set(attackerAddress, prev + damage);
+  }
+
+  _bossKilled(killerAddress, now) {
+    if (!this.boss) return;
+    const totalHp = this.boss.maxHealth;
+
+    const killerBubble = this.battleBubbles.get(killerAddress);
+    if (killerBubble) {
+      killerBubble.xp += BOSS_CONFIG.killBlowXp;
+      const newLvl = calcLevel(killerBubble.xp);
+      killerBubble.healthLevel = newLvl;
+      killerBubble.attackLevel = newLvl;
+      killerBubble.maxHealth = calcMaxHealth(newLvl);
+      killerBubble.attackPower = calcAttackPower(newLvl);
+      killerBubble.health = Math.min(killerBubble.health, killerBubble.maxHealth);
+      if (!killerBubble.manualBuild) {
+        const newTalents = autoAllocateTalents(killerBubble);
+        this._queueTalentSync(killerAddress, newTalents);
+      }
+    }
+
+    for (const [wallet, damage] of this.bossDamageMap) {
+      const pct = damage / totalHp;
+      if (pct < BOSS_CONFIG.minDamagePctForReward) continue;
+      const bubble = this.battleBubbles.get(wallet);
+      if (!bubble) continue;
+      const rewardXp = Math.round(pct * 100 * BOSS_CONFIG.participationXpPerPct);
+      bubble.xp += rewardXp;
+      const newLvl = calcLevel(bubble.xp);
+      bubble.healthLevel = newLvl;
+      bubble.attackLevel = newLvl;
+      bubble.maxHealth = calcMaxHealth(newLvl);
+      bubble.attackPower = calcAttackPower(newLvl);
+      bubble.health = Math.min(bubble.health, bubble.maxHealth);
+      if (!bubble.manualBuild) {
+        const newTalents = autoAllocateTalents(bubble);
+        this._queueTalentSync(wallet, newTalents);
+      }
+    }
+
+    const sorted = [...this.bossDamageMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    this.addEventLog(`BOSS DEFEATED by ${killerAddress.slice(0, 6)}...!`);
+    sorted.forEach(([w, d], i) => {
+      const pct = ((d / totalHp) * 100).toFixed(1);
+      this.addEventLog(`#${i + 1} damage: ${w.slice(0, 6)}... (${pct}%)`);
+    });
+
+    this.killFeed.unshift({ killer: killerAddress, victim: BOSS_CONFIG.address, time: now });
+    this.killFeed = this.killFeed.slice(0, 20);
+
+    this.vfx.push({
+      type: 'shockwave',
+      x: this.bossHolder.x,
+      y: this.bossHolder.y,
+      radius: 300,
+      color: '#ff2222',
+      createdAt: now,
+    });
+
+    this.holders = this.holders.filter(h => h.address !== BOSS_CONFIG.address);
+    this.battleBubbles.delete(BOSS_CONFIG.address);
+    this.boss = null;
+    this.bossHolder = null;
+    this.bossDamageMap.clear();
+    this.updateTopKillers();
+  }
+
+  _bossTick(now) {
+    if (!this.boss) {
+      this._checkBossSpawn(now);
+      return;
+    }
+    this._bossUpdateHitList(now);
+    this._bossPickTarget();
+    this._bossCheckEnrage(now);
+  }
+
   // ─── Force Respawn Stuck Players ────────────────────────────────
 
   forceRespawnStuckPlayers() {
     const now = Date.now();
     let revived = 0;
     this.battleBubbles.forEach((bubble, address) => {
+      if (address === BOSS_CONFIG.address) return;
       if ((bubble.isGhost || bubble.isAlive === false) && !bubble.ghostUntil) {
         bubble.isGhost = false;
         bubble.ghostUntil = null;
@@ -1862,6 +2177,7 @@ class GameState {
     const result = await this.magicBlock.resetAllPlayers();
 
     for (const [address, bubble] of this.battleBubbles) {
+      if (address === BOSS_CONFIG.address) continue;
       bubble.kills = 0;
       bubble.deaths = 0;
       bubble.xp = 0;
@@ -1904,6 +2220,7 @@ class GameState {
 
     let boosted = 0;
     for (const [address, bubble] of this.battleBubbles) {
+      if (address === BOSS_CONFIG.address) continue;
       if ((bubble.xp || 0) >= medianXp) continue;
 
       const oldLevel = calcLevel(bubble.xp || 0);
@@ -1940,6 +2257,7 @@ class GameState {
   }
 
   ensurePlayerCached(walletAddress) {
+    if (walletAddress === BOSS_CONFIG.address) return;
     if (!this.playerCache.has(walletAddress)) {
       const medianXp = this.getMedianXp();
       const medianLevel = calcLevel(medianXp);
@@ -2033,8 +2351,9 @@ class GameState {
   }
 
   updateTopKillers() {
-    this.topKillers = Array.from(this.battleBubbles.values())
-      .filter(b => b.kills > 0)
+    this.topKillers = Array.from(this.battleBubbles.entries())
+      .filter(([addr, b]) => b.kills > 0 && addr !== BOSS_CONFIG.address)
+      .map(([, b]) => b)
       .sort((a, b) => b.kills - a.kills)
       .slice(0, 20)
       .map(b => ({ address: b.address, kills: b.kills, level: calcLevel(b.xp) }));
@@ -2139,9 +2458,10 @@ class GameState {
       }
     }
     
-    // Preserve guest holders across refresh
+    // Preserve guest holders and boss across refresh
     const guestHolders = this.holders.filter(h => h.address.startsWith('guest_'));
-    this.holders = [...newHolders, ...guestHolders];
+    const bossHolders = this.bossHolder ? [this.bossHolder] : [];
+    this.holders = [...newHolders, ...guestHolders, ...bossHolders];
     this.initializePositions();
     console.log(`Live refresh: ${this.holders.length} holders (${guestHolders.length} guests)`);
   }
@@ -2263,6 +2583,7 @@ class GameState {
         isNew: this.newHolders.has(h.address),
         spawnTime: h.spawnTime,
         hasPhoto: this.playerPhotos.has(h.address),
+        isBoss: h.isBoss || false,
       })),
       popEffects: this.popEffects.map(p => ({
         ...p,
@@ -2312,6 +2633,14 @@ class GameState {
       priceData: this.priceData,
       dimensions: this.dimensions,
       timestamp: now,
+      boss: this.boss ? {
+        address: BOSS_CONFIG.address,
+        health: Math.round(this.boss.health),
+        maxHealth: Math.round(this.boss.maxHealth),
+        enraged: this.boss.enraged,
+        spawnedAt: this.boss.spawnedAt,
+        hitList: Array.from(this.boss.hitList || []),
+      } : null,
       magicBlock: {
         ready: mbStatus.ready,
         arenaPda: mbStatus.arenaPda,
@@ -2383,6 +2712,7 @@ class GameState {
           newHolder.vy = existing.vy;
         }
       });
+      if (this.bossHolder) newHolders.push(this.bossHolder);
       this.holders = newHolders;
       this.initializePositions();
 

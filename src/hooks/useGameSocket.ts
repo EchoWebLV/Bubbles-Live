@@ -15,6 +15,16 @@ export interface GameHolder {
   isNew?: boolean;
   spawnTime?: number;
   hasPhoto?: boolean;
+  isBoss?: boolean;
+}
+
+export interface GameBoss {
+  address: string;
+  health: number;
+  maxHealth: number;
+  enraged: boolean;
+  spawnedAt: number;
+  hitList: string[];
 }
 
 export interface TalentRanks {
@@ -68,6 +78,7 @@ export interface GameBattleBubble {
   talents: TalentRanks;
   talentPoints: number;
   manualBuild: boolean;
+  isBoss?: boolean;
 }
 
 export interface GameBullet {
@@ -134,6 +145,7 @@ export interface GameState {
   eventLog: string[];
   topKillers: { address: string; kills: number; level: number }[];
   popEffects: GamePopEffect[];
+  boss: GameBoss | null;
   token: {
     address: string;
     symbol: string;

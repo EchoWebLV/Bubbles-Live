@@ -161,6 +161,147 @@ export function BubbleCanvas({
     holders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) return;
 
+      // Boss rendering — demon bubble
+      if (holder.isBoss) {
+        const bx = holder.x;
+        const by = holder.y;
+        const br = holder.radius;
+        const bb = battleState.bubbles.get(holder.address);
+        const bHealth = bb?.health ?? 1;
+        const bMaxHealth = bb?.maxHealth ?? 1;
+        const isEnraged = bHealth / bMaxHealth < 0.33;
+
+        // Pulsing dark aura
+        const pulseT = (now % 1500) / 1500;
+        const auraPulse = 0.6 + Math.sin(pulseT * Math.PI * 2) * 0.25;
+        const auraSize = br + 30 + Math.sin(pulseT * Math.PI * 2) * 12;
+        const aura = ctx.createRadialGradient(bx, by, br * 0.5, bx, by, auraSize);
+        aura.addColorStop(0, `rgba(255, 20, 20, ${auraPulse * 0.5})`);
+        aura.addColorStop(0.5, `rgba(180, 0, 0, ${auraPulse * 0.3})`);
+        aura.addColorStop(0.8, `rgba(100, 0, 0, ${auraPulse * 0.15})`);
+        aura.addColorStop(1, 'rgba(80, 0, 0, 0)');
+        ctx.beginPath();
+        ctx.arc(bx, by, auraSize, 0, Math.PI * 2);
+        ctx.fillStyle = aura;
+        ctx.fill();
+
+        // Rotating fire ring
+        const ringAngle = (now % 3000) / 3000 * Math.PI * 2;
+        for (let i = 0; i < 3; i++) {
+          const a = ringAngle + (i * Math.PI * 2) / 3;
+          ctx.beginPath();
+          ctx.arc(bx, by, br + 14, a, a + Math.PI * 0.5);
+          ctx.strokeStyle = isEnraged ? `rgba(255, 255, 50, 0.7)` : `rgba(255, 60, 20, 0.6)`;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+
+        // Main body — dark red gradient
+        const bGrad = ctx.createRadialGradient(bx - br * 0.2, by - br * 0.2, 0, bx, by, br);
+        if (isEnraged) {
+          bGrad.addColorStop(0, '#ff6600');
+          bGrad.addColorStop(0.5, '#ff2200');
+          bGrad.addColorStop(1, '#880000');
+        } else {
+          bGrad.addColorStop(0, '#cc2222');
+          bGrad.addColorStop(0.5, '#991111');
+          bGrad.addColorStop(1, '#440000');
+        }
+        ctx.beginPath();
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
+        ctx.fillStyle = bGrad;
+        ctx.fill();
+
+        // Dark border
+        ctx.beginPath();
+        ctx.arc(bx, by, br, 0, Math.PI * 2);
+        ctx.strokeStyle = isEnraged ? '#ff8800' : '#ff2222';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Horns
+        const hornLen = br * 0.6;
+        const hornSpread = br * 0.4;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#ffcc00';
+        // Left horn
+        ctx.beginPath();
+        ctx.moveTo(bx - hornSpread, by - br * 0.75);
+        ctx.quadraticCurveTo(bx - hornSpread - hornLen * 0.3, by - br - hornLen * 0.5, bx - hornSpread * 0.5, by - br - hornLen);
+        ctx.stroke();
+        // Right horn
+        ctx.beginPath();
+        ctx.moveTo(bx + hornSpread, by - br * 0.75);
+        ctx.quadraticCurveTo(bx + hornSpread + hornLen * 0.3, by - br - hornLen * 0.5, bx + hornSpread * 0.5, by - br - hornLen);
+        ctx.stroke();
+
+        // Demon eyes
+        const eyeY = by - br * 0.15;
+        const eyeSpacing = br * 0.3;
+        const eyeR = br * 0.12;
+        // Eye glow
+        for (const ex of [bx - eyeSpacing, bx + eyeSpacing]) {
+          const eyeGlow = ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, eyeR * 3);
+          eyeGlow.addColorStop(0, 'rgba(255, 200, 0, 0.8)');
+          eyeGlow.addColorStop(1, 'rgba(255, 100, 0, 0)');
+          ctx.beginPath();
+          ctx.arc(ex, eyeY, eyeR * 3, 0, Math.PI * 2);
+          ctx.fillStyle = eyeGlow;
+          ctx.fill();
+          // Eye pupil
+          ctx.beginPath();
+          ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffcc00';
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(ex, eyeY, eyeR * 0.45, 0, Math.PI * 2);
+          ctx.fillStyle = '#ff0000';
+          ctx.fill();
+        }
+
+        // Mouth — jagged teeth
+        const mouthY = by + br * 0.3;
+        const mouthW = br * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(bx - mouthW, mouthY);
+        const teethCount = 5;
+        for (let t = 0; t <= teethCount; t++) {
+          const tx = bx - mouthW + (t * 2 * mouthW) / teethCount;
+          const ty = t % 2 === 0 ? mouthY : mouthY + br * 0.18;
+          ctx.lineTo(tx, ty);
+        }
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Demon label
+        ctx.fillStyle = '#ff4444';
+        ctx.font = `bold ${Math.max(14, br * 0.28)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('DEMON LORD', bx, by + br + 22);
+
+        // Health bar
+        if (bb) {
+          const barW = br * 2;
+          const barH = 8;
+          const barX = bx - barW / 2;
+          const barY = by - br - hornLen - 20;
+          const hpPct = Math.max(0, bHealth / bMaxHealth);
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+          const hpColor = isEnraged ? '#ff6600' : '#ff2222';
+          ctx.fillStyle = hpColor;
+          ctx.fillRect(barX, barY, barW * hpPct, barH);
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(barX - 1, barY - 1, barW + 2, barH + 2);
+        }
+
+        return;
+      }
+
       const battleBubble = battleState.bubbles.get(holder.address);
       const isGhost = battleBubble?.isGhost || false;
       const health = battleBubble?.health ?? BATTLE_CONFIG.maxHealth;
