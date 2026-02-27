@@ -742,66 +742,83 @@ class MagicBlockService {
 
   // ─── State Reading (from ER) ─────────────────────────────────────
 
+  _formatPlayerState(walletAddress, account, playerPda) {
+    return {
+      walletAddress,
+      wallet: account.wallet.toBase58(),
+      health: account.health,
+      maxHealth: account.maxHealth,
+      attackPower: account.attackPower / DAMAGE_SCALE,
+      xp: typeof account.xp === 'object' ? account.xp.toNumber() : account.xp,
+      kills: typeof account.kills === 'object' ? account.kills.toNumber() : account.kills,
+      deaths: typeof account.deaths === 'object' ? account.deaths.toNumber() : account.deaths,
+      healthLevel: account.healthLevel,
+      attackLevel: account.attackLevel,
+      isAlive: account.isAlive,
+      respawnAt: typeof account.respawnAt === 'object' ? account.respawnAt.toNumber() : account.respawnAt,
+      initialized: account.initialized,
+      playerPda: typeof playerPda === 'string' ? playerPda : playerPda.toBase58(),
+      talents: {
+        armor: account.talentIronSkin || 0,
+        ironSkin: account.talentHeavyHitter || 0,
+        regeneration: account.talentRegeneration || 0,
+        lifesteal: account.talentLifesteal || 0,
+        vitalityStrike: account.talentArmor || 0,
+        heavyHitter: account.talentSwift || 0,
+        rapidFire: account.talentRapidFire || 0,
+        criticalStrike: account.talentEvasion || 0,
+        multiShot: account.talentQuickRespawn || 0,
+        dualCannon: account.talentMomentum || 0,
+        dash: account.talentWeakspot || 0,
+        bodySlam: account.talentCriticalStrike || 0,
+        relentless: account.talentFocusFire || 0,
+        orbit: account.talentMultiShot || 0,
+        shockwave: account.talentDualCannon || 0,
+        ricochet: account.talentDeflect || 0,
+        counterAttack: account.talentAbsorb || 0,
+        chainLightning: account.talentLastStand || 0,
+        nova: account.talentCloak || 0,
+        focusFire: account.talentDash || 0,
+        experience: account.talentRampage || 0,
+        execute: account.talentHoming || 0,
+        killRush: account.talentRicochet || 0,
+        reaperArc: account.talentDeathbomb || 0,
+        berserker: account.talentFrenzy || 0,
+      },
+      manualBuild: account.manualBuild || false,
+    };
+  }
+
   async getPlayerState(walletAddress) {
     if (!this.ready) return null;
     const player = this.playerMap.get(walletAddress);
     if (!player) return null;
 
     try {
-      // Read from ER if delegated, otherwise base layer
       const program = this.playerDelegated.has(walletAddress) ? this.erProgram : this.baseProgram;
       const account = await program.account.playerState.fetch(player.playerPda);
-      return {
-        walletAddress,
-        wallet: account.wallet.toBase58(),
-        health: account.health,
-        maxHealth: account.maxHealth,
-        attackPower: account.attackPower / DAMAGE_SCALE,
-        xp: typeof account.xp === 'object' ? account.xp.toNumber() : account.xp,
-        kills: typeof account.kills === 'object' ? account.kills.toNumber() : account.kills,
-        deaths: typeof account.deaths === 'object' ? account.deaths.toNumber() : account.deaths,
-        healthLevel: account.healthLevel,
-        attackLevel: account.attackLevel,
-        isAlive: account.isAlive,
-        respawnAt: typeof account.respawnAt === 'object' ? account.respawnAt.toNumber() : account.respawnAt,
-        initialized: account.initialized,
-        playerPda: player.playerPda.toBase58(),
-        talents: {
-          // Chain slots 0-4: Tank tree
-          armor: account.talentIronSkin || 0,
-          ironSkin: account.talentHeavyHitter || 0,
-          regeneration: account.talentRegeneration || 0,
-          lifesteal: account.talentLifesteal || 0,
-          vitalityStrike: account.talentArmor || 0,
-          // Chain slots 5-9: Firepower tree
-          heavyHitter: account.talentSwift || 0,
-          rapidFire: account.talentRapidFire || 0,
-          criticalStrike: account.talentEvasion || 0,
-          multiShot: account.talentQuickRespawn || 0,
-          dualCannon: account.talentMomentum || 0,
-          // Chain slots 10-14: Brawler tree
-          dash: account.talentWeakspot || 0,
-          bodySlam: account.talentCriticalStrike || 0,
-          relentless: account.talentFocusFire || 0,
-          orbit: account.talentMultiShot || 0,
-          shockwave: account.talentDualCannon || 0,
-          // Chain slots 15-19: Mass Damage tree
-          ricochet: account.talentDeflect || 0,
-          counterAttack: account.talentAbsorb || 0,
-          chainLightning: account.talentLastStand || 0,
-          nova: account.talentCloak || 0,
-          focusFire: account.talentDash || 0,
-          // Chain slots 20-24: Blood Thirst tree
-          experience: account.talentRampage || 0,
-          execute: account.talentHoming || 0,
-          killRush: account.talentRicochet || 0,
-          reaperArc: account.talentDeathbomb || 0,
-          berserker: account.talentFrenzy || 0,
-        },
-        manualBuild: account.manualBuild || false,
-      };
+      return this._formatPlayerState(walletAddress, account, player.playerPda);
     } catch (err) {
-      // Silently fail — account might not be initialized yet
+      return null;
+    }
+  }
+
+  // Read player state directly from base layer (committed state).
+  // Works even for delegated accounts — decodes raw bytes regardless of owner.
+  async getPlayerStateFromBase(walletAddress) {
+    const walletPubkey = new PublicKey(walletAddress);
+    const [playerPda] = PublicKey.findProgramAddressSync(
+      [PLAYER_SEED, walletPubkey.toBuffer()],
+      COMBAT_PROGRAM_ID
+    );
+
+    try {
+      const acctInfo = await this.baseConnection.getAccountInfo(playerPda);
+      if (!acctInfo || !acctInfo.data) return null;
+
+      const account = this.baseProgram.coder.accounts.decode('playerState', acctInfo.data);
+      return this._formatPlayerState(walletAddress, account, playerPda);
+    } catch {
       return null;
     }
   }
@@ -842,6 +859,54 @@ class MagicBlockService {
         }
       }
     }
+    return states;
+  }
+
+  // Restore all player states on startup: reads from ER first, then falls back
+  // to base layer for holders not found on ER (e.g. after an ER session reset).
+  async restoreAllPlayerStates(holderAddresses = []) {
+    if (!this.ready) return new Map();
+
+    const states = new Map();
+
+    const erStates = await this.getAllPlayerStates();
+    for (const [wallet, state] of erStates) {
+      states.set(wallet, state);
+    }
+    console.log(`MagicBlock: Restored ${states.size} player states from ER`);
+
+    const missing = holderAddresses.filter(addr => !states.has(addr));
+    if (missing.length > 0) {
+      console.log(`MagicBlock: Checking base layer for ${missing.length} holders not found on ER...`);
+      const BATCH = 10;
+      let baseRestored = 0;
+      for (let i = 0; i < missing.length; i += BATCH) {
+        const batch = missing.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          batch.map(addr => this.getPlayerStateFromBase(addr))
+        );
+        for (let j = 0; j < batch.length; j++) {
+          const r = results[j];
+          if (r.status === 'fulfilled' && r.value && r.value.xp > 0) {
+            states.set(batch[j], r.value);
+            baseRestored++;
+
+            if (!this.playerMap.has(batch[j])) {
+              const walletPubkey = new PublicKey(batch[j]);
+              const [playerPda, playerBump] = PublicKey.findProgramAddressSync(
+                [PLAYER_SEED, walletPubkey.toBuffer()],
+                COMBAT_PROGRAM_ID
+              );
+              this.playerMap.set(batch[j], { playerPda, playerBump, walletAddress: batch[j] });
+            }
+          }
+        }
+      }
+      if (baseRestored > 0) {
+        console.log(`MagicBlock: Restored ${baseRestored} additional player states from base layer`);
+      }
+    }
+
     return states;
   }
 

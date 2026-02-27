@@ -2335,14 +2335,12 @@ class GameState {
     console.log('Starting game state...');
     this.isRunning = true;
 
-    // Fetch holders + metadata first so the game can start immediately
+    // 1. Fetch holders + metadata
     await this.fetchTokenMetadata();
-
     this.holders = await this.fetchHolders();
-    this.initializePositions();
-    
     console.log(`Loaded ${this.holders.length} holders`);
 
+    // 2. Load photos from DB
     try {
       const dbPhotos = await loadAllPhotos();
       if (dbPhotos.size > 0) {
@@ -2355,10 +2353,21 @@ class GameState {
       console.warn('Failed to load photos from DB:', err.message);
     }
 
+    // 3. Initialize MagicBlock and restore state from chain BEFORE creating
+    //    bubbles. This populates playerCache with real on-chain kills/XP/levels
+    //    so that initializePositions() creates bubbles with correct stats
+    //    instead of defaults. Uses a timeout to avoid blocking forever.
+    await this._initMagicBlockAndRestore();
+
+    // 4. Create bubbles — playerCache is now populated from chain
+    this.initializePositions();
+
+    // 5. Ensure cache exists for truly new players not found on chain
     for (const holder of this.holders) {
       this.ensurePlayerCached(holder.address);
     }
 
+    // 6. Start game loop
     this.gameLoop = setInterval(() => {
       this.tick();
     }, 1000 / 30);
@@ -2391,48 +2400,84 @@ class GameState {
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
-
-    // Initialize MagicBlock in the background — don't block the game
-    this._initMagicBlock();
   }
 
-  async _initMagicBlock() {
-    console.log('Initializing MagicBlock Ephemeral Rollup (background)...');
+  // Initialize MagicBlock and restore all player state from the Ephemeral Rollup
+  // (with base-layer fallback) BEFORE the game loop starts. Uses a timeout so a
+  // slow/down ER doesn't block startup forever — falls back to local-only mode
+  // and retries in the background.
+  async _initMagicBlockAndRestore() {
+    const MB_INIT_TIMEOUT = 20000;
+    console.log('Initializing MagicBlock and restoring chain state...');
+
     try {
-      const initialized = await this.magicBlock.initialize();
+      const initialized = await Promise.race([
+        this.magicBlock.initialize(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('MagicBlock init timeout')), MB_INIT_TIMEOUT)),
+      ]);
+
       if (!initialized) {
-        console.warn('MagicBlock ER not available — game runs locally only');
+        console.warn('MagicBlock ER not available — game starts with local state only');
         return;
       }
 
-      console.log('MagicBlock ER integration active!');
+      console.log('MagicBlock ER active!');
       console.log('   Arena:', this.magicBlock.arenaPda.toBase58());
       console.log('   Delegated:', this.magicBlock.arenaDelegated);
 
-      // Restore persisted state from ER BEFORE enabling magicBlockReady.
-      // This prevents the game loop from sending stale level-1 attacks to
-      // the ER and overwriting real player data.
-      console.log('Restoring player state from Ephemeral Rollup...');
-      await this.syncFromER();
-      console.log(`ER state restored for ${this.playerCache.size} players`);
+      // Fetch all player states from ER + base-layer fallback and populate
+      // playerCache so that bubbles are created with correct stats.
+      const holderAddresses = this.holders.map(h => h.address);
+      const chainStates = await this.magicBlock.restoreAllPlayerStates(holderAddresses);
 
-      // NOW enable ER features — game loop can safely send attacks
+      let restored = 0;
+      for (const [wallet, state] of chainStates) {
+        this.playerCache.set(wallet, state);
+        restored++;
+      }
+      console.log(`Chain state restored for ${restored} players`);
+      if (restored > 0) this.updateTopKillers();
+
       this.magicBlockReady = true;
-
       this.magicBlock.startCommitTimer(30000);
 
-      // Register all holders that loaded before MagicBlock was ready.
       for (const holder of this.holders) {
         this._queueRegistration(holder.address);
       }
 
-      // Process any talent allocations queued before MagicBlock was ready
       this._processTalentSyncQueue();
-
-      // Start periodic ER sync
       this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
     } catch (err) {
-      console.error('MagicBlock init failed (non-blocking):', err.message);
+      console.warn(`MagicBlock init failed: ${err.message} — starting without chain state`);
+      setTimeout(() => this._retryMagicBlockInit(), 30000);
+    }
+  }
+
+  async _retryMagicBlockInit() {
+    if (this.magicBlockReady) return;
+    console.log('Retrying MagicBlock initialization (background)...');
+
+    try {
+      const initialized = await this.magicBlock.initialize();
+      if (!initialized) {
+        setTimeout(() => this._retryMagicBlockInit(), 60000);
+        return;
+      }
+
+      // Restore state and merge into existing bubbles via syncFromER
+      await this.syncFromER();
+      this.magicBlockReady = true;
+      this.magicBlock.startCommitTimer(30000);
+
+      for (const holder of this.holders) {
+        this._queueRegistration(holder.address);
+      }
+      this._processTalentSyncQueue();
+      this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
+      console.log('MagicBlock initialized on background retry');
+    } catch (err) {
+      console.warn('MagicBlock background retry failed:', err.message);
+      setTimeout(() => this._retryMagicBlockInit(), 60000);
     }
   }
 
