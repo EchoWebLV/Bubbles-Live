@@ -2,7 +2,7 @@
 
 A real-time multiplayer battle royale running on Solana through MagicBlock Ephemeral Rollups.
 
-This is not a blockchain game from 2022. There is no "click button, wait for transaction, see result." There are 60+ players shooting at each other in real time, and the chain is computing every point of damage, every kill, every level-up, every talent interaction — live, while you play.
+This is not a blockchain game from 2022. There is no "click button, wait for transaction, see result." There are 60+ players shooting at each other in real time, and the chain is computing every point of damage, every kill, every level-up, every talent interaction - live, while you play.
 
 **Live at** [hodlwarz.com](https://hodlwarz.com)
 
@@ -18,7 +18,7 @@ The interesting part is where the combat math happens.
 
 Most "on-chain games" do one of two things: they either run everything on-chain and the gameplay suffers (click, wait 2 seconds, see result), or they run everything on a server and log receipts to a chain so they can call it web3.
 
-We wanted to see if MagicBlock's Ephemeral Rollups could handle something that actually needs speed — a real-time shooter with dozens of concurrent players, complex damage formulas, and a deep talent system. Not a turn-based card game. Not an idle clicker. A game where bullets are flying every frame.
+We wanted to see if MagicBlock's Ephemeral Rollups could handle something that actually needs speed - a real-time shooter with dozens of concurrent players, complex damage formulas, and a deep talent system. Not a turn-based card game. Not an idle clicker. A game where bullets are flying every frame.
 
 It works.
 
@@ -38,19 +38,19 @@ Every player account is a PDA on Solana, delegated to the Ephemeral Rollup for f
 
 All of this executes inside the ER, not on the server:
 
-**Combat resolution** — Damage per hit is computed from on-chain talent state. The full damage pipeline runs in Rust: base attack power, offensive talent modifiers (Heavy Hitter, Berserker, Vitality Strike, Critical Strike, Execute), defensive modifiers (Armor), damage caps. A single `process_attack` instruction handles hit count to kill confirmation in one transaction.
+**Combat resolution** - Damage per hit is computed from on-chain talent state. The full damage pipeline runs in Rust: base attack power, offensive talent modifiers (Heavy Hitter, Berserker, Vitality Strike, Critical Strike, Execute), defensive modifiers (Armor), damage caps. A single `process_attack` instruction handles hit count to kill confirmation in one transaction.
 
-**XP and leveling** — Kill XP scales with the victim's level. High-level kills (50+) pay double. The Experience talent multiplies XP gains. Leveling follows a curve that gets steeper after level 50. All of this math lives on-chain.
+**XP and leveling** - Kill XP scales with the victim's level. High-level kills (50+) pay double. The Experience talent multiplies XP gains. Leveling follows a curve that gets steeper after level 50. All of this math lives on-chain.
 
-**Talent validation** — 25 talents across 5 trees (Tank, Firepower, Brawler, Mass Damage, Blood Thirst), each with prerequisites, max ranks, and a capstone limit (you can only pick 2 of the 5 capstone talents). The chain validates every allocation: checks your level, checks your available points, checks the prerequisite chain, checks the capstone budget. The server cannot grant talents that haven't been earned.
+**Talent validation** - 25 talents across 5 trees (Tank, Firepower, Brawler, Mass Damage, Blood Thirst), each with prerequisites, max ranks, and a capstone limit (you can only pick 2 of the 5 capstone talents). The chain validates every allocation: checks your level, checks your available points, checks the prerequisite chain, checks the capstone budget. The server cannot grant talents that haven't been earned.
 
-**Kill and death tracking** — When the chain determines a victim's HP hit zero, it increments kill/death counters, sets respawn timers, awards XP. These numbers are the ground truth. The server reads them back.
+**Kill and death tracking** - When the chain determines a victim's HP hit zero, it increments kill/death counters, sets respawn timers, awards XP. These numbers are the ground truth. The server reads them back.
 
-**Player state** — HP, max HP, attack power, XP, kills, deaths, all 25 talent ranks, alive/dead status, respawn timers. Every player's full state lives in a PDA on the ER.
+**Player state** - HP, max HP, attack power, XP, kills, deaths, all 25 talent ranks, alive/dead status, respawn timers. Every player's full state lives in a PDA on the ER.
 
-**Arena state** — Global kill counter, active status, authority. The arena PDA tracks aggregate stats across all players.
+**Arena state** - Global kill counter, active status, authority. The arena PDA tracks aggregate stats across all players.
 
-**Delegation and commits** — Player accounts get delegated from Solana devnet to the ER for fast execution. The server periodically commits all state back to the base layer, so nothing is lost if the ER session ends.
+**Delegation and commits** - Player accounts get delegated from Solana devnet to the ER for fast execution. The server periodically commits all state back to the base layer, so nothing is lost if the ER session ends.
 
 ## Architecture
 
@@ -74,15 +74,15 @@ The server sends hit counts to the ER. The ER computes outcomes. The server read
 
 Five trees, each with 4 regular talents and 1 capstone. You unlock 1 talent point at level 1, then every 2 levels. Max 2 capstones.
 
-**Tank** — Armor (damage reduction), Iron Skin (max HP), Regeneration, Lifesteal, Vitality Strike (capstone: bonus damage from max HP)
+**Tank** - Armor (damage reduction), Iron Skin (max HP), Regeneration, Lifesteal, Vitality Strike (capstone: bonus damage from max HP)
 
-**Firepower** — Heavy Hitter (raw damage), Rapid Fire, Critical Strike (chance + multiplier), Multi Shot, Homing Cannon (capstone)
+**Firepower** - Heavy Hitter (raw damage), Rapid Fire, Critical Strike (chance + multiplier), Multi Shot, Homing Cannon (capstone)
 
-**Brawler** — Dash, Body Slam, Pinball, Orbit, Shockwave (capstone)
+**Brawler** - Dash, Body Slam, Pinball, Orbit, Shockwave (capstone)
 
-**Mass Damage** — Ricochet, Counter Attack, Focus Fire, Nova, Chain Lightning (capstone)
+**Mass Damage** - Ricochet, Counter Attack, Focus Fire, Nova, Chain Lightning (capstone)
 
-**Blood Thirst** — Experience (XP bonus), Execute (bonus vs low HP), Kill Rush, Reaper's Arc, Berserker (capstone: damage boost below 33% HP)
+**Blood Thirst** - Experience (XP bonus), Execute (bonus vs low HP), Kill Rush, Reaper's Arc, Berserker (capstone: damage boost below 33% HP)
 
 The on-chain program validates every talent allocation against prerequisites, rank caps, point budgets, and capstone limits. The damage formula references talent ranks directly from the player's PDA.
 
@@ -92,31 +92,31 @@ Seasons run on a 3–4 day cycle. At the end of each season, the top 10 players 
 
 ## Roadmap
 
-### Phase 1 — Core gameplay (current)
+### Phase 1 - Core gameplay (current)
 
 - Real-time multiplayer battle royale with 60+ (potential up to 100s) concurrent players
 - Token-gated entry: buy the token to spawn, sell to exit
-- Full combat resolution on MagicBlock Ephemeral Rollups — the chain computes every point of damage
+- Full combat resolution on MagicBlock Ephemeral Rollups - the chain computes every point of damage
 - 25-talent skill tree validated and stored on-chain
 - XP, leveling, kill/death tracking as on-chain state
 - Season cycles (3–4 days) with manual top-10 rewards via airdrop
 - Live token price, market cap, and volume displayed in-game via DexScreener
 - Frequent balance patches and season resets as the meta evolves
 
-### Phase 2 — On-chain rewards
+### Phase 2 - On-chain rewards
 
 - Automated season reward distribution via smart contract (replace manual airdrops)
 - On-chain leaderboard snapshots at season end for verifiable reward eligibility
 - Vesting contract for the player reward allocation with transparent unlock schedule
 
-### Phase 3 — Governance
+### Phase 3 - Governance
 
 - Deploy SPL Governance Realm for the token community (code complete, pending stable meta)
 - Token holders vote on game parameters: fire rate, bullet damage, XP curves, physics tuning
-- Passed proposals apply automatically — the server polls governance state and picks up config overrides
+- Passed proposals apply automatically - the server polls governance state and picks up config overrides
 - Proposal creation, voting, and token deposit/withdraw all handled client-side
 
-Financialization is being staged intentionally. The game is in active development with frequent rebalancing — adding real economic stakes before the core loop is stable would be irresponsible. The architecture supports all of the above today; it's a matter of flipping switches once gameplay is dialed in.
+Financialization is being staged intentionally. The game is in active development with frequent rebalancing - adding real economic stakes before the core loop is stable would be irresponsible. The architecture supports all of the above today; it's a matter of flipping switches once gameplay is dialed in.
 
 ## On-chain program
 
