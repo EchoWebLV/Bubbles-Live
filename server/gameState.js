@@ -175,6 +175,12 @@ class GameState {
     this.talentSyncQueue = [];
     this.isProcessingTalentSync = false;
 
+    // Sapper: mines on the field & decoy clones
+    this.mines = [];
+    this.mineIdCounter = 0;
+    this.decoyClones = [];
+    this.decoyIdCounter = 0;
+
     // ER state sync
     this.erSyncInterval = null;
     this._isSyncingER = false;
@@ -703,6 +709,11 @@ class GameState {
     // Nova talent: emit projectiles periodically
     this._processNova(now);
 
+    // Sapper: drop mines, update decoy clones, process mine detonations/singularity
+    this._processLandmines(now);
+    this._processDecoyClones(now, deltaTime);
+    this._processMineDetonations(now);
+
     // Shooting logic
     this.holders.forEach(holder => {
       if (holder.x === undefined) return;
@@ -1047,6 +1058,17 @@ class GameState {
       }
 
       if (target && targetBattle) {
+        // Evasion talent: chance to dodge incoming bullets entirely
+        const evasionRank = targetBattle.talents?.evasion || 0;
+        if (evasionRank > 0) {
+          const dodgeChance = getTalentValue('evasion', evasionRank);
+          if (Math.random() < dodgeChance) {
+            bulletsToRemove.add(bullet.id);
+            this.vfx.push({ type: 'dodge', x: target.x, y: target.y - 15, createdAt: now });
+            return;
+          }
+        }
+
         bulletsToRemove.add(bullet.id);
 
         let actualDmg = Math.min(bullet.damage, 5);
@@ -1344,7 +1366,17 @@ class GameState {
           targetBattle.isAlive = false;
 
           const victimLevel = calcLevel(targetBattle.xp || 0);
-          targetBattle.ghostUntil = now + calcGhostMs(victimLevel);
+          let ghostMs = calcGhostMs(victimLevel);
+
+          // Dead Drop talent: reduced respawn time + mega-mine on death
+          const deadDropRank = targetBattle.talents?.deadDrop || 0;
+          if (deadDropRank > 0) {
+            const reduction = ALL_TALENTS.deadDrop.respawnReduction[deadDropRank - 1];
+            ghostMs = Math.round(ghostMs * (1 - reduction));
+            this._spawnMegaMine(target.address, target.x, target.y, targetBattle, deadDropRank, now);
+          }
+
+          targetBattle.ghostUntil = now + ghostMs;
 
           if (shooterBattle) {
             shooterBattle.kills++;
@@ -1608,6 +1640,519 @@ class GameState {
         });
       }
     });
+  }
+
+  // ─── Sapper: Landmine dropping ─────────────────────────────────────
+  _processLandmines(now) {
+    const cfg = ALL_TALENTS.landmine;
+
+    // Drop mines for real bubbles
+    this.battleBubbles.forEach((bubble, address) => {
+      if (bubble.isGhost) return;
+      const rank = bubble.talents?.landmine || 0;
+      if (rank <= 0) return;
+
+      const holder = this.holders.find(h => h.address === address);
+      if (!holder || holder.x === undefined) return;
+
+      const cooldown = cfg.cooldownMs[rank - 1];
+      if (!bubble._lastMineDrop) bubble._lastMineDrop = now - Math.random() * cooldown;
+      if (now - bubble._lastMineDrop < cooldown) return;
+      bubble._lastMineDrop = now;
+
+      const maxMines = cfg.maxActiveMines[rank - 1];
+      const ownerMines = this.mines.filter(m => m.ownerAddress === address && !m.isDetonating);
+      if (ownerMines.length >= maxMines) {
+        const oldest = ownerMines.reduce((a, b) => a.createdAt < b.createdAt ? a : b);
+        this.mines = this.mines.filter(m => m.id !== oldest.id);
+      }
+
+      this._spawnMine(address, holder.x, holder.y, bubble, rank, now, false);
+    });
+
+    // Drop mines for decoy clones
+    for (const clone of this.decoyClones) {
+      if (!clone.alive) continue;
+      const ownerBubble = this.battleBubbles.get(clone.ownerAddress);
+      if (!ownerBubble) continue;
+      const mineRank = ownerBubble.talents?.landmine || 0;
+      if (mineRank <= 0) continue;
+
+      const cooldown = cfg.cooldownMs[mineRank - 1];
+      if (!clone._lastMineDrop) clone._lastMineDrop = now - Math.random() * cooldown;
+      if (now - clone._lastMineDrop < cooldown) continue;
+      clone._lastMineDrop = now;
+
+      this._spawnMine(clone.ownerAddress, clone.x, clone.y, ownerBubble, mineRank, now, false);
+    }
+
+    // Expire old mines
+    this.mines = this.mines.filter(m => {
+      if (m.isDetonating) return true;
+      const duration = m.isMegaMine ? ALL_TALENTS.deadDrop.megaMineDurationMs : cfg.mineDurationMs;
+      return now - m.createdAt < duration;
+    });
+  }
+
+  _spawnMine(ownerAddress, x, y, bubble, landmineRank, now, isMegaMine) {
+    const cfg = ALL_TALENTS.landmine;
+    const singRank = bubble.talents?.singularity || 0;
+
+    this.mines.push({
+      id: `mine-${this.mineIdCounter++}`,
+      ownerAddress,
+      x, y,
+      createdAt: now,
+      isMegaMine: false,
+      landmineRank,
+      singularityRank: singRank,
+      radius: cfg.mineRadius,
+      detectionRadius: cfg.mineDetectionRadius,
+      damagePct: cfg.mineDamagePct,
+      ownerMaxHealth: bubble.maxHealth,
+      isDetonating: false,
+      singularityState: null,
+    });
+  }
+
+  _spawnMegaMine(ownerAddress, x, y, bubble, deadDropRank, now) {
+    const cfg = ALL_TALENTS.deadDrop;
+    const singRank = bubble.talents?.singularity || 0;
+
+    // Remove any existing mega-mine from this owner
+    this.mines = this.mines.filter(m => !(m.ownerAddress === ownerAddress && m.isMegaMine));
+
+    this.mines.push({
+      id: `mine-${this.mineIdCounter++}`,
+      ownerAddress,
+      x, y,
+      createdAt: now,
+      isMegaMine: true,
+      landmineRank: bubble.talents?.landmine || 0,
+      singularityRank: singRank,
+      radius: cfg.megaMineRadius[deadDropRank - 1],
+      detectionRadius: cfg.megaMineRadius[deadDropRank - 1] + 10,
+      damagePct: cfg.megaMineDamagePct[deadDropRank - 1],
+      ownerMaxHealth: bubble.maxHealth,
+      isDetonating: false,
+      singularityState: null,
+    });
+
+    const megaHolder = this.holders.find(h => h.address === ownerAddress);
+    this.vfx.push({ type: 'megaMine', x, y, color: megaHolder?.color || '#ff6600', createdAt: now });
+  }
+
+  // ─── Sapper: Mine detonation + Singularity black holes ────────────
+  _processMineDetonations(now) {
+    const { width, height } = this.dimensions;
+
+    for (const mine of this.mines) {
+      // Handle active singularity (black hole pulling)
+      if (mine.isDetonating && mine.singularityState) {
+        const ss = mine.singularityState;
+        const elapsed = now - ss.startTime;
+        const pullDuration = ALL_TALENTS.singularity.pullDurationMs[ss.rank - 1];
+
+        if (elapsed >= pullDuration) {
+          // Pull phase over — detonate
+          const detonationBonus = ALL_TALENTS.singularity.detonationBonus[ss.rank - 1];
+          const detonationDmg = mine.ownerMaxHealth * mine.damagePct * (1 + detonationBonus);
+
+          for (const addr of ss.pulledTargets) {
+            const tb = this.battleBubbles.get(addr);
+            if (!tb || tb.isGhost) continue;
+            const th = this.holders.find(h => h.address === addr);
+            if (!th) continue;
+
+            tb.health -= detonationDmg;
+            this.damageNumbers.push({
+              id: `dmg-${now}-${Math.random()}`, x: th.x, y: th.y - 20,
+              damage: detonationDmg, createdAt: now, alpha: 1,
+              color: '#9900ff', fontSize: 22, type: 'singularity',
+            });
+            if (this.magicBlockReady) this._queueAttack(mine.ownerAddress, addr);
+
+            if (tb.health <= 0) {
+              this._handleMineDeath(mine.ownerAddress, addr, now);
+            }
+          }
+
+          const singExplHolder = this.holders.find(h => h.address === mine.ownerAddress);
+          this.vfx.push({ type: 'singularityExplode', x: mine.x, y: mine.y, radius: ALL_TALENTS.singularity.pullRadius[ss.rank - 1], color: singExplHolder?.color || '#9900ff', createdAt: now });
+          mine._remove = true;
+          continue;
+        }
+
+        // Ongoing pull: apply DoT each second and pull enemies toward center
+        const dotPct = ALL_TALENTS.singularity.dotPerSecondPct;
+        const pullRadius = ALL_TALENTS.singularity.pullRadius[ss.rank - 1];
+        const pullStr = ALL_TALENTS.singularity.pullStrength;
+
+        if (!ss.lastDotTick || now - ss.lastDotTick >= 1000) {
+          ss.lastDotTick = now;
+          const dotDmg = mine.ownerMaxHealth * dotPct;
+
+          for (const addr of ss.pulledTargets) {
+            const tb = this.battleBubbles.get(addr);
+            if (!tb || tb.isGhost) continue;
+            const th = this.holders.find(h => h.address === addr);
+            if (!th) continue;
+
+            tb.health -= dotDmg;
+            this.damageNumbers.push({
+              id: `dmg-${now}-${Math.random()}`, x: th.x, y: th.y - 10,
+              damage: dotDmg, createdAt: now, alpha: 1,
+              color: '#cc44ff', fontSize: 14, type: 'singularityDot',
+            });
+            if (this.magicBlockReady) this._queueAttack(mine.ownerAddress, addr);
+
+            if (tb.health <= 0) {
+              this._handleMineDeath(mine.ownerAddress, addr, now);
+            }
+          }
+        }
+
+        // Pull physics: drag all pulled enemies toward the black hole center
+        for (const addr of ss.pulledTargets) {
+          const tb = this.battleBubbles.get(addr);
+          if (!tb || tb.isGhost) continue;
+          const th = this.holders.find(h => h.address === addr);
+          if (!th || th.x === undefined) continue;
+
+          const dx = mine.x - th.x;
+          const dy = mine.y - th.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > 2) {
+            th.vx += (dx / dist) * pullStr * 10;
+            th.vy += (dy / dist) * pullStr * 10;
+          }
+        }
+
+        // Check for new enemies entering pull radius
+        const maxPulled = ALL_TALENTS.singularity.maxPulled[ss.rank - 1];
+        if (ss.pulledTargets.size < maxPulled) {
+          for (const h of this.holders) {
+            if (h.address === mine.ownerAddress || h.x === undefined) continue;
+            if (ss.pulledTargets.has(h.address)) continue;
+            const hb = this.battleBubbles.get(h.address);
+            if (!hb || hb.isGhost) continue;
+            const dx = h.x - mine.x;
+            const dy = h.y - mine.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < pullRadius) {
+              ss.pulledTargets.add(h.address);
+              if (ss.pulledTargets.size >= maxPulled) break;
+            }
+          }
+        }
+
+        continue;
+      }
+
+      // Check for enemy proximity to trigger mine
+      if (mine.isDetonating) continue;
+
+      for (const h of this.holders) {
+        if (h.address === mine.ownerAddress || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+
+        const dx = h.x - mine.x;
+        const dy = h.y - mine.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > mine.detectionRadius + h.radius) continue;
+
+        // Mine triggered!
+        if (mine.singularityRank > 0) {
+          // Singularity: start black hole pull phase
+          mine.isDetonating = true;
+          mine.singularityState = {
+            rank: mine.singularityRank,
+            startTime: now,
+            lastDotTick: now,
+            pulledTargets: new Set([h.address]),
+          };
+
+          // Apply first DoT tick immediately
+          const dotDmg = mine.ownerMaxHealth * ALL_TALENTS.singularity.dotPerSecondPct;
+          hb.health -= dotDmg;
+          this.damageNumbers.push({
+            id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 10,
+            damage: dotDmg, createdAt: now, alpha: 1,
+            color: '#cc44ff', fontSize: 14, type: 'singularityDot',
+          });
+          if (this.magicBlockReady) this._queueAttack(mine.ownerAddress, h.address);
+
+          const singStartHolder = this.holders.find(h => h.address === mine.ownerAddress);
+          this.vfx.push({ type: 'singularityStart', x: mine.x, y: mine.y, radius: ALL_TALENTS.singularity.pullRadius[mine.singularityRank - 1], color: singStartHolder?.color || '#9900ff', createdAt: now });
+
+          if (hb.health <= 0) {
+            this._handleMineDeath(mine.ownerAddress, h.address, now);
+          }
+        } else {
+          // Normal mine: instant detonation
+          const dmg = mine.ownerMaxHealth * mine.damagePct;
+          hb.health -= dmg;
+          this.damageNumbers.push({
+            id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 20,
+            damage: dmg, createdAt: now, alpha: 1,
+            color: '#ff6600', fontSize: 20, type: 'mine',
+          });
+          if (this.magicBlockReady) this._queueAttack(mine.ownerAddress, h.address);
+
+          const mineExplHolder = this.holders.find(h => h.address === mine.ownerAddress);
+          this.vfx.push({ type: 'mineExplode', x: mine.x, y: mine.y, radius: mine.radius * 3, color: mineExplHolder?.color || '#ffaa00', createdAt: now });
+
+          if (hb.health <= 0) {
+            this._handleMineDeath(mine.ownerAddress, h.address, now);
+          }
+
+          mine._remove = true;
+        }
+        break;
+      }
+    }
+
+    this.mines = this.mines.filter(m => !m._remove);
+  }
+
+  _handleMineDeath(killerAddress, victimAddress, now) {
+    const victim = this.battleBubbles.get(victimAddress);
+    if (!victim || victim.isGhost) return;
+
+    victim.health = 0;
+    victim.isGhost = true;
+    victim.isAlive = false;
+
+    const victimLevel = calcLevel(victim.xp || 0);
+    let ghostMs = calcGhostMs(victimLevel);
+
+    // Dead Drop: reduced respawn + mega-mine on death
+    const deadDropRank = victim.talents?.deadDrop || 0;
+    if (deadDropRank > 0) {
+      const reduction = ALL_TALENTS.deadDrop.respawnReduction[deadDropRank - 1];
+      ghostMs = Math.round(ghostMs * (1 - reduction));
+      const vh = this.holders.find(h => h.address === victimAddress);
+      if (vh && vh.x !== undefined) {
+        this._spawnMegaMine(victimAddress, vh.x, vh.y, victim, deadDropRank, now);
+      }
+    }
+
+    victim.ghostUntil = now + ghostMs;
+
+    // Killer rewards (mirrors bullet death handler)
+    const killer = this.battleBubbles.get(killerAddress);
+    if (killer && !killer.isGhost) {
+      killer.kills++;
+      let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+      const killerLevel = calcLevel(killer.xp || 0);
+      const levelDiff = Math.max(0, victimLevel - killerLevel);
+      const bountyMultiplier = 1 + Math.min(levelDiff * 0.05, 3.0);
+      killXp = Math.round(killXp * bountyMultiplier);
+      const expVal = getTalentValue('experience', killer.talents?.experience || 0);
+      if (expVal > 0) killXp = Math.round(killXp * (1 + expVal));
+      killer.xp = (killer.xp || 0) + killXp;
+
+      // Recalculate killer's level and stats from new XP
+      const newLevel = calcLevel(killer.xp);
+      killer.healthLevel = newLevel;
+      killer.attackLevel = newLevel;
+      const fortMult = killer.classId === 1 ? classMultiplier(1, newLevel) : 1;
+      killer.maxHealth = Math.round(calcMaxHealth(newLevel) * fortMult);
+      killer.attackPower = calcAttackPower(newLevel);
+      killer.health = Math.min(killer.health, killer.maxHealth);
+      if (!killer.manualBuild) {
+        const newTalents = autoAllocateTalents(killer);
+        this._queueTalentSync(killerAddress, newTalents);
+      }
+
+      const killRushRank = killer.talents?.killRush || 0;
+      if (killRushRank > 0) {
+        killer.killRushUntil = now + ALL_TALENTS.killRush.durationMs;
+      }
+    }
+
+    // Victim death XP + talent sync
+    victim.deaths = (victim.deaths || 0) + 1;
+    victim.xp = (victim.xp || 0) + PROGRESSION.xpPerDeath;
+    if (!victim.manualBuild) {
+      const newTalents = autoAllocateTalents(victim);
+      this._queueTalentSync(victimAddress, newTalents);
+    }
+
+    this.killFeed.unshift({ killer: killerAddress, victim: victimAddress, time: now });
+    this.killFeed = this.killFeed.slice(0, 20);
+    this.addEventLog(`${victimAddress.slice(0, 6)}... killed by mine from ${killerAddress.slice(0, 6)}...`);
+
+    // Log to on-chain records
+    if (this.magicBlockReady && this.magicBlock) {
+      this.magicBlock._logEvent('kill', `${killerAddress.slice(0, 6)}... mine killed ${victimAddress.slice(0, 6)}...`, null, {
+        killer: killerAddress,
+        victim: victimAddress,
+      });
+      this.magicBlock._logEvent('death', `${victimAddress.slice(0, 6)}... was eliminated by mine`, null, {
+        victim: victimAddress,
+        killer: killerAddress,
+      });
+    }
+
+    this.updateTopKillers();
+  }
+
+  // ─── Sapper: Decoy clone logic ────────────────────────────────────
+  _processDecoyClones(now, deltaTime) {
+    const { width, height } = this.dimensions;
+
+    // Spawn new clones
+    this.battleBubbles.forEach((bubble, address) => {
+      if (bubble.isGhost) return;
+      const decoyRank = bubble.talents?.decoy || 0;
+      if (decoyRank <= 0) return;
+
+      const cooldown = ALL_TALENTS.decoy.cooldownMs[decoyRank - 1];
+      if (!bubble._lastDecoySpawn) bubble._lastDecoySpawn = now - Math.random() * cooldown;
+      if (now - bubble._lastDecoySpawn < cooldown) return;
+
+      // Only one clone active at a time
+      if (this.decoyClones.some(c => c.ownerAddress === address && c.alive)) return;
+
+      bubble._lastDecoySpawn = now;
+      const holder = this.holders.find(h => h.address === address);
+      if (!holder || holder.x === undefined) return;
+
+      const cloneHp = bubble.maxHealth * ALL_TALENTS.decoy.cloneHpPct[decoyRank - 1];
+      const cloneDmgMult = ALL_TALENTS.decoy.cloneDamagePct[decoyRank - 1];
+
+      this.decoyClones.push({
+        id: `decoy-${this.decoyIdCounter++}`,
+        ownerAddress: address,
+        x: holder.x,
+        y: holder.y,
+        vx: -(holder.vx || 0),
+        vy: -(holder.vy || 0),
+        radius: holder.radius || 15,
+        color: holder.color,
+        health: cloneHp,
+        maxHealth: cloneHp,
+        damageMult: cloneDmgMult,
+        attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
+        createdAt: now,
+        lastShotTime: now,
+        alive: true,
+        _lastMineDrop: now,
+      });
+
+      this.vfx.push({ type: 'decoySpawn', x: holder.x, y: holder.y, createdAt: now });
+    });
+
+    // Update existing clones
+    for (const clone of this.decoyClones) {
+      if (!clone.alive) continue;
+
+      const elapsed = now - clone.createdAt;
+      if (elapsed >= ALL_TALENTS.decoy.cloneDurationMs || clone.health <= 0) {
+        clone.alive = false;
+        this.vfx.push({ type: 'decoyDeath', x: clone.x, y: clone.y, createdAt: now });
+        continue;
+      }
+
+      // Move clone
+      clone.x += (clone.vx || 0) * deltaTime;
+      clone.y += (clone.vy || 0) * deltaTime;
+      clone.vx *= PHYSICS_CONFIG.velocityDecay;
+      clone.vy *= PHYSICS_CONFIG.velocityDecay;
+
+      const margin = clone.radius + 10;
+      if (clone.x < margin) { clone.x = margin; clone.vx = Math.abs(clone.vx) * PHYSICS_CONFIG.wallBounce; }
+      if (clone.x > width - margin) { clone.x = width - margin; clone.vx = -Math.abs(clone.vx) * PHYSICS_CONFIG.wallBounce; }
+      if (clone.y < margin) { clone.y = margin; clone.vy = Math.abs(clone.vy) * PHYSICS_CONFIG.wallBounce; }
+      if (clone.y > height - margin) { clone.y = height - margin; clone.vy = -Math.abs(clone.vy) * PHYSICS_CONFIG.wallBounce; }
+
+      const speed = Math.sqrt(clone.vx ** 2 + clone.vy ** 2);
+      if (speed < PHYSICS_CONFIG.minSpeed && speed > 0) {
+        const scale = PHYSICS_CONFIG.minSpeed / speed;
+        clone.vx *= scale;
+        clone.vy *= scale;
+      }
+
+      // Clone shoots at nearest enemy
+      const ownerBubble = this.battleBubbles.get(clone.ownerAddress);
+      if (!ownerBubble) continue;
+
+      const fireRate = BATTLE_CONFIG.fireRate;
+      if (now - clone.lastShotTime < fireRate) continue;
+
+      let closest = null;
+      let closestDist = Infinity;
+      for (const h of this.holders) {
+        if (h.address === clone.ownerAddress || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+        const dx = h.x - clone.x;
+        const dy = h.y - clone.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = h;
+        }
+      }
+
+      if (closest && closestDist < 800) {
+        const dx = closest.x - clone.x;
+        const dy = closest.y - clone.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const curveDir = Math.random() > 0.5 ? 1 : -1;
+
+        this.bullets.push({
+          id: `b-${this.bulletIdCounter++}`,
+          shooterAddress: clone.ownerAddress,
+          targetAddress: closest.address,
+          shooterColor: clone.color,
+          x: clone.x, y: clone.y,
+          startX: clone.x, startY: clone.y,
+          targetX: closest.x, targetY: closest.y,
+          progress: 0,
+          curveDirection: curveDir,
+          curveStrength: BATTLE_CONFIG.curveStrength.min +
+            Math.random() * (BATTLE_CONFIG.curveStrength.max - BATTLE_CONFIG.curveStrength.min),
+          vx: (dx / dist) * BATTLE_CONFIG.bulletSpeed,
+          vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
+          damage: clone.attackPower,
+          createdAt: now,
+          isDecoyBullet: true,
+        });
+        clone.lastShotTime = now;
+      }
+    }
+
+    // Decoy clones take damage from enemy bullets (check collisions)
+    for (const clone of this.decoyClones) {
+      if (!clone.alive) continue;
+      for (let bi = this.bullets.length - 1; bi >= 0; bi--) {
+        const bullet = this.bullets[bi];
+        if (bullet.shooterAddress === clone.ownerAddress) continue;
+        if (bullet.isDecoyBullet) continue;
+        const dx = bullet.x - clone.x;
+        const dy = bullet.y - clone.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < clone.radius + 3) {
+          clone.health -= Math.min(bullet.damage, 5);
+          this.bullets.splice(bi, 1);
+          this.damageNumbers.push({
+            id: `dmg-${now}-${Math.random()}`, x: clone.x, y: clone.y - 10,
+            damage: bullet.damage, createdAt: now, alpha: 1,
+            color: '#aaaaaa', fontSize: 12, type: 'decoyHit',
+          });
+          if (clone.health <= 0) {
+            clone.alive = false;
+            this.vfx.push({ type: 'decoyDeath', x: clone.x, y: clone.y, createdAt: now });
+            break;
+          }
+        }
+      }
+    }
+
+    this.decoyClones = this.decoyClones.filter(c => c.alive || now - c.createdAt < 500);
   }
 
   // ─── ER Hit-Count Aggregation ────────────────────────────────────
@@ -2377,6 +2922,31 @@ class GameState {
         isBloodBolt: b.isBloodBolt || false,
         isLifeTap: b.isLifeTap || false,
         isBloodWave: b.isBloodWave || false,
+      })),
+      mines: this.mines.map(m => ({
+        id: m.id,
+        ownerAddress: m.ownerAddress,
+        x: Math.round(m.x),
+        y: Math.round(m.y),
+        radius: m.radius,
+        isMegaMine: m.isMegaMine,
+        isDetonating: m.isDetonating,
+        singularityRank: m.singularityRank,
+        singularityState: m.singularityState ? {
+          rank: m.singularityState.rank,
+          startTime: m.singularityState.startTime,
+          pullRadius: ALL_TALENTS.singularity.pullRadius[m.singularityState.rank - 1],
+        } : null,
+      })),
+      decoyClones: this.decoyClones.filter(c => c.alive).map(c => ({
+        id: c.id,
+        ownerAddress: c.ownerAddress,
+        x: Math.round(c.x),
+        y: Math.round(c.y),
+        radius: c.radius,
+        color: c.color,
+        health: Math.round(c.health),
+        maxHealth: Math.round(c.maxHealth),
       })),
       damageNumbers: this.damageNumbers,
       vfx: this.vfx,

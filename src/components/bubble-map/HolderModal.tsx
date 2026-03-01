@@ -76,6 +76,18 @@ const TALENT_TREES = {
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
     ],
   },
+  sapper: {
+    name: 'Sapper',
+    color: 'teal',
+    icon: '\u{1F4A3}',
+    talents: [
+      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 14/12/10/8/6s. 5% max HP dmg', maxRank: 5 },
+      { id: 'evasion', name: 'Evasion', desc: '5/10/15/20/28% chance to dodge bullets', maxRank: 5 },
+      { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Clone every 25/21/17/13/9s. Shoots & drops mines for 5s', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 2/3/4s pull, 2% HP/s DoT', maxRank: 3 },
+    ],
+  },
 } as const;
 
 interface HolderModalProps {
@@ -109,6 +121,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
     red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
     yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
     purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
+    teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
   };
 
   return (

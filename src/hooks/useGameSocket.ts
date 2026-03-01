@@ -48,6 +48,12 @@ export interface TalentRanks {
   killRush: number;
   reaperArc: number;
   berserker: number;
+  // Sapper
+  landmine: number;
+  evasion: number;
+  deadDrop: number;
+  decoy: number;
+  singularity: number;
   [key: string]: number;
 }
 
@@ -113,7 +119,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'dodge';
   x: number;
   y: number;
   targetX?: number;
@@ -126,12 +132,41 @@ export interface GameVfx {
   small?: boolean;
 }
 
+export interface GameMine {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  isMegaMine: boolean;
+  isDetonating: boolean;
+  singularityRank: number;
+  singularityState: {
+    rank: number;
+    startTime: number;
+    pullRadius: number;
+  } | null;
+}
+
+export interface GameDecoyClone {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  health: number;
+  maxHealth: number;
+}
+
 export interface GameState {
   holders: GameHolder[];
   battleBubbles: GameBattleBubble[];
   bullets: GameBullet[];
   damageNumbers: GameDamageNumber[];
   vfx: GameVfx[];
+  mines: GameMine[];
+  decoyClones: GameDecoyClone[];
   killFeed: GameKillFeed[];
   eventLog: string[];
   topKillers: { address: string; kills: number; level: number }[];

@@ -59,10 +59,39 @@ export interface DamageNumber {
   type?: string;
 }
 
+export interface Mine {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  isMegaMine: boolean;
+  isDetonating: boolean;
+  singularityRank: number;
+  singularityState: {
+    rank: number;
+    startTime: number;
+    pullRadius: number;
+  } | null;
+}
+
+export interface DecoyClone {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  health: number;
+  maxHealth: number;
+}
+
 export interface BattleState {
   bubbles: Map<string, BattleBubble>;
   bullets: Bullet[];
   damageNumbers: DamageNumber[];
+  mines: Mine[];
+  decoyClones: DecoyClone[];
   lastUpdateTime: number;
 }
 
@@ -98,6 +127,8 @@ export function createBattleState(): BattleState {
     bubbles: new Map(),
     bullets: [],
     damageNumbers: [],
+    mines: [],
+    decoyClones: [],
     lastUpdateTime: Date.now(),
   };
 }

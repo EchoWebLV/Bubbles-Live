@@ -331,6 +331,76 @@ const BLOOD_THIRST = {
   },
 };
 
+// ─── SAPPER ──────────────────────────────────────────────────────────────
+const SAPPER = {
+  landmine: {
+    id: 'landmine',
+    name: 'Landmine',
+    description: 'Drop a mine every {value}s. Enemies that touch it take 5% of your max HP',
+    tree: 'sapper',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    cooldownMs: [14000, 12000, 10000, 8000, 6000],
+    mineDamagePct: 0.05,
+    mineDurationMs: 20000,
+    maxActiveMines: [3, 4, 5, 6, 8],
+    mineRadius: 18,
+    mineDetectionRadius: 22,
+  },
+  evasion: {
+    id: 'evasion',
+    name: 'Evasion',
+    description: '{value}% chance to dodge incoming bullets',
+    tree: 'sapper',
+    tier: 2,
+    requires: 'landmine',
+    maxRank: MAX_RANK,
+    perRank: [0.05, 0.10, 0.15, 0.20, 0.28],
+  },
+  deadDrop: {
+    id: 'deadDrop',
+    name: 'Dead Drop',
+    description: '-{value}% respawn time + leave a mega-mine on death',
+    tree: 'sapper',
+    tier: 3,
+    requires: 'evasion',
+    maxRank: MAX_RANK,
+    respawnReduction: [0.10, 0.15, 0.20, 0.25, 0.30],
+    megaMineDamagePct: [0.06, 0.09, 0.12, 0.15, 0.18],
+    megaMineDurationMs: 30000,
+    megaMineRadius: [30, 30, 40, 40, 50],
+  },
+  decoy: {
+    id: 'decoy',
+    name: 'Decoy',
+    description: 'Spawn a clone every {value}s that moves opposite, shoots & drops mines for 5s',
+    tree: 'sapper',
+    tier: 4,
+    requires: 'deadDrop',
+    maxRank: MAX_RANK,
+    cooldownMs: [25000, 21000, 17000, 13000, 9000],
+    cloneHpPct: [0.30, 0.40, 0.50, 0.60, 0.70],
+    cloneDamagePct: [0.50, 0.60, 0.70, 0.80, 0.90],
+    cloneDurationMs: 5000,
+  },
+  singularity: {
+    id: 'singularity',
+    name: 'Singularity',
+    description: 'Mines become black holes: pull enemies for {value}s, 2% max HP/s DoT, then detonate',
+    tree: 'sapper',
+    tier: 5,
+    requires: 'decoy',
+    maxRank: MAX_RANK_CAPSTONE,
+    pullDurationMs: [2000, 3000, 4000],
+    pullRadius: [120, 180, 250],
+    dotPerSecondPct: 0.02,
+    detonationBonus: [0.10, 0.20, 0.30],
+    maxPulled: [3, 3, 3],
+    pullStrength: 0.04,
+  },
+};
+
 // ─── Flat lookup ──────────────────────────────────────────────────────────
 const ALL_TALENTS = {
   ...TANK,
@@ -338,6 +408,7 @@ const ALL_TALENTS = {
   ...BRAWLER,
   ...MASS_DAMAGE,
   ...BLOOD_THIRST,
+  ...SAPPER,
 };
 
 // UI order per tree
@@ -347,37 +418,40 @@ const TREE_ORDER = {
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
   massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
+  sapper:      ['landmine', 'evasion', 'deadDrop', 'decoy', 'singularity'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
-  'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
-  'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'orbit', 'nova', 'reaperArc',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'landmine',
+  'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute', 'evasion',
+  'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush', 'deadDrop',
+  'lifesteal', 'multiShot', 'orbit', 'nova', 'reaperArc', 'decoy',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity',
 ];
 
-// ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
+// ─── Chain-ID mapping (on-chain u8 slots 0-29) ───────────────────────────
 const TALENT_NAME_TO_CHAIN_ID = {
   armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
   ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
   experience: 20, execute: 21, killRush: 22, reaperArc: 23, berserker: 24,
+  landmine: 25, evasion: 26, deadDrop: 27, decoy: 28, singularity: 29,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
   Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
 );
 
-// On-chain account field names in the order they map to chain slot 0-24
+// On-chain account field names in the order they map to chain slot 0-29
 const CHAIN_SLOT_FIELDS = [
   'talentIronSkin', 'talentHeavyHitter', 'talentRegeneration', 'talentLifesteal', 'talentArmor',
   'talentSwift', 'talentRapidFire', 'talentEvasion', 'talentQuickRespawn', 'talentMomentum',
   'talentWeakspot', 'talentCriticalStrike', 'talentFocusFire', 'talentMultiShot', 'talentDualCannon',
   'talentDeflect', 'talentAbsorb', 'talentLastStand', 'talentCloak', 'talentDash',
   'talentRampage', 'talentHoming', 'talentRicochet', 'talentDeathbomb', 'talentFrenzy',
+  'talentLandmine', 'talentEvasionSapper', 'talentDeadDrop', 'talentDecoy', 'talentSingularity',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -426,6 +500,9 @@ function pointsInTree(talents, treeName) {
   return total;
 }
 
+const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity'];
+const MAX_CAPSTONES = 2;
+
 module.exports = {
   MAX_LEVEL,
   LEVEL_SCALE_EARLY,
@@ -438,9 +515,12 @@ module.exports = {
   BRAWLER,
   MASS_DAMAGE,
   BLOOD_THIRST,
+  SAPPER,
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
+  CAPSTONE_TALENTS,
+  MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID,
   CHAIN_ID_TO_TALENT_NAME,
   CHAIN_SLOT_FIELDS,

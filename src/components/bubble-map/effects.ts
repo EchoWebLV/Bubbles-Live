@@ -318,6 +318,114 @@ export function createLightningArc(x1: number, y1: number, x2: number, y2: numbe
   };
 }
 
+// Mine explosion: ring burst + scattered sparks in the owner's color
+export function createMineExplosion(x: number, y: number, radius: number, color: string): Explosion {
+  const particles: Particle[] = [];
+
+  // Ring of particles expanding outward
+  const ringCount = 24;
+  for (let i = 0; i < ringCount; i++) {
+    const angle = (i / ringCount) * Math.PI * 2;
+    const speed = 4 + Math.random() * 5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 3 + Math.random() * 3,
+      color,
+      alpha: 1,
+      decay: 0.02 + Math.random() * 0.01,
+    });
+  }
+
+  // White-hot sparks
+  for (let i = 0; i < 16; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 6 + Math.random() * 8;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 1.5 + Math.random() * 2,
+      color: '#ffffff',
+      alpha: 1,
+      decay: 0.03 + Math.random() * 0.02,
+    });
+  }
+
+  // Slow-moving glow chunks in owner color
+  for (let i = 0; i < 10; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 5 + Math.random() * 5,
+      color,
+      alpha: 0.8,
+      decay: 0.012 + Math.random() * 0.008,
+    });
+  }
+
+  return { x, y, particles, createdAt: Date.now(), duration: 2000 };
+}
+
+// Singularity final detonation: massive implosion-then-explosion
+export function createSingularityExplosion(x: number, y: number, radius: number, color: string): Explosion {
+  const particles: Particle[] = [];
+
+  // Violent outward burst — 2 rings
+  for (let ring = 0; ring < 2; ring++) {
+    const count = 30 + ring * 10;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + ring * 0.3;
+      const speed = (5 + ring * 4) + Math.random() * 6;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius: 3 + Math.random() * 4,
+        color: ring === 0 ? '#bb66ff' : color,
+        alpha: 1,
+        decay: 0.012 + Math.random() * 0.008,
+      });
+    }
+  }
+
+  // White-hot core flash
+  for (let i = 0; i < 20; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 8 + Math.random() * 10;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 2 + Math.random() * 2,
+      color: '#ffffff',
+      alpha: 1,
+      decay: 0.025 + Math.random() * 0.015,
+    });
+  }
+
+  // Lingering purple embers
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 4 + Math.random() * 6,
+      color: '#9933ff',
+      alpha: 0.9,
+      decay: 0.008 + Math.random() * 0.006,
+    });
+  }
+
+  return { x, y, particles, createdAt: Date.now(), duration: 3000 };
+}
+
 // Create ripple effect for whale movement
 export function createRipple(x: number, y: number, color: string, maxRadius: number = 500): Ripple {
   return {
