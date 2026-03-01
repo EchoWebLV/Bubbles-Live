@@ -18,6 +18,8 @@ export interface BattleBubble {
   talents?: Record<string, number>;
   talentPoints?: number;
   manualBuild?: boolean;
+  classId?: number;
+  talentResetsUsed?: number;
 }
 
 export interface Bullet {

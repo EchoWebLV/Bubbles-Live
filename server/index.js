@@ -325,6 +325,19 @@ app.prepare().then(async () => {
       socket.emit('talentResult', result);
     });
 
+    socket.on('selectClass', (data) => {
+      if (!rateLimit(socket.id, 'allocateTalent')) {
+        socket.emit('classResult', { success: false, error: 'Rate limited' });
+        return;
+      }
+      if (!data || typeof data.walletAddress !== 'string' || typeof data.classId !== 'number') {
+        socket.emit('classResult', { success: false, error: 'Invalid request' });
+        return;
+      }
+      const result = gameState.selectClass(data.walletAddress, data.classId);
+      socket.emit('classResult', result);
+    });
+
     socket.on('resetTalents', (data) => {
       if (!rateLimit(socket.id, 'allocateTalent')) {
         socket.emit('talentResult', { success: false, error: 'Rate limited' });

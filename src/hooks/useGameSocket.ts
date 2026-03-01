@@ -68,6 +68,8 @@ export interface GameBattleBubble {
   talents: TalentRanks;
   talentPoints: number;
   manualBuild: boolean;
+  classId: number;
+  talentResetsUsed: number;
 }
 
 export interface GameBullet {
@@ -349,6 +351,21 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
   }, []);
 
+  // Select class (Fortify/Velocity/Impact)
+  const selectClass = useCallback((walletAddress: string, classId: number): Promise<{ success: boolean; classId?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("selectClass", { walletAddress, classId });
+      socketRef.current.once("classResult", (result: { success: boolean; classId?: number; error?: string }) => {
+        resolve(result);
+      });
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 10000);
+    });
+  }, []);
+
   // Reset all talent points
   const resetTalents = useCallback((walletAddress: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
     return new Promise((resolve) => {
@@ -477,6 +494,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     setDimensions,
     sendTransaction,
     upgradeStat,
+    selectClass,
     allocateTalent,
     resetTalents,
     getOnchainStats,

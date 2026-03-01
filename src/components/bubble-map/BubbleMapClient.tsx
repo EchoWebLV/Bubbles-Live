@@ -248,7 +248,7 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
+  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
   const effectiveAddress = guestAddress || connectedWalletAddress;
   const isGuest = !!guestAddress;
 
@@ -331,6 +331,16 @@ export function BubbleMapClient() {
       setAllocatingTalent(null);
     }
   }, [effectiveAddress, allocatingTalent, resetTalents]);
+
+  const handleSelectClass = useCallback(async (classId: number) => {
+    if (!effectiveAddress || allocatingTalent) return;
+    setAllocatingTalent('class');
+    try {
+      await selectClass(effectiveAddress, classId);
+    } finally {
+      setAllocatingTalent(null);
+    }
+  }, [effectiveAddress, allocatingTalent, selectClass]);
 
   // Kill streak announcements
   const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
@@ -719,6 +729,8 @@ export function BubbleMapClient() {
         talents: b.talents ?? ({} as TalentRanks),
         talentPoints: b.talentPoints ?? 0,
         manualBuild: b.manualBuild ?? false,
+        classId: b.classId ?? 0,
+        talentResetsUsed: b.talentResetsUsed ?? 0,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -1298,6 +1310,9 @@ export function BubbleMapClient() {
                       <Star className="w-3 h-3 text-yellow-400" />
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
                       {isGuest && <span className="text-[9px] text-orange-400 bg-orange-500/20 px-1 rounded">GUEST</span>}
+                      {(myBubble.classId ?? 0) === 1 && <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">FORTIFY</span>}
+                      {(myBubble.classId ?? 0) === 2 && <span className="text-[9px] text-sky-400 bg-sky-500/20 px-1 rounded">VELOCITY</span>}
+                      {(myBubble.classId ?? 0) === 3 && <span className="text-[9px] text-rose-400 bg-rose-500/20 px-1 rounded">IMPACT</span>}
                     </div>
                     <span className="text-xs text-amber-400 font-mono">{xp.toLocaleString()} XP</span>
                   </div>
@@ -1391,6 +1406,14 @@ export function BubbleMapClient() {
           if (!myBubble) return null;
           const talents = myBubble.talents || {} as TalentRanks;
           const tp = myBubble.talentPoints ?? 0;
+          const currentClassId = myBubble.classId ?? 0;
+          const resetsUsed = myBubble.talentResetsUsed ?? 0;
+
+          const CLASS_OPTIONS = [
+            { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+1% max HP per level', color: 'emerald' },
+            { id: 2, name: 'Velocity', icon: '⚡', desc: '+1% fire rate per level', color: 'sky' },
+            { id: 3, name: 'Impact',   icon: '🗡️', desc: '+1% bullet damage per level', color: 'rose' },
+          ];
 
           const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
             green:  { bg: 'bg-green-900/20',  border: 'border-green-500/30',  text: 'text-green-400',  rankBg: 'bg-green-900/30',  rankFill: 'bg-green-500' },
@@ -1422,10 +1445,11 @@ export function BubbleMapClient() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleResetTalents}
-                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0}
+                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0 || resetsUsed >= 1}
                       className="text-[10px] text-red-400/70 hover:text-red-300 disabled:opacity-30 transition-colors px-2 py-1 rounded border border-red-500/20 hover:border-red-500/40"
+                      title={resetsUsed >= 1 ? 'Reset already used this season' : 'Reset all talents (1 per season)'}
                     >
-                      Reset All
+                      {resetsUsed >= 1 ? 'Reset Used' : 'Reset All (1x)'}
                     </button>
                     <button
                       onClick={() => setShowTalentTree(false)}
@@ -1434,6 +1458,35 @@ export function BubbleMapClient() {
                       ×
                     </button>
                   </div>
+                </div>
+
+                {/* Class Selection Row */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mb-3">
+                  {CLASS_OPTIONS.map(cls => {
+                    const isSelected = currentClassId === cls.id;
+                    const isLocked = currentClassId > 0 && !isSelected;
+                    const colorMap: Record<string, { active: string; idle: string; text: string }> = {
+                      emerald: { active: 'bg-emerald-900/40 border-emerald-500/60', idle: 'bg-emerald-900/20 border-emerald-500/30 hover:border-emerald-400/50', text: 'text-emerald-400' },
+                      sky:     { active: 'bg-sky-900/40 border-sky-500/60',         idle: 'bg-sky-900/20 border-sky-500/30 hover:border-sky-400/50',             text: 'text-sky-400' },
+                      rose:    { active: 'bg-rose-900/40 border-rose-500/60',       idle: 'bg-rose-900/20 border-rose-500/30 hover:border-rose-400/50',           text: 'text-rose-400' },
+                    };
+                    const c = colorMap[cls.color];
+                    return (
+                      <button
+                        key={cls.id}
+                        onClick={() => !isLocked && !isSelected && handleSelectClass(cls.id)}
+                        disabled={isLocked || isSelected || allocatingTalent !== null}
+                        className={`w-full rounded-lg border px-1.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[11px] font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                          isSelected ? c.active : isLocked ? 'bg-slate-800/20 border-slate-700/20 opacity-25' : `${c.idle} cursor-pointer`
+                        }`}
+                      >
+                        <span className="text-xs sm:text-sm">{cls.icon}</span>
+                        <span className={isSelected ? c.text : isLocked ? 'text-slate-500' : 'text-white'}>{cls.name}</span>
+                        <span className="text-[8px] sm:text-[9px] text-slate-500 hidden sm:inline">{cls.desc}</span>
+                        {isSelected && <span className={`text-[8px] sm:text-[9px] font-bold ${c.text}`}>✓</span>}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">

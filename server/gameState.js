@@ -23,6 +23,19 @@ const BATTLE_CONFIG = {
   curveStrength: { min: 25, max: 60 },
 };
 
+// Class system: pick one before playing, +1% per level scaling
+const CLASS_CONFIG = {
+  0: { id: 0, name: 'None',     stat: null },
+  1: { id: 1, name: 'Fortify',  stat: 'hp' },       // +1% max HP per level
+  2: { id: 2, name: 'Velocity', stat: 'fireRate' },  // +1% fire rate per level
+  3: { id: 3, name: 'Impact',   stat: 'damage' },    // +1% bullet damage per level
+};
+
+function classMultiplier(classId, level) {
+  if (!classId || classId < 1 || classId > 3) return 1;
+  return 1 + (level * 0.01);
+}
+
 const PHYSICS_CONFIG = {
   minSpeed: 0.4,
   maxSpeed: 3.0,
@@ -478,6 +491,8 @@ class GameState {
           focusFireStacks: 0,
           shotCounter: 0,
           talentResets: 0,
+          classId: (cached && cached.classId > 0) ? cached.classId : (1 + Math.floor(Math.random() * 3)),
+          talentResetsUsed: cached ? (cached.talentResetsUsed || 0) : 0,
           // Brawler state
           _lastDash: 0,
           _lastDashHit: 0,
@@ -487,6 +502,11 @@ class GameState {
           // Nova state
           _lastNova: 0,
         };
+        if (bubble.classId === 1) {
+          const fm = classMultiplier(1, lvl);
+          bubble.maxHealth = Math.round(bubble.maxHealth * fm);
+          bubble.health = bubble.maxHealth;
+        }
         if (!bubble.manualBuild) {
           const newTalents = autoAllocateTalents(bubble);
           this._queueTalentSync(holder.address, newTalents);
@@ -697,7 +717,8 @@ class GameState {
       const berserkRank = battleBubble.talents?.berserker || 0;
       const berserkActive = berserkRank > 0 && battleBubble.health < battleBubble.maxHealth * ALL_TALENTS.berserker.hpThreshold;
       const berserkAtkSpeed = berserkActive ? ALL_TALENTS.berserker.atkSpeedBonus[berserkRank - 1] : 0;
-      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed);
+      const velocityMult = battleBubble.classId === 2 ? classMultiplier(2, calcLevel(battleBubble.xp)) : 1;
+      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed) / velocityMult;
       effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs || 80);
       if (now - battleBubble.lastShotTime < effectiveFireRate) return;
 
@@ -736,6 +757,7 @@ class GameState {
           damage = BATTLE_CONFIG.bulletDamage;
           battleBubble.attackPower = BATTLE_CONFIG.bulletDamage;
         }
+        if (battleBubble.classId === 3) damage *= classMultiplier(3, calcLevel(battleBubble.xp));
 
         // Heavy Hitter talent: flat damage boost
         const heavyHitterVal = getTalentValue('heavyHitter', battleBubble.talents.heavyHitter || 0);
@@ -1078,11 +1100,12 @@ class GameState {
           actualDmg *= (1 - armorVal);
         }
 
-        // Iron Skin talent: boost max health
+        // Iron Skin talent + Fortify class: boost max health
         const ironSkinVal = getTalentValue('ironSkin', targetBattle.talents?.ironSkin || 0);
-        if (ironSkinVal > 0) {
-          const boostedMax = calcMaxHealth(targetBattle.healthLevel) * (1 + ironSkinVal);
-          if (targetBattle.maxHealth < boostedMax) {
+        const fortMultTgt = targetBattle.classId === 1 ? classMultiplier(1, calcLevel(targetBattle.xp)) : 1;
+        if (ironSkinVal > 0 || fortMultTgt > 1) {
+          const boostedMax = calcMaxHealth(targetBattle.healthLevel) * (ironSkinVal > 0 ? (1 + ironSkinVal) : 1) * fortMultTgt;
+          if (targetBattle.maxHealth < Math.round(boostedMax)) {
             targetBattle.maxHealth = Math.round(boostedMax);
           }
         }
@@ -1339,7 +1362,8 @@ class GameState {
             const newLevel = calcLevel(shooterBattle.xp);
             shooterBattle.healthLevel = newLevel;
             shooterBattle.attackLevel = newLevel;
-            shooterBattle.maxHealth = calcMaxHealth(newLevel);
+            const fortMult = shooterBattle.classId === 1 ? classMultiplier(1, newLevel) : 1;
+            shooterBattle.maxHealth = Math.round(calcMaxHealth(newLevel) * fortMult);
             shooterBattle.attackPower = calcAttackPower(newLevel);
             shooterBattle.health = Math.min(shooterBattle.health, shooterBattle.maxHealth);
             if (!shooterBattle.manualBuild) {
@@ -1719,10 +1743,11 @@ class GameState {
           bubble.attackLevel = Math.max(bubble.attackLevel, state.attackLevel, effectiveLevel);
           bubble.attackPower = calcAttackPower(bubble.attackLevel);
 
-          // Derive maxHealth from local level + Iron Skin talent (local authority).
+          // Derive maxHealth from local level + Iron Skin + Fortify class (local authority).
           const baseMax = calcMaxHealth(bubble.healthLevel);
           const ironSkinVal = getTalentValue('ironSkin', bubble.talents?.ironSkin || 0);
-          bubble.maxHealth = ironSkinVal > 0 ? Math.round(baseMax * (1 + ironSkinVal)) : baseMax;
+          const fortifyMult = bubble.classId === 1 ? classMultiplier(1, calcLevel(bubble.xp)) : 1;
+          bubble.maxHealth = Math.round(baseMax * (ironSkinVal > 0 ? (1 + ironSkinVal) : 1) * fortifyMult);
 
           // Only trust ER health/alive data when the ER state is clearly
           // current (has at least as much XP and kills as local). After an ER
@@ -1768,6 +1793,8 @@ class GameState {
             isAlive: bubble.isAlive,
             talents: { ...bubble.talents },
             manualBuild: bubble.manualBuild,
+            classId: bubble.classId || 0,
+            talentResetsUsed: bubble.talentResetsUsed || 0,
           });
         } else {
           // No bubble yet — seed cache from chain for future bubble creation
@@ -1898,6 +1925,8 @@ class GameState {
       bubble._lastDashHit = 0;
       bubble._lastContactDmg = 0;
       bubble._lastNova = 0;
+      bubble.classId = 0;
+      bubble.talentResetsUsed = 0;
     }
 
     this.playerCache.clear();
@@ -1926,7 +1955,8 @@ class GameState {
       const lvl = calcLevel(medianXp);
       bubble.healthLevel = lvl;
       bubble.attackLevel = lvl;
-      bubble.maxHealth = calcMaxHealth(lvl);
+      const fortMultCatch = bubble.classId === 1 ? classMultiplier(1, lvl) : 1;
+      bubble.maxHealth = Math.round(calcMaxHealth(lvl) * fortMultCatch);
       bubble.attackPower = calcAttackPower(lvl);
       bubble.health = Math.min(bubble.health, bubble.maxHealth);
 
@@ -2006,10 +2036,11 @@ class GameState {
     bubble.talents[talentId] = (bubble.talents[talentId] || 0) + 1;
     bubble.manualBuild = true;
 
-    // Recalc Iron Skin immediately so HP reflects the new talent
+    // Recalc Iron Skin + Fortify immediately so HP reflects the new talent
     const ironSkinVal = getTalentValue('ironSkin', bubble.talents.ironSkin || 0);
-    if (ironSkinVal > 0) {
-      const boostedMax = Math.round(calcMaxHealth(bubble.healthLevel) * (1 + ironSkinVal));
+    const fortMultAlloc = bubble.classId === 1 ? classMultiplier(1, level) : 1;
+    if (ironSkinVal > 0 || fortMultAlloc > 1) {
+      const boostedMax = Math.round(calcMaxHealth(bubble.healthLevel) * (ironSkinVal > 0 ? (1 + ironSkinVal) : 1) * fortMultAlloc);
       bubble.maxHealth = boostedMax;
       bubble.health = Math.min(bubble.health, bubble.maxHealth);
     }
@@ -2024,12 +2055,31 @@ class GameState {
     };
   }
 
+  selectClass(walletAddress, classId) {
+    const bubble = this.battleBubbles.get(walletAddress);
+    if (!bubble) return { success: false, error: 'Not in game' };
+    if (bubble.classId > 0) return { success: false, error: 'Class already chosen' };
+    if (classId < 1 || classId > 3) return { success: false, error: 'Invalid class' };
+    bubble.classId = classId;
+    const level = calcLevel(bubble.xp);
+    if (classId === 1) {
+      bubble.maxHealth = Math.round(calcMaxHealth(bubble.healthLevel) * classMultiplier(1, level));
+      bubble.health = bubble.maxHealth;
+    }
+    return { success: true, classId: bubble.classId };
+  }
+
   resetTalents(walletAddress) {
     const bubble = this.battleBubbles.get(walletAddress);
     if (!bubble) return { success: false, error: 'Not in game' };
+    if ((bubble.talentResetsUsed || 0) >= 1) {
+      return { success: false, error: 'Already used your reset this season' };
+    }
     bubble.talents = createEmptyTalents();
     bubble.manualBuild = true;
-    // Recalc stats back to base
+    bubble.talentResetsUsed = (bubble.talentResetsUsed || 0) + 1;
+    bubble.classId = 0;
+    // Recalc stats back to base (no class bonus until re-picked)
     const level = calcLevel(bubble.xp);
     bubble.maxHealth = calcMaxHealth(bubble.healthLevel);
     bubble.health = Math.min(bubble.health, bubble.maxHealth);
@@ -2043,7 +2093,8 @@ class GameState {
       success: true,
       talents: { ...bubble.talents },
       talentPoints: calcTalentPoints(level),
-    
+      talentResetsUsed: bubble.talentResetsUsed,
+      classId: 0,
     };
   }
 
@@ -2238,12 +2289,19 @@ class GameState {
       focusFireStacks: 0,
       shotCounter: 0,
       talentResets: 0,
+      classId: 1 + Math.floor(Math.random() * 3),
+      talentResetsUsed: 0,
       _lastDash: 0,
       _lastDashHit: 0,
       _lastContactDmg: 0,
       killRushUntil: 0,
       _lastNova: 0,
     };
+    if (bubble.classId === 1) {
+      const fm = classMultiplier(1, lvl);
+      bubble.maxHealth = Math.round(bubble.maxHealth * fm);
+      bubble.health = bubble.maxHealth;
+    }
     const newTalents = autoAllocateTalents(bubble);
     this.battleBubbles.set(address, bubble);
 
@@ -2300,6 +2358,8 @@ class GameState {
         talents: b.talents || {},
         talentPoints: calcTalentPoints(calcLevel(b.xp || 0)) - totalPointsSpent(b.talents || {}),
         manualBuild: b.manualBuild || false,
+        classId: b.classId || 0,
+        talentResetsUsed: b.talentResetsUsed || 0,
       })),
       bullets: this.bullets.map(b => ({
         id: b.id,

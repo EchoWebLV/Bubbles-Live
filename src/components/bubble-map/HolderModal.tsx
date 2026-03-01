@@ -126,11 +126,14 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
             </motion.div>
             <div>
               <div className="font-mono text-lg">{shortenAddress(holder.address, 6)}</div>
-              <DialogDescription className="text-sm">
-                {token ? `${token.symbol} Holder` : "Token Holder"}
+              <DialogDescription className="text-sm flex items-center gap-1.5 flex-wrap">
+                <span>{token ? `${token.symbol} Holder` : "Token Holder"}</span>
                 {battleBubble && (
-                  <span className="ml-2 text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
+                  <span className="text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
                 )}
+                {battleBubble && (battleBubble.classId ?? 0) === 1 && <span className="text-[10px] text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">FORTIFY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 2 && <span className="text-[10px] text-sky-400 bg-sky-500/20 px-1.5 py-0.5 rounded font-bold">VELOCITY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 3 && <span className="text-[10px] text-rose-400 bg-rose-500/20 px-1.5 py-0.5 rounded font-bold">IMPACT</span>}
               </DialogDescription>
             </div>
           </DialogTitle>
@@ -209,6 +212,16 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                     {battleBubble.deaths > 0 ? (battleBubble.kills / battleBubble.deaths).toFixed(1) : battleBubble.kills.toFixed(0)}
                   </div>
                 </motion.div>
+              </div>
+            )}
+
+            {/* Class Badge */}
+            {battleBubble && (battleBubble.classId ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500">Class:</span>
+                {(battleBubble.classId ?? 0) === 1 && <span className="text-xs text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-lg font-bold">🛡️ Fortify <span className="text-[9px] text-slate-400 font-normal">+1% HP/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 2 && <span className="text-xs text-sky-400 bg-sky-500/20 border border-sky-500/30 px-2 py-0.5 rounded-lg font-bold">⚡ Velocity <span className="text-[9px] text-slate-400 font-normal">+1% fire rate/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 3 && <span className="text-xs text-rose-400 bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded-lg font-bold">🗡️ Impact <span className="text-[9px] text-slate-400 font-normal">+1% dmg/lvl</span></span>}
               </div>
             )}
 
