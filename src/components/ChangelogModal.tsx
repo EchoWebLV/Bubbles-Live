@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Swords, Heart, Zap, TrendingUp } from "lucide-react";
+import { X, Swords, Heart, Zap, TrendingUp, Shield, RotateCcw } from "lucide-react";
 
 const STORAGE_KEY_DISMISSED_SEASON = "hodlwarz-changelog-dismissed-season";
 const STORAGE_KEY_EVER_SEEN = "hodlwarz-changelog-ever-seen";
@@ -14,10 +14,12 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Heart, color: "#ff3366", title: "Respawn", desc: "Faster respawn times — 8s base (was 20s), ~68s at max level (was ~4 min)" },
-  { icon: Zap, color: "#00ffaa", title: "Power Scaling", desc: "Diminishing returns on HP & damage — lower levels can compete with higher levels" },
-  { icon: TrendingUp, color: "#00ccff", title: "XP Curve", desc: "Easier 1–25, scales after 50 — level 100 ≈ 450k total XP" },
-  { icon: Swords, color: "#ff00ff", title: "Bounty XP", desc: "+5% XP per level difference when killing higher-level players (cap 4×) — underdogs catch up" },
+  { icon: Shield, color: "#ff9900", title: "Classes", desc: "Choose Fortify (+1% HP/lvl), Velocity (+1% fire rate/lvl), or Impact (+1% dmg/lvl) - defines your playstyle" },
+  { icon: RotateCcw, color: "#ff3366", title: "Talent Reset", desc: "Reset your talents & class once per season - pick a new build mid-season" },
+  { icon: TrendingUp, color: "#00ccff", title: "XP Curve", desc: "Steeper scaling after level 50 (3.5% compound) - late levels are harder to reach" },
+  { icon: Zap, color: "#00ffaa", title: "XP Bar", desc: "Track your progress with a live XP bar in the player dashboard" },
+  { icon: Heart, color: "#ff3366", title: "Respawn", desc: "Faster respawn - 8s base, ~68s at max level" },
+  { icon: Swords, color: "#ff00ff", title: "Bounty XP", desc: "+5% XP per level difference when killing higher-level players (cap 4x)" },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
@@ -103,7 +105,7 @@ export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProp
                   transition={{ delay: 0.2 }}
                   className="text-sm text-slate-400 tracking-widest uppercase"
                 >
-                  New Season — Balance Update
+                  New Season — Classes & Balance
                 </motion.p>
               </div>
 

@@ -60,6 +60,13 @@ async function fetchDistributors(addresses: string[]): Promise<Map<string, Distr
   return map;
 }
 
+function claimableNow(c: AirdropClaim): bigint {
+  const unlocked = BigInt(c.amountUnlocked);
+  const claimed = BigInt(c.amountClaimed ?? "0");
+  const diff = unlocked - claimed;
+  return diff > BigInt(0) ? diff : BigInt(0);
+}
+
 function filterWarzClaims(
   claims: AirdropClaim[],
   distributors: Map<string, DistributorInfo>,
@@ -67,19 +74,13 @@ function filterWarzClaims(
 ): AirdropClaim[] {
   return claims.filter((c) => {
     const dist = distributors.get(c.distributorAddress);
-    if (!dist || dist.mint !== mint) return false;
-    const total = BigInt(c.amountUnlocked) + BigInt(c.amountLocked);
-    const claimed = BigInt(c.amountClaimed ?? "0");
-    return total - claimed > BigInt(0);
+    if (!dist || dist.mint !== mint || !dist.isActive) return false;
+    return claimableNow(c) > BigInt(0);
   });
 }
 
 function computeUnclaimed(claims: AirdropClaim[]): number {
-  return claims.reduce((sum, c) => {
-    const total = BigInt(c.amountUnlocked) + BigInt(c.amountLocked);
-    const claimed = BigInt(c.amountClaimed ?? "0");
-    return sum + Number(total - claimed);
-  }, 0);
+  return claims.reduce((sum, c) => sum + Number(claimableNow(c)), 0);
 }
 
 export function useAirdropChecker(): AirdropInfo {
@@ -173,10 +174,8 @@ export async function checkBatchEligibility(addresses: string[]): Promise<Set<st
     const eligible = new Set<string>();
     for (const c of data) {
       const dist = distributors.get(c.distributorAddress);
-      if (!dist || dist.mint !== mint) continue;
-      const total = BigInt(c.amountUnlocked) + BigInt(c.amountLocked);
-      const claimed = BigInt(c.amountClaimed ?? "0");
-      if (total - claimed > BigInt(0)) {
+      if (!dist || dist.mint !== mint || !dist.isActive) continue;
+      if (claimableNow(c) > BigInt(0)) {
         eligible.add(c.address);
       }
     }
