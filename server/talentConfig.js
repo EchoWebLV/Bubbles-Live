@@ -4,7 +4,9 @@
 // 1 talent point per 2 levels → 50 points at level 100 → enough for 2 full trees + 4 spare.
 
 const MAX_LEVEL = 100;
-const LEVEL_SCALE = 10;
+const LEVEL_SCALE_EARLY = 10;  // levels 1-25: easier to reach
+const LEVEL_SCALE = 22;        // levels 26-50
+const LEVEL_SCALE_50PLUS = 25; // levels 51-100: scales to ~450k total at 100
 const MAX_RANK = 5;
 const MAX_RANK_CAPSTONE = 3;
 
@@ -426,7 +428,9 @@ function pointsInTree(talents, treeName) {
 
 module.exports = {
   MAX_LEVEL,
+  LEVEL_SCALE_EARLY,
   LEVEL_SCALE,
+  LEVEL_SCALE_50PLUS,
   MAX_RANK,
   MAX_RANK_CAPSTONE,
   TANK,

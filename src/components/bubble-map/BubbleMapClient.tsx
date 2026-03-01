@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swo
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
+import { ChangelogModal, shouldShowChangelog } from "@/components/ChangelogModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
 import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent, TalentRanks } from "@/hooks/useGameSocket";
@@ -27,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
 import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
+import { getXpThresholds } from "@/lib/utils";
 
 // Kill streak announcement
 interface KillAnnouncement {
@@ -296,6 +298,19 @@ export function BubbleMapClient() {
   const [showOnchainPanel, setShowOnchainPanel] = useState(true);
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
+  const [changelogDismissedSeason, setChangelogDismissedSeason] = useState<number | null>(null);
+
+  const seasonId = gameState?.seasonId ?? 0;
+  // When we dismissed as "init" (before seasonId arrived) and now have real seasonId, persist it so season reset works
+  useEffect(() => {
+    if (gameState?.seasonId && gameState.seasonId > 0) {
+      try {
+        const dismissed = localStorage.getItem("hodlwarz-changelog-dismissed-season");
+        if (dismissed === "init") localStorage.setItem("hodlwarz-changelog-dismissed-season", String(gameState.seasonId));
+      } catch {}
+    }
+  }, [gameState?.seasonId]);
+  const showChangelog = shouldShowChangelog(gameState?.seasonId) && changelogDismissedSeason !== (gameState?.seasonId ?? 0);
 
   const handleAllocateTalent = useCallback(async (talentId: string) => {
     if (!effectiveAddress || allocatingTalent) return;
@@ -1271,6 +1286,10 @@ export function BubbleMapClient() {
               const kills = myBubble.kills;
               const deaths = myBubble.deaths;
               const tp = myBubble.talentPoints ?? 0;
+              const { xpForCurrent, xpForNext } = getXpThresholds(level);
+              const xpIntoLevel = xp - xpForCurrent;
+              const xpNeeded = xpForNext - xpForCurrent;
+              const xpPct = level >= 100 ? 100 : xpNeeded > 0 ? Math.min(100, Math.max(0, (xpIntoLevel / xpNeeded) * 100)) : 0;
 
               return (
                 <div className="space-y-2">
@@ -1280,7 +1299,20 @@ export function BubbleMapClient() {
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
                       {isGuest && <span className="text-[9px] text-orange-400 bg-orange-500/20 px-1 rounded">GUEST</span>}
                     </div>
-                    <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
+                    <span className="text-xs text-amber-400 font-mono">{xp.toLocaleString()} XP</span>
+                  </div>
+                  {/* XP progress bar */}
+                  <div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-amber-500/20">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-600 to-yellow-400 transition-all duration-500"
+                        style={{ width: `${xpPct}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[9px] text-slate-500">{level >= 100 ? 'MAX' : `${xpIntoLevel.toLocaleString()} / ${xpNeeded.toLocaleString()}`}</span>
+                      <span className="text-[9px] text-amber-500/70">{level >= 100 ? '' : `${xpPct.toFixed(0)}%`}</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-green-400">☠️ {kills}</span>
@@ -1797,6 +1829,13 @@ export function BubbleMapClient() {
 
       {/* Welcome modal — shows once per device */}
       <WelcomeModal />
+
+      {/* Changelog modal — shows on season reset, stays hidden until next season */}
+      <ChangelogModal
+        seasonId={seasonId}
+        isOpen={showChangelog}
+        onClose={() => setChangelogDismissedSeason(gameState?.seasonId ?? 0)}
+      />
 
       {/* Rules modal — opened via info button */}
       {showRules && (

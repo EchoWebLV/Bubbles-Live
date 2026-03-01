@@ -5,7 +5,7 @@
 const { MagicBlockService } = require('./magicblock');
 const { loadAllPhotos, savePhoto, deletePhoto } = require('./playerStore');
 const {
-  MAX_LEVEL, LEVEL_SCALE, MAX_RANK,
+  MAX_LEVEL, LEVEL_SCALE_EARLY, LEVEL_SCALE, LEVEL_SCALE_50PLUS, MAX_RANK,
   ALL_TALENTS, TREE_ORDER, AUTO_ALLOCATE_ORDER,
   CAPSTONE_TALENTS, MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID, CHAIN_ID_TO_TALENT_NAME,
@@ -17,9 +17,9 @@ const BATTLE_CONFIG = {
   bulletDamage: 0.1,    // base damage per bullet
   fireRate: 200,        // ms between shots
   bulletSpeed: 10,
-  ghostBaseMs: 20000,        // 20s at level 1
-  ghostPerLevelMs: 1000,     // +1s per level (1-50)
-  ghostPerLevelMs50Plus: 3000, // +3s per level (51-100)
+  ghostBaseMs: 8000,         // 8s at level 1 (balance: was 20s)
+  ghostPerLevelMs: 400,      // +0.4s per level (1-50)
+  ghostPerLevelMs50Plus: 800, // +0.8s per level (51-100) — cap ~68s at lvl 100
   curveStrength: { min: 25, max: 60 },
 };
 
@@ -39,7 +39,9 @@ const PROGRESSION = {
   xpPerKillBase: 10,
   xpPerKillPerLevel: 3,
   xpPerDeath: 5,
+  levelScaleEarly: LEVEL_SCALE_EARLY,
   levelScale: LEVEL_SCALE,
+  levelScale50Plus: LEVEL_SCALE_50PLUS,
   healthPerLevel: 10,
   damagePerLevel: 0.05,
   baseHealth: 100,
@@ -52,8 +54,11 @@ function calcLevel(xp) {
   let totalXp = 0;
   let penalty = 1;
   for (let lvl = 1; lvl < MAX_LEVEL; lvl++) {
-    const baseCost = (2 * lvl - 1) * PROGRESSION.levelScale;
-    if (lvl > 50) penalty *= 1.06;
+    const scale = lvl <= 25 ? PROGRESSION.levelScaleEarly
+      : lvl <= 50 ? PROGRESSION.levelScale
+      : PROGRESSION.levelScale50Plus;
+    const baseCost = (2 * lvl - 1) * scale;
+    if (lvl > 50) penalty *= 1.035; // 3.5% compound — scales to ~630k at 100
     totalXp += baseCost * penalty;
     if (xp < totalXp) return lvl;
   }
@@ -69,10 +74,12 @@ function calcGhostMs(level) {
   return base + first50 + extra;
 }
 function calcMaxHealth(healthLevel) {
-  return PROGRESSION.baseHealth + (healthLevel - 1) * PROGRESSION.healthPerLevel;
+  // Diminishing returns: sqrt scaling compresses power gap (was linear)
+  return Math.round(PROGRESSION.baseHealth + 60 * Math.sqrt(Math.max(0, healthLevel - 1)));
 }
 function calcAttackPower(attackLevel) {
-  return PROGRESSION.baseDamage + (attackLevel - 1) * PROGRESSION.damagePerLevel;
+  // Diminishing returns: sqrt scaling compresses power gap (was linear)
+  return PROGRESSION.baseDamage + 0.35 * Math.sqrt(Math.max(0, attackLevel - 1));
 }
 const TALENT_POINT_LEVELS = Array.from({ length: 50 }, (_, i) => 1 + i * 2);
 
@@ -109,6 +116,7 @@ class GameState {
     this.killFeed = [];
     this.eventLog = [];
     this.topKillers = [];
+    this.seasonId = Date.now(); // Bumped on season reset — client shows changelog when it changes
     this.dimensions = { width: 4224, height: 2376 };
     this.lastUpdateTime = Date.now();
     this.bulletIdCounter = 0;
@@ -1229,7 +1237,10 @@ class GameState {
                     shooterBattle.kills++;
                     hb.deaths = (hb.deaths || 0) + 1;
                     let arcKillXp = PROGRESSION.xpPerKillBase + (arcVictimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
-                    if (arcVictimLevel >= 50) arcKillXp *= 2;
+                    const arcKillerLevel = calcLevel(shooterBattle.xp || 0);
+                    const arcLevelDiff = Math.max(0, arcVictimLevel - arcKillerLevel);
+                    const arcBountyMultiplier = 1 + Math.min(arcLevelDiff * 0.05, 3.0);
+                    arcKillXp = Math.round(arcKillXp * arcBountyMultiplier);
                     const arcExpVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
                     if (arcExpVal > 0) arcKillXp = Math.round(arcKillXp * (1 + arcExpVal));
                     shooterBattle.xp = (shooterBattle.xp || 0) + arcKillXp;
@@ -1315,7 +1326,10 @@ class GameState {
           if (shooterBattle) {
             shooterBattle.kills++;
             let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
-            if (victimLevel >= 50) killXp *= 2;
+            const killerLevel = calcLevel(shooterBattle.xp || 0);
+            const levelDiff = Math.max(0, victimLevel - killerLevel);
+            const bountyMultiplier = 1 + Math.min(levelDiff * 0.05, 3.0);
+            killXp = Math.round(killXp * bountyMultiplier);
 
             // Experience talent: bonus XP %
             const expVal = getTalentValue('experience', shooterBattle.talents?.experience || 0);
@@ -1891,6 +1905,7 @@ class GameState {
     this.topKillers = [];
     this.damageBuffer.clear();
     this.addEventLog('New season started — all stats reset!');
+    this.seasonId = Date.now(); // Client shows changelog popup for new season
 
     console.log('SEASON RESET: complete', result);
     return { success: true, ...result };
@@ -2308,6 +2323,7 @@ class GameState {
       killFeed: this.killFeed,
       eventLog: this.eventLog,
       topKillers: this.topKillers,
+      seasonId: this.seasonId,
       token: this.token,
       priceData: this.priceData,
       dimensions: this.dimensions,

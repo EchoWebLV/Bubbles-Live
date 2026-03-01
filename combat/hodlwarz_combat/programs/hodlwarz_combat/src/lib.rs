@@ -10,11 +10,11 @@ const PLAYER_SEED: &[u8] = b"player_v2";
 
 const BASE_HEALTH: u16 = 100;
 const BASE_ATTACK: u16 = 10; // 0.1 * DAMAGE_SCALE(100)
-const LEVEL_SCALE: u64 = 10;
+const LEVEL_SCALE_EARLY: u64 = 10;   // levels 1-25: easier to reach
+const LEVEL_SCALE: u64 = 22;        // levels 26-50
+const LEVEL_SCALE_50PLUS: u64 = 25; // levels 51-100: scales to ~450k at 100
 const MAX_LEVEL: u8 = 100;
-const GHOST_BASE_SECS: i64 = 20;
-const GHOST_PER_LEVEL_SECS: i64 = 1;
-const GHOST_PER_LEVEL_SECS_50PLUS: i64 = 3;
+const GHOST_BASE_SECS: i64 = 8;
 const DAMAGE_CAP: u32 = 500; // 5.0 * 100
 
 const XP_PER_KILL_BASE: u64 = 10;
@@ -98,9 +98,16 @@ fn calc_level(xp: u64) -> u8 {
     let mut total_xp: u64 = 0;
     let mut penalty_bp: u64 = 10000; // basis points (10000 = 1.0x)
     for lvl in 1..(MAX_LEVEL as u64) {
-        let base_cost = (2 * lvl - 1) * LEVEL_SCALE;
+        let scale = if lvl <= 25 {
+            LEVEL_SCALE_EARLY
+        } else if lvl <= 50 {
+            LEVEL_SCALE
+        } else {
+            LEVEL_SCALE_50PLUS
+        };
+        let base_cost = (2 * lvl - 1) * scale;
         if lvl > 50 {
-            penalty_bp = penalty_bp * 106 / 100; // compound 6% per level
+            penalty_bp = penalty_bp * 10350 / 10000; // compound 3.5% — ~630k at 100
         }
         let cost = base_cost * penalty_bp / 10000;
         total_xp += cost;
@@ -112,11 +119,12 @@ fn calc_level(xp: u64) -> u8 {
 }
 
 fn calc_ghost_secs(level: u8) -> i64 {
+    // Balance: 8s base, +0.4s/lvl (1-50), +0.8s/lvl (51-100) — integer math
     let lvl = level as i64;
     if lvl <= 50 {
-        GHOST_BASE_SECS + (lvl - 1) * GHOST_PER_LEVEL_SECS
+        GHOST_BASE_SECS + (lvl - 1) * 2 / 5
     } else {
-        GHOST_BASE_SECS + 49 * GHOST_PER_LEVEL_SECS + (lvl - 50) * GHOST_PER_LEVEL_SECS_50PLUS
+        GHOST_BASE_SECS + 49 * 2 / 5 + (lvl - 50) * 4 / 5
     }
 }
 
@@ -314,10 +322,11 @@ pub mod hodlwarz_combat {
             let victim_level = calc_level(victim.xp.saturating_sub(XP_PER_DEATH)) as u64;
             let mut kill_xp = XP_PER_KILL_BASE + victim_level.saturating_sub(1) * XP_PER_KILL_PER_LEVEL;
 
-            // Bounty: 2x XP for killing level 50+ players
-            if victim_level >= 50 {
-                kill_xp *= 2;
-            }
+            // Bounty: +5% XP per level diff (cap 4x) — underdogs catch up by hunting higher levels
+            let killer_level = calc_level(attacker.xp) as u64;
+            let level_diff = victim_level.saturating_sub(killer_level);
+            let bounty_bp = 10000u64.saturating_add((level_diff * 500).min(30000));
+            kill_xp = kill_xp * bounty_bp / 10000;
 
             // Experience talent (slot 20 = talent_rampage): +X% XP
             let exp_bonus = lookup_bps(attacker.talent_rampage, &EXPERIENCE_BPS);

@@ -152,6 +152,7 @@ export interface GameState {
   } | null;
   dimensions: { width: number; height: number };
   timestamp: number;
+  seasonId?: number;
   magicBlock?: {
     ready: boolean;
     arenaPda: string | null;
@@ -438,6 +439,13 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
 
     socket.on("guestLeft", () => {
       setGuestAddress(null);
+    });
+
+    socket.on("seasonReset", (payload: { seasonId: number }) => {
+      const updated = { ...(nextStateRef.current || {}), seasonId: payload.seasonId } as GameState;
+      nextStateRef.current = updated;
+      if (prevStateRef.current) prevStateRef.current = { ...prevStateRef.current, seasonId: payload.seasonId };
+      setGameState((prev) => (prev ? { ...prev, seasonId: payload.seasonId } : prev));
     });
 
     socket.on("connect_error", (error) => {

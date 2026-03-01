@@ -71,8 +71,8 @@ export const BATTLE_CONFIG = {
   fireRate: 200, // ms between shots (0.2 seconds)
   bulletSpeed: 8, // pixels per frame
   bulletRadius: 3,
-  ghostBaseMs: 20000,   // 20s at level 1, +1s per level (server-authoritative)
-  ghostPerLevelMs: 1000,
+  ghostBaseMs: 8000,    // 8s at level 1 (balance: was 20s)
+  ghostPerLevelMs: 400,
   respawnHealth: 100,
 };
 

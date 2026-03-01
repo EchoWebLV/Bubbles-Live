@@ -112,6 +112,7 @@ app.prepare().then(async () => {
       }
       try {
         const result = await gameState.seasonReset();
+        io.emit('seasonReset', { seasonId: gameState.seasonId });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {
