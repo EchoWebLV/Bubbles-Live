@@ -498,6 +498,7 @@ class GameState {
           shotCounter: 0,
           talentResets: 0,
           classId: (cached && cached.classId > 0) ? cached.classId : (1 + Math.floor(Math.random() * 3)),
+          manualClass: cached ? (cached.manualClass || false) : false,
           talentResetsUsed: cached ? (cached.talentResetsUsed || 0) : 0,
           // Brawler state
           _lastDash: 0,
@@ -2653,6 +2654,7 @@ class GameState {
             talents: { ...bubble.talents },
             manualBuild: bubble.manualBuild,
             classId: bubble.classId || 0,
+            manualClass: bubble.manualClass || false,
             talentResetsUsed: bubble.talentResetsUsed || 0,
           });
         } else {
@@ -2784,7 +2786,8 @@ class GameState {
       bubble._lastDashHit = 0;
       bubble._lastContactDmg = 0;
       bubble._lastNova = 0;
-      bubble.classId = 0;
+      bubble.classId = 1 + Math.floor(Math.random() * 3);
+      bubble.manualClass = false;
       bubble.talentResetsUsed = 0;
     }
 
@@ -2847,10 +2850,14 @@ class GameState {
     if (!this.playerCache.has(walletAddress)) {
       const medianXp = this.getMedianXp();
       const medianLevel = calcLevel(medianXp);
+      const autoClass = 1 + Math.floor(Math.random() * 3);
+      const newMaxHealth = autoClass === 1
+        ? Math.round(calcMaxHealth(medianLevel) * classMultiplier(1, medianLevel))
+        : calcMaxHealth(medianLevel);
       this.playerCache.set(walletAddress, {
         walletAddress,
-        health: calcMaxHealth(medianLevel),
-        maxHealth: calcMaxHealth(medianLevel),
+        health: newMaxHealth,
+        maxHealth: newMaxHealth,
         attackPower: calcAttackPower(medianLevel),
         xp: medianXp,
         kills: 0,
@@ -2860,6 +2867,8 @@ class GameState {
         isAlive: true,
         talents: createEmptyTalents(),
         manualBuild: false,
+        classId: autoClass,
+        manualClass: false,
       });
 
       if (medianLevel > 1) {
@@ -2917,14 +2926,18 @@ class GameState {
   selectClass(walletAddress, classId) {
     const bubble = this.battleBubbles.get(walletAddress);
     if (!bubble) return { success: false, error: 'Not in game' };
-    if (bubble.classId > 0) return { success: false, error: 'Class already chosen' };
+    if (bubble.manualClass) return { success: false, error: 'Class already chosen' };
     if (classId < 1 || classId > 3) return { success: false, error: 'Invalid class' };
     bubble.classId = classId;
+    bubble.manualClass = true;
+    bubble.manualBuild = true;
     const level = calcLevel(bubble.xp);
-    if (classId === 1) {
-      bubble.maxHealth = Math.round(calcMaxHealth(bubble.healthLevel) * classMultiplier(1, level));
-      bubble.health = bubble.maxHealth;
-    }
+    const baseMax = calcMaxHealth(bubble.healthLevel);
+    const ironSkinVal = getTalentValue('ironSkin', bubble.talents?.ironSkin || 0);
+    const fortMult = classId === 1 ? classMultiplier(1, level) : 1;
+    bubble.maxHealth = Math.round(baseMax * (ironSkinVal > 0 ? (1 + ironSkinVal) : 1) * fortMult);
+    bubble.health = Math.min(bubble.health, bubble.maxHealth);
+    if (classId === 1) bubble.health = bubble.maxHealth;
     return { success: true, classId: bubble.classId };
   }
 
@@ -2938,6 +2951,7 @@ class GameState {
     bubble.manualBuild = true;
     bubble.talentResetsUsed = (bubble.talentResetsUsed || 0) + 1;
     bubble.classId = 0;
+    bubble.manualClass = false;
     // Recalc stats back to base (no class bonus until re-picked)
     const level = calcLevel(bubble.xp);
     bubble.maxHealth = calcMaxHealth(bubble.healthLevel);
@@ -3149,6 +3163,7 @@ class GameState {
       shotCounter: 0,
       talentResets: 0,
       classId: 1 + Math.floor(Math.random() * 3),
+      manualClass: false,
       talentResetsUsed: 0,
       _lastDash: 0,
       _lastDashHit: 0,
