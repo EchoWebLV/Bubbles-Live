@@ -57,10 +57,10 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '\u{1F4A5}',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
-      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
@@ -85,7 +85,7 @@ const TALENT_TREES = {
       { id: 'volatileBlood', name: 'Volatile Blood', desc: '0.5/1/1.5/2/2.5% chance to drop a mine when you take damage', maxRank: 5 },
       { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
       { id: 'decoy', name: 'Decoy', desc: 'Clone every 20/18/16/14/10s. Shoots for 5s. Explodes on death', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/3/4% detonation', maxRank: 3 },
+      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/5/7% detonation', maxRank: 3 },
     ],
   },
 } as const;

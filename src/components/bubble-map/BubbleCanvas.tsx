@@ -1235,6 +1235,60 @@ function drawBullets(
       }
     }
 
+    // Rocket: distinct larger projectile with smoke trail
+    if (bullet.isRocket) {
+      const angle = Math.atan2(bullet.vy || 0, bullet.vx || 0);
+
+      // Smoke trail
+      const smokeLen = 14;
+      for (let i = 1; i <= smokeLen; i++) {
+        const t = i / smokeLen;
+        const sx = bullet.x - Math.cos(angle) * i * 7;
+        const sy = bullet.y - Math.sin(angle) * i * 7;
+        const fade = 1 - t;
+        const size = 4 + t * 10;
+        ctx.beginPath();
+        ctx.arc(sx, sy, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(120, 120, 120, ${fade * 0.35})`;
+        ctx.fill();
+      }
+
+      // Outer glow
+      const rocketGlow = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 36);
+      rocketGlow.addColorStop(0, `${shooterColor}99`);
+      rocketGlow.addColorStop(0.5, `${shooterColor}40`);
+      rocketGlow.addColorStop(1, `${shooterColor}00`);
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 36, 0, Math.PI * 2);
+      ctx.fillStyle = rocketGlow;
+      ctx.fill();
+
+      // Rocket body (pointed oval) — 2x size
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(-10, -8);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-10, 8);
+      ctx.closePath();
+      ctx.fillStyle = shooterColor;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // White hot tip
+      ctx.beginPath();
+      ctx.arc(14, 0, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.restore();
+
+      return;
+    }
+
     // Bullet glow + core + ring
     const glowGradient = ctx.createRadialGradient(
       bullet.x, bullet.y, 0,

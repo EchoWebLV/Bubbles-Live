@@ -44,6 +44,7 @@ export interface Bullet {
   isLifeTap?: boolean;
   isBloodWave?: boolean;
   isShrapnel?: boolean;
+  isRocket?: boolean;
   radius?: number;
 }
 

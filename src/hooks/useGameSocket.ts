@@ -42,6 +42,7 @@ export interface TalentRanks {
   chainLightning: number;
   nova: number;
   focusFire: number;
+  rocket: number;
   // Blood Thirst
   experience: number;
   execute: number;
@@ -91,6 +92,10 @@ export interface GameBullet {
   progress: number;
   curveDirection: number;
   curveStrength: number;
+  isBloodBolt?: boolean;
+  isRocket?: boolean;
+  vx?: number;
+  vy?: number;
 }
 
 export interface GameDamageNumber {
@@ -119,7 +124,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'rocketExplode';
   x: number;
   y: number;
   targetX?: number;

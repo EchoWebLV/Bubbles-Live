@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Swords, Heart, Zap, TrendingUp, Shield, RotateCcw } from "lucide-react";
+import { X, Swords, Heart, Zap, TrendingUp, TrendingDown, Shield, RotateCcw, Crosshair, Droplets, Target, Layout, Rocket, Repeat } from "lucide-react";
 
 const STORAGE_KEY_DISMISSED_SEASON = "hodlwarz-changelog-dismissed-season";
 const STORAGE_KEY_EVER_SEEN = "hodlwarz-changelog-ever-seen";
@@ -14,12 +14,14 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Shield, color: "#ff9900", title: "Classes", desc: "Choose Fortify (+1% HP/lvl), Velocity (+1% fire rate/lvl), or Impact (+1% dmg/lvl) - defines your playstyle" },
-  { icon: RotateCcw, color: "#ff3366", title: "Talent Reset", desc: "Reset your talents & class once per season - pick a new build mid-season" },
-  { icon: TrendingUp, color: "#00ccff", title: "XP Curve", desc: "Steeper scaling after level 50 (3.5% compound) - late levels are harder to reach" },
-  { icon: Zap, color: "#00ffaa", title: "XP Bar", desc: "Track your progress with a live XP bar in the player dashboard" },
-  { icon: Heart, color: "#ff3366", title: "Respawn", desc: "Faster respawn - 8s base, ~68s at max level" },
-  { icon: Swords, color: "#ff00ff", title: "Bounty XP", desc: "+5% XP per level difference when killing higher-level players (cap 4x)" },
+  { icon: Droplets, color: "#ff3366", title: "Volatile Blood", desc: "Evasion removed — replaced with Volatile Blood: chance to drop a mine when you take damage" },
+  { icon: Swords, color: "#ff9900", title: "Decoy Rework", desc: "Decoys now explode like a mine on death. With Singularity, they become black holes" },
+  { icon: Target, color: "#cc44ff", title: "Singularity Balance", desc: "Smaller pull radius & shorter duration, but detonation bonus buffed to +3/5/7%" },
+  { icon: TrendingDown, color: "#00ccff", title: "Firepower Tuning", desc: "Rapid Fire, Crit Strike & Multi Shot toned down for healthier TTK" },
+  { icon: Crosshair, color: "#00ffaa", title: "Landmine Scaling", desc: "Mine damage now scales per rank: 5/5.5/6/6.5/7% max HP" },
+  { icon: Layout, color: "#a855f7", title: "Tabbed Talent UI", desc: "New compact tabbed talent tree — switch between 6 trees, no scrolling needed" },
+  { icon: Repeat, color: "#22d3ee", title: "Ricochet Homing", desc: "Ricochet bounce bullet now homes in on its secondary target" },
+  { icon: Rocket, color: "#ff6600", title: "Rocket (Mass Damage T4)", desc: "New talent — every Nth shot fires a homing rocket that explodes on impact (300px AoE, triggers all modifiers)" },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
@@ -105,7 +107,7 @@ export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProp
                   transition={{ delay: 0.2 }}
                   className="text-sm text-slate-400 tracking-widest uppercase"
                 >
-                  New Season — Classes & Balance
+                  Black Hole Balance Patch
                 </motion.p>
               </div>
 
