@@ -72,9 +72,9 @@ const TALENT_TREES = {
     icon: '🎯',
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
       { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
     ],
   },
@@ -119,11 +119,11 @@ const TALENT_TREES = {
     color: 'teal',
     icon: '💣',
     talents: [
-      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 14/12/10/8/6s. 5% max HP dmg', maxRank: 5 },
-      { id: 'evasion', name: 'Evasion', desc: '5/10/15/20/28% chance to dodge bullets', maxRank: 5 },
+      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 18/16/14/12/10s. 5/5.5/6/6.5/7% max HP dmg', maxRank: 5 },
+      { id: 'volatileBlood', name: 'Volatile Blood', desc: '0.5/1/1.5/2/2.5% chance to drop a mine when you take damage', maxRank: 5 },
       { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
-      { id: 'decoy', name: 'Decoy', desc: 'Clone every 25/21/17/13/9s. Shoots & drops mines for 5s', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 2/3/4s pull, 2% HP/s DoT', maxRank: 3 },
+      { id: 'decoy', name: 'Decoy', desc: 'Clone every 20/18/16/14/10s. Shoots for 5s. Explodes on death', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/3/4% detonation', maxRank: 3 },
     ],
   },
 } as const;

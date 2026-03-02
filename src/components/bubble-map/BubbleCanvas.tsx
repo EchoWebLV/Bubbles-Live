@@ -475,6 +475,13 @@ export function BubbleCanvas({
         const my = mine.y;
         const ownerColor = holderPositions.get(mine.ownerAddress)?.color || '#ffaa00';
 
+        const fadeMs = 2000;
+        const age = mineNow - mine.createdAt;
+        const remaining = mine.durationMs - age;
+        const fadeAlpha = mine.isDetonating ? 1 : Math.max(0, Math.min(1, remaining / fadeMs));
+        ctx.save();
+        ctx.globalAlpha = fadeAlpha;
+
         if (mine.isDetonating && mine.singularityState) {
           // ── Singularity black hole ──
           const elapsed = mineNow - mine.singularityState.startTime;
@@ -612,6 +619,8 @@ export function BubbleCanvas({
             ctx.stroke();
           }
         }
+
+        ctx.restore();
       }
     }
 
@@ -1057,11 +1066,11 @@ function drawHealthBar(
   ctx.fillRect(barX, y, width, height);
   
   // Health fill - color based on health level
-  let healthColor = "#22c55e"; // Green
+  let healthColor = "#22c55e";
   if (healthPercent < 0.3) {
-    healthColor = "#ef4444"; // Red
+    healthColor = "#ef4444";
   } else if (healthPercent < 0.6) {
-    healthColor = "#f59e0b"; // Yellow
+    healthColor = "#f59e0b";
   }
   
   ctx.fillStyle = healthColor;

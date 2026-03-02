@@ -784,6 +784,11 @@ class MagicBlockService {
         killRush: account.talentRicochet || 0,
         reaperArc: account.talentDeathbomb || 0,
         berserker: account.talentFrenzy || 0,
+        landmine: account.talentLandmine || 0,
+        volatileBlood: account.talentEvasionSapper || 0,
+        deadDrop: account.talentDeadDrop || 0,
+        decoy: account.talentDecoy || 0,
+        singularity: account.talentSingularity || 0,
       },
       manualBuild: account.manualBuild || false,
     };

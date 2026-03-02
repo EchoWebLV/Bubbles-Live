@@ -50,7 +50,7 @@ export interface TalentRanks {
   berserker: number;
   // Sapper
   landmine: number;
-  evasion: number;
+  volatileBlood: number;
   deadDrop: number;
   decoy: number;
   singularity: number;
@@ -119,7 +119,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'dodge';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath';
   x: number;
   y: number;
   targetX?: number;
@@ -141,6 +141,8 @@ export interface GameMine {
   isMegaMine: boolean;
   isDetonating: boolean;
   singularityRank: number;
+  createdAt: number;
+  durationMs: number;
   singularityState: {
     rank: number;
     startTime: number;
