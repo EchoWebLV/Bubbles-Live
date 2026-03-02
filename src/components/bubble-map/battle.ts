@@ -68,6 +68,8 @@ export interface Mine {
   radius: number;
   isMegaMine: boolean;
   isDetonating: boolean;
+  createdAt: number;
+  durationMs: number;
   singularityRank: number;
   singularityState: {
     rank: number;
