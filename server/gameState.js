@@ -532,6 +532,19 @@ class GameState {
 
     if (this.holders.length === 0) return;
 
+    // Periodic auto-allocate for idle players (every 5s)
+    if (!this._lastIdleAllocCheck || now - this._lastIdleAllocCheck > 5000) {
+      this._lastIdleAllocCheck = now;
+      for (const [address, bubble] of this.battleBubbles) {
+        if (bubble.manualBuild || bubble.isGhost) continue;
+        const avail = calcTalentPoints(calcLevel(bubble.xp)) - totalPointsSpent(bubble.talents);
+        if (avail > 0) {
+          const newTalents = autoAllocateTalents(bubble);
+          if (newTalents.length > 0) this._queueTalentSync(address, newTalents);
+        }
+      }
+    }
+
     const { width, height } = this.dimensions;
 
     // Update physics
