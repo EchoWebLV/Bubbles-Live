@@ -467,6 +467,202 @@ export function BubbleCanvas({
       }
     });
 
+    // Draw mines on the field
+    if (battleState.mines) {
+      const mineNow = Date.now();
+      for (const mine of battleState.mines) {
+        const mx = mine.x;
+        const my = mine.y;
+        const ownerColor = holderPositions.get(mine.ownerAddress)?.color || '#ffaa00';
+
+        const fadeMs = 2000;
+        const age = mineNow - mine.createdAt;
+        const remaining = mine.durationMs - age;
+        const fadeAlpha = mine.isDetonating ? 1 : Math.max(0, Math.min(1, remaining / fadeMs));
+        ctx.save();
+        ctx.globalAlpha = fadeAlpha;
+
+        if (mine.isDetonating && mine.singularityState) {
+          // ── Singularity black hole ──
+          const elapsed = mineNow - mine.singularityState.startTime;
+          const pullR = mine.singularityState.pullRadius;
+          const pulse = 1 + 0.08 * Math.sin(elapsed / 80);
+          const spin = elapsed / 400;
+
+          // Outer distortion field
+          const vortexGrad = ctx.createRadialGradient(mx, my, 0, mx, my, pullR * pulse);
+          vortexGrad.addColorStop(0, 'rgba(20, 0, 40, 0.9)');
+          vortexGrad.addColorStop(0.2, 'rgba(80, 0, 160, 0.5)');
+          vortexGrad.addColorStop(0.5, `${ownerColor}22`);
+          vortexGrad.addColorStop(0.8, 'rgba(60, 0, 120, 0.08)');
+          vortexGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.beginPath();
+          ctx.arc(mx, my, pullR * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = vortexGrad;
+          ctx.fill();
+
+          // Spinning accretion rings
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(spin);
+          for (let ring = 0; ring < 3; ring++) {
+            const ringR = pullR * (0.3 + ring * 0.2) * pulse;
+            const arcLen = Math.PI * 0.6;
+            const startAngle = ring * Math.PI * 0.7;
+            ctx.beginPath();
+            ctx.arc(0, 0, ringR, startAngle, startAngle + arcLen);
+            ctx.strokeStyle = `${ownerColor}${Math.round(60 - ring * 15).toString(16).padStart(2, '0')}`;
+            ctx.lineWidth = 2.5 - ring * 0.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Dark core
+          const coreGrad = ctx.createRadialGradient(mx, my, 0, mx, my, 12);
+          coreGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+          coreGrad.addColorStop(0.6, 'rgba(40, 0, 80, 0.9)');
+          coreGrad.addColorStop(1, `${ownerColor}44`);
+          ctx.beginPath();
+          ctx.arc(mx, my, 12, 0, Math.PI * 2);
+          ctx.fillStyle = coreGrad;
+          ctx.fill();
+
+        } else {
+          // ── Regular mine / mega-mine ──
+          const r = mine.radius;
+          const isMega = mine.isMegaMine;
+          const baseR = isMega ? r * 0.7 : r * 0.55;
+          const pulseSpeed = isMega ? 200 : 400;
+          const pulse = 1 + 0.12 * Math.sin(mineNow / pulseSpeed);
+          const rotation = mineNow / 2000;
+
+          // Pulsing outer glow in owner's color
+          const glowR = baseR * 2.5 * pulse;
+          const glowGrad = ctx.createRadialGradient(mx, my, baseR * 0.3, mx, my, glowR);
+          glowGrad.addColorStop(0, `${ownerColor}30`);
+          glowGrad.addColorStop(0.5, `${ownerColor}12`);
+          glowGrad.addColorStop(1, `${ownerColor}00`);
+          ctx.beginPath();
+          ctx.arc(mx, my, glowR, 0, Math.PI * 2);
+          ctx.fillStyle = glowGrad;
+          ctx.fill();
+
+          // Outer ring with rotating dashes
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(rotation);
+          const segments = isMega ? 8 : 6;
+          const gapAngle = Math.PI * 2 / segments;
+          const arcAngle = gapAngle * 0.6;
+          for (let i = 0; i < segments; i++) {
+            const startA = i * gapAngle;
+            ctx.beginPath();
+            ctx.arc(0, 0, baseR * 1.2 * pulse, startA, startA + arcAngle);
+            ctx.strokeStyle = `${ownerColor}88`;
+            ctx.lineWidth = isMega ? 2 : 1.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Inner filled circle
+          const innerGrad = ctx.createRadialGradient(mx, my - baseR * 0.2, 0, mx, my, baseR);
+          innerGrad.addColorStop(0, `${ownerColor}dd`);
+          innerGrad.addColorStop(0.7, `${ownerColor}99`);
+          innerGrad.addColorStop(1, `${ownerColor}44`);
+          ctx.beginPath();
+          ctx.arc(mx, my, baseR * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = innerGrad;
+          ctx.fill();
+
+          // Crisp border
+          ctx.beginPath();
+          ctx.arc(mx, my, baseR * pulse, 0, Math.PI * 2);
+          ctx.strokeStyle = isMega ? '#ffffff88' : `${ownerColor}aa`;
+          ctx.lineWidth = isMega ? 2 : 1;
+          ctx.stroke();
+
+          // Center hazard symbol — crosshair pattern
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(-rotation * 0.5);
+          const crossR = baseR * 0.4;
+          ctx.strokeStyle = isMega ? '#ffffffcc' : '#ffffffaa';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-crossR, 0); ctx.lineTo(crossR, 0);
+          ctx.moveTo(0, -crossR); ctx.lineTo(0, crossR);
+          ctx.stroke();
+          // Small inner circle
+          ctx.beginPath();
+          ctx.arc(0, 0, crossR * 0.4, 0, Math.PI * 2);
+          ctx.strokeStyle = '#ffffffbb';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+
+          // Blinking red dot
+          const blink = Math.sin(mineNow / (isMega ? 150 : 300)) > 0;
+          if (blink) {
+            ctx.beginPath();
+            ctx.arc(mx, my, isMega ? 3 : 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff2200';
+            ctx.fill();
+          }
+
+          // Singularity-capable mine: purple energy ring
+          if (mine.singularityRank > 0) {
+            const sRingR = baseR * 1.4 * pulse;
+            ctx.beginPath();
+            ctx.arc(mx, my, sRingR, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(160, 60, 255, ${0.3 + 0.2 * Math.sin(mineNow / 200)})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      }
+    }
+
+    // Draw decoy clones
+    if (battleState.decoyClones) {
+      for (const clone of battleState.decoyClones) {
+        const cx = clone.x;
+        const cy = clone.y;
+        const cr = clone.radius;
+
+        // Semi-transparent clone bubble
+        ctx.globalAlpha = 0.6;
+        const cloneGrad = ctx.createRadialGradient(cx, cy, cr * 0.1, cx, cy, cr);
+        cloneGrad.addColorStop(0, clone.color || '#88aaff');
+        cloneGrad.addColorStop(1, 'rgba(100, 150, 255, 0.2)');
+        ctx.beginPath();
+        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+        ctx.fillStyle = cloneGrad;
+        ctx.fill();
+
+        // Dashed border to distinguish from real bubble
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(150, 200, 255, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // HP bar
+        const hpPct = clone.health / clone.maxHealth;
+        const barW = cr * 1.4;
+        const barH = 3;
+        const barX = cx - barW / 2;
+        const barY = cy + cr + 4;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = hpPct > 0.5 ? '#44ff88' : hpPct > 0.25 ? '#ffaa00' : '#ff4444';
+        ctx.fillRect(barX, barY, barW * hpPct, barH);
+
+        ctx.globalAlpha = 1;
+      }
+    }
+
     // Draw lightning arcs
     const nowMs = Date.now();
     for (const arc of lightningArcs) {
@@ -870,11 +1066,11 @@ function drawHealthBar(
   ctx.fillRect(barX, y, width, height);
   
   // Health fill - color based on health level
-  let healthColor = "#22c55e"; // Green
+  let healthColor = "#22c55e";
   if (healthPercent < 0.3) {
-    healthColor = "#ef4444"; // Red
+    healthColor = "#ef4444";
   } else if (healthPercent < 0.6) {
-    healthColor = "#f59e0b"; // Yellow
+    healthColor = "#f59e0b";
   }
   
   ctx.fillStyle = healthColor;
@@ -1037,6 +1233,60 @@ function drawBullets(
           ctx.fill();
         }
       }
+    }
+
+    // Rocket: distinct larger projectile with smoke trail
+    if (bullet.isRocket) {
+      const angle = Math.atan2(bullet.vy || 0, bullet.vx || 0);
+
+      // Smoke trail
+      const smokeLen = 14;
+      for (let i = 1; i <= smokeLen; i++) {
+        const t = i / smokeLen;
+        const sx = bullet.x - Math.cos(angle) * i * 7;
+        const sy = bullet.y - Math.sin(angle) * i * 7;
+        const fade = 1 - t;
+        const size = 4 + t * 10;
+        ctx.beginPath();
+        ctx.arc(sx, sy, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(120, 120, 120, ${fade * 0.35})`;
+        ctx.fill();
+      }
+
+      // Outer glow
+      const rocketGlow = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 36);
+      rocketGlow.addColorStop(0, `${shooterColor}99`);
+      rocketGlow.addColorStop(0.5, `${shooterColor}40`);
+      rocketGlow.addColorStop(1, `${shooterColor}00`);
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 36, 0, Math.PI * 2);
+      ctx.fillStyle = rocketGlow;
+      ctx.fill();
+
+      // Rocket body (pointed oval) — 2x size
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(-10, -8);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-10, 8);
+      ctx.closePath();
+      ctx.fillStyle = shooterColor;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // White hot tip
+      ctx.beginPath();
+      ctx.arc(14, 0, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.restore();
+
+      return;
     }
 
     // Bullet glow + core + ring

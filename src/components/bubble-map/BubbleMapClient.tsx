@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swo
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
+import { ChangelogModal, shouldShowChangelog } from "@/components/ChangelogModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
 import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent, TalentRanks } from "@/hooks/useGameSocket";
@@ -21,12 +22,15 @@ import {
   createSmallBulletPop,
   createLightningArc,
   createLightningArcData,
+  createMineExplosion,
+  createSingularityExplosion,
   type LightningArc,
   type ReaperArcVfx,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
 import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
+import { getXpThresholds } from "@/lib/utils";
 
 // Kill streak announcement
 interface KillAnnouncement {
@@ -68,9 +72,9 @@ const TALENT_TREES = {
     icon: '🎯',
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
       { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
     ],
   },
@@ -91,10 +95,10 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '💥',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
-      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
@@ -110,6 +114,18 @@ const TALENT_TREES = {
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
     ],
   },
+  sapper: {
+    name: 'Sapper',
+    color: 'teal',
+    icon: '💣',
+    talents: [
+      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 18/16/14/12/10s. 5/5.5/6/6.5/7% max HP dmg', maxRank: 5 },
+      { id: 'volatileBlood', name: 'Volatile Blood', desc: '0.5/1/1.5/2/2.5% chance to drop a mine when you take damage', maxRank: 5 },
+      { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Clone every 20/18/16/14/10s. Shoots for 5s. Explodes on death', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/5/7% detonation', maxRank: 3 },
+    ],
+  },
 } as const;
 
 function totalPointsSpentClient(talents: Record<string, number>): number {
@@ -118,7 +134,7 @@ function totalPointsSpentClient(talents: Record<string, number>): number {
   return total;
 }
 
-const CAPSTONE_IDS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker'];
+const CAPSTONE_IDS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity'];
 const MAX_CAPSTONES = 2;
 
 function capstonesChosen(talents: Record<string, number>): number {
@@ -246,7 +262,7 @@ export function BubbleMapClient() {
   }, [isMusicPlaying]);
 
   // Connect to game server
-  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
+  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
   const effectiveAddress = guestAddress || connectedWalletAddress;
   const isGuest = !!guestAddress;
 
@@ -296,6 +312,20 @@ export function BubbleMapClient() {
   const [showOnchainPanel, setShowOnchainPanel] = useState(true);
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
+  const [selectedTalentTree, setSelectedTalentTree] = useState<string>('tank');
+  const [changelogDismissedSeason, setChangelogDismissedSeason] = useState<number | null>(null);
+
+  const seasonId = gameState?.seasonId ?? 0;
+  // When we dismissed as "init" (before seasonId arrived) and now have real seasonId, persist it so season reset works
+  useEffect(() => {
+    if (gameState?.seasonId && gameState.seasonId > 0) {
+      try {
+        const dismissed = localStorage.getItem("hodlwarz-changelog-dismissed-season");
+        if (dismissed === "init") localStorage.setItem("hodlwarz-changelog-dismissed-season", String(gameState.seasonId));
+      } catch {}
+    }
+  }, [gameState?.seasonId]);
+  const showChangelog = shouldShowChangelog(gameState?.seasonId) && changelogDismissedSeason !== (gameState?.seasonId ?? 0);
 
   const handleAllocateTalent = useCallback(async (talentId: string) => {
     if (!effectiveAddress || allocatingTalent) return;
@@ -316,6 +346,16 @@ export function BubbleMapClient() {
       setAllocatingTalent(null);
     }
   }, [effectiveAddress, allocatingTalent, resetTalents]);
+
+  const handleSelectClass = useCallback(async (classId: number) => {
+    if (!effectiveAddress || allocatingTalent) return;
+    setAllocatingTalent('class');
+    try {
+      await selectClass(effectiveAddress, classId);
+    } finally {
+      setAllocatingTalent(null);
+    }
+  }, [effectiveAddress, allocatingTalent, selectClass]);
 
   // Kill streak announcements
   const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
@@ -704,6 +744,8 @@ export function BubbleMapClient() {
         talents: b.talents ?? ({} as TalentRanks),
         talentPoints: b.talentPoints ?? 0,
         manualBuild: b.manualBuild ?? false,
+        classId: b.classId ?? 0,
+        talentResetsUsed: b.talentResetsUsed ?? 0,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -720,12 +762,16 @@ export function BubbleMapClient() {
       progress: b.progress,
       curveDirection: b.curveDirection,
       curveStrength: b.curveStrength,
-      vx: 0,
-      vy: 0,
+      vx: b.vx || 0,
+      vy: b.vy || 0,
       damage: 0.1,
       createdAt: 0,
+      isBloodBolt: b.isBloodBolt,
+      isRocket: b.isRocket,
     })) || [],
     damageNumbers: gameState?.damageNumbers || [],
+    mines: gameState?.mines || [],
+    decoyClones: gameState?.decoyClones || [],
     lastUpdateTime: Date.now(),
   };
 
@@ -763,11 +809,19 @@ export function BubbleMapClient() {
         newEffects.push(createDeathbombExplosion(v.x, v.y, v.radius || 200, v.color));
       } else if (v.type === 'bulletPop') {
         newEffects.push(v.small ? createSmallBulletPop(v.x, v.y, v.color) : createBulletPopFirework(v.x, v.y, v.color));
+      } else if (v.type === 'rocketExplode') {
+        newEffects.push(createMineExplosion(v.x, v.y, v.radius || 120, '#ff6600'));
       } else if (v.type === 'lightning' && v.targetX !== undefined && v.targetY !== undefined) {
         newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
         newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
       } else if (v.type === 'reaperArc') {
         newReaperArcs.push({ x: v.x, y: v.y, angle: v.angle ?? 0, range: v.range ?? 200, color: v.color, createdAt: Date.now(), duration: 800 });
+      } else if (v.type === 'mineExplode') {
+        newEffects.push(createMineExplosion(v.x, v.y, v.radius || 50, v.color));
+      } else if (v.type === 'singularityExplode') {
+        newEffects.push(createSingularityExplosion(v.x, v.y, v.radius || 200, v.color));
+      } else if (v.type === 'megaMine') {
+        newEffects.push(createMineExplosion(v.x, v.y, 80, v.color));
       }
     }
     if (newEffects.length > 0) {
@@ -1271,6 +1325,10 @@ export function BubbleMapClient() {
               const kills = myBubble.kills;
               const deaths = myBubble.deaths;
               const tp = myBubble.talentPoints ?? 0;
+              const { xpForCurrent, xpForNext } = getXpThresholds(level);
+              const xpIntoLevel = xp - xpForCurrent;
+              const xpNeeded = xpForNext - xpForCurrent;
+              const xpPct = level >= 100 ? 100 : xpNeeded > 0 ? Math.min(100, Math.max(0, (xpIntoLevel / xpNeeded) * 100)) : 0;
 
               return (
                 <div className="space-y-2">
@@ -1279,8 +1337,24 @@ export function BubbleMapClient() {
                       <Star className="w-3 h-3 text-yellow-400" />
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
                       {isGuest && <span className="text-[9px] text-orange-400 bg-orange-500/20 px-1 rounded">GUEST</span>}
+                      {(myBubble.classId ?? 0) === 1 && <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">FORTIFY</span>}
+                      {(myBubble.classId ?? 0) === 2 && <span className="text-[9px] text-sky-400 bg-sky-500/20 px-1 rounded">VELOCITY</span>}
+                      {(myBubble.classId ?? 0) === 3 && <span className="text-[9px] text-rose-400 bg-rose-500/20 px-1 rounded">IMPACT</span>}
                     </div>
-                    <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
+                    <span className="text-xs text-amber-400 font-mono">{xp.toLocaleString()} XP</span>
+                  </div>
+                  {/* XP progress bar */}
+                  <div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-amber-500/20">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-600 to-yellow-400 transition-all duration-500"
+                        style={{ width: `${xpPct}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[9px] text-slate-500">{level >= 100 ? 'MAX' : `${xpIntoLevel.toLocaleString()} / ${xpNeeded.toLocaleString()}`}</span>
+                      <span className="text-[9px] text-amber-500/70">{level >= 100 ? '' : `${xpPct.toFixed(0)}%`}</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-green-400">☠️ {kills}</span>
@@ -1359,6 +1433,14 @@ export function BubbleMapClient() {
           if (!myBubble) return null;
           const talents = myBubble.talents || {} as TalentRanks;
           const tp = myBubble.talentPoints ?? 0;
+          const currentClassId = myBubble.classId ?? 0;
+          const resetsUsed = myBubble.talentResetsUsed ?? 0;
+
+          const CLASS_OPTIONS = [
+            { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+1% max HP per level', color: 'emerald' },
+            { id: 2, name: 'Velocity', icon: '⚡', desc: '+1% fire rate per level', color: 'sky' },
+            { id: 3, name: 'Impact',   icon: '🗡️', desc: '+1% bullet damage per level', color: 'rose' },
+          ];
 
           const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
             green:  { bg: 'bg-green-900/20',  border: 'border-green-500/30',  text: 'text-green-400',  rankBg: 'bg-green-900/30',  rankFill: 'bg-green-500' },
@@ -1366,6 +1448,7 @@ export function BubbleMapClient() {
             red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
             yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
             purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
+            teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
           };
 
           return (
@@ -1376,24 +1459,25 @@ export function BubbleMapClient() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-6 max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-bold text-white">Talent Tree</h2>
-                    <span className="text-sm font-mono text-amber-400">
-                      {tp > 0 ? `${tp} points available` : 'No points available'}
+              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-5 max-w-2xl w-full">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-bold text-white">Talents</h2>
+                    <span className="text-xs sm:text-sm font-mono text-amber-400">
+                      {tp > 0 ? `${tp} pts` : '0 pts'}
                     </span>
-                    <span className="text-xs font-mono text-purple-400/80">
-                      Ultimates: {capstonesChosen(talents)}/{MAX_CAPSTONES}
+                    <span className="text-[10px] font-mono text-purple-400/80">
+                      Ults: {capstonesChosen(talents)}/{MAX_CAPSTONES}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleResetTalents}
-                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0}
+                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0 || resetsUsed >= 1}
                       className="text-[10px] text-red-400/70 hover:text-red-300 disabled:opacity-30 transition-colors px-2 py-1 rounded border border-red-500/20 hover:border-red-500/40"
+                      title={resetsUsed >= 1 ? 'Reset already used this season' : 'Reset all talents (1 per season)'}
                     >
-                      Reset All
+                      {resetsUsed >= 1 ? 'Reset Used' : 'Reset (1x)'}
                     </button>
                     <button
                       onClick={() => setShowTalentTree(false)}
@@ -1404,43 +1488,94 @@ export function BubbleMapClient() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {/* Class Selection Row */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mb-3">
+                  {CLASS_OPTIONS.map(cls => {
+                    const isSelected = currentClassId === cls.id;
+                    const isLocked = currentClassId > 0 && !isSelected;
+                    const colorMap: Record<string, { active: string; idle: string; text: string }> = {
+                      emerald: { active: 'bg-emerald-900/40 border-emerald-500/60', idle: 'bg-emerald-900/20 border-emerald-500/30 hover:border-emerald-400/50', text: 'text-emerald-400' },
+                      sky:     { active: 'bg-sky-900/40 border-sky-500/60',         idle: 'bg-sky-900/20 border-sky-500/30 hover:border-sky-400/50',             text: 'text-sky-400' },
+                      rose:    { active: 'bg-rose-900/40 border-rose-500/60',       idle: 'bg-rose-900/20 border-rose-500/30 hover:border-rose-400/50',           text: 'text-rose-400' },
+                    };
+                    const c = colorMap[cls.color];
+                    return (
+                      <button
+                        key={cls.id}
+                        onClick={() => !isLocked && !isSelected && handleSelectClass(cls.id)}
+                        disabled={isLocked || isSelected || allocatingTalent !== null}
+                        className={`w-full rounded-lg border px-1.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[11px] font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                          isSelected ? c.active : isLocked ? 'bg-slate-800/20 border-slate-700/20 opacity-25' : `${c.idle} cursor-pointer`
+                        }`}
+                      >
+                        <span className="text-xs sm:text-sm">{cls.icon}</span>
+                        <span className={isSelected ? c.text : isLocked ? 'text-slate-500' : 'text-white'}>{cls.name}</span>
+                        <span className="text-[8px] sm:text-[9px] text-slate-500 hidden sm:inline">{cls.desc}</span>
+                        {isSelected && <span className={`text-[8px] sm:text-[9px] font-bold ${c.text}`}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Tree Tabs */}
+                <div className="grid grid-cols-6 gap-1 sm:gap-1.5 mb-3">
                   {Object.entries(TALENT_TREES).map(([treeKey, tree]) => {
                     const colors = treeColorMap[tree.color];
+                    const treePoints = tree.talents.reduce((s, t) => s + ((talents as Record<string, number>)[t.id] || 0), 0);
+                    const isActive = selectedTalentTree === treeKey;
                     return (
-                      <div key={treeKey} className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
-                        <div className={`text-sm font-bold ${colors.text} mb-3 flex items-center gap-2`}>
-                          <span>{tree.icon}</span>
-                          {tree.name}
-                        </div>
-                        <div className="space-y-2">
-                          {tree.talents.map((talent, talentIdx) => {
-                            const rank = talents[talent.id] ?? 0;
-                            const isMaxed = rank >= talent.maxRank;
-                            const prereqMet = talentIdx === 0 || (talents[tree.talents[talentIdx - 1].id] ?? 0) >= 1;
-                            const isCapstone = CAPSTONE_IDS.includes(talent.id);
-                            const capstoneLocked = isCapstone && rank === 0 && capstonesChosen(talents) >= MAX_CAPSTONES;
-                            const canUpgrade = tp > 0 && !isMaxed && prereqMet && !capstoneLocked;
-                            const isLocked = (!prereqMet && rank === 0) || capstoneLocked;
-                            return (
-                              <button
-                                key={talent.id}
-                                onClick={() => canUpgrade && handleAllocateTalent(talent.id)}
-                                disabled={!canUpgrade || allocatingTalent !== null}
-                                className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
-                                  isLocked
-                                    ? 'bg-slate-800/20 border-slate-700/20 opacity-30'
-                                    : canUpgrade
-                                      ? `${colors.bg} hover:brightness-125 ${colors.border} cursor-pointer`
-                                      : isMaxed
-                                        ? `${colors.bg} ${colors.border} opacity-70`
-                                        : 'bg-slate-800/30 border-slate-700/30 opacity-50'
-                                } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
-                                    {capstoneLocked ? '🚫 ' : isLocked ? '🔒 ' : ''}{talent.name}
-                                  </span>
+                      <button
+                        key={treeKey}
+                        onClick={() => setSelectedTalentTree(treeKey)}
+                        className={`rounded-lg border px-1 sm:px-2 py-1.5 sm:py-2 text-center transition-all ${
+                          isActive
+                            ? `${colors.bg} ${colors.border}`
+                            : 'bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50'
+                        }`}
+                      >
+                        <div className="text-sm sm:text-base leading-none mb-0.5">{tree.icon}</div>
+                        <div className={`text-[8px] sm:text-[10px] font-medium truncate ${isActive ? colors.text : 'text-slate-400'}`}>{tree.name}</div>
+                        {treePoints > 0 && (
+                          <div className={`text-[7px] sm:text-[8px] mt-0.5 ${isActive ? colors.text : 'text-slate-500'} opacity-70`}>{treePoints}pt</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Active Tree Talents */}
+                {(() => {
+                  const activeTreeEntry = Object.entries(TALENT_TREES).find(([k]) => k === selectedTalentTree);
+                  if (!activeTreeEntry) return null;
+                  const [, activeTree] = activeTreeEntry;
+                  const colors = treeColorMap[activeTree.color];
+                  return (
+                    <div className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
+                      <div className="space-y-1.5">
+                        {activeTree.talents.map((talent, talentIdx) => {
+                          const rank = (talents as Record<string, number>)[talent.id] ?? 0;
+                          const isMaxed = rank >= talent.maxRank;
+                          const prereqMet = talentIdx === 0 || ((talents as Record<string, number>)[activeTree.talents[talentIdx - 1].id] ?? 0) >= 1;
+                          const isCapstone = CAPSTONE_IDS.includes(talent.id);
+                          const capstoneLocked = isCapstone && rank === 0 && capstonesChosen(talents) >= MAX_CAPSTONES;
+                          const canUpgrade = tp > 0 && !isMaxed && prereqMet && !capstoneLocked;
+                          const isLocked = (!prereqMet && rank === 0) || capstoneLocked;
+                          return (
+                            <div
+                              key={talent.id}
+                              className={`rounded-lg px-3 py-2 transition-all border ${
+                                isLocked
+                                  ? 'bg-slate-800/20 border-slate-700/20 opacity-30'
+                                  : isMaxed
+                                    ? `${colors.bg} ${colors.border} opacity-70`
+                                    : `${colors.bg} ${colors.border}`
+                              } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
+                            >
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
+                                  {capstoneLocked ? '🚫 ' : isLocked ? '🔒 ' : ''}{talent.name}
+                                </span>
+                                <div className="flex items-center gap-2">
                                   <div className="flex gap-0.5">
                                     {Array.from({ length: talent.maxRank }).map((_, i) => (
                                       <div
@@ -1449,18 +1584,30 @@ export function BubbleMapClient() {
                                       />
                                     ))}
                                   </div>
+                                  {canUpgrade && (
+                                    <button
+                                      onClick={() => handleAllocateTalent(talent.id)}
+                                      disabled={allocatingTalent !== null}
+                                      className={`text-[10px] font-semibold px-2.5 py-1 rounded-md ${colors.rankFill} text-white hover:brightness-110 active:brightness-90 transition-all`}
+                                    >
+                                      {allocatingTalent === talent.id ? '...' : '+'}
+                                    </button>
+                                  )}
+                                  {isMaxed && (
+                                    <span className={`text-[9px] font-medium ${colors.text} opacity-60`}>MAX</span>
+                                  )}
                                 </div>
-                                <div className="text-[10px] text-slate-400">
-                                  {capstoneLocked ? 'Max 2 ultimates chosen' : talent.desc}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {capstoneLocked ? 'Max 2 ultimates chosen' : talent.desc}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             </motion.div>
           );
@@ -1797,6 +1944,13 @@ export function BubbleMapClient() {
 
       {/* Welcome modal — shows once per device */}
       <WelcomeModal />
+
+      {/* Changelog modal — shows on season reset, stays hidden until next season */}
+      <ChangelogModal
+        seasonId={seasonId}
+        isOpen={showChangelog}
+        onClose={() => setChangelogDismissedSeason(gameState?.seasonId ?? 0)}
+      />
 
       {/* Rules modal — opened via info button */}
       {showRules && (

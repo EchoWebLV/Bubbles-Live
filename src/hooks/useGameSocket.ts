@@ -42,12 +42,19 @@ export interface TalentRanks {
   chainLightning: number;
   nova: number;
   focusFire: number;
+  rocket: number;
   // Blood Thirst
   experience: number;
   execute: number;
   killRush: number;
   reaperArc: number;
   berserker: number;
+  // Sapper
+  landmine: number;
+  volatileBlood: number;
+  deadDrop: number;
+  decoy: number;
+  singularity: number;
   [key: string]: number;
 }
 
@@ -68,6 +75,8 @@ export interface GameBattleBubble {
   talents: TalentRanks;
   talentPoints: number;
   manualBuild: boolean;
+  classId: number;
+  talentResetsUsed: number;
 }
 
 export interface GameBullet {
@@ -83,6 +92,10 @@ export interface GameBullet {
   progress: number;
   curveDirection: number;
   curveStrength: number;
+  isBloodBolt?: boolean;
+  isRocket?: boolean;
+  vx?: number;
+  vy?: number;
 }
 
 export interface GameDamageNumber {
@@ -111,7 +124,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'rocketExplode';
   x: number;
   y: number;
   targetX?: number;
@@ -124,12 +137,43 @@ export interface GameVfx {
   small?: boolean;
 }
 
+export interface GameMine {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  isMegaMine: boolean;
+  isDetonating: boolean;
+  singularityRank: number;
+  createdAt: number;
+  durationMs: number;
+  singularityState: {
+    rank: number;
+    startTime: number;
+    pullRadius: number;
+  } | null;
+}
+
+export interface GameDecoyClone {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  health: number;
+  maxHealth: number;
+}
+
 export interface GameState {
   holders: GameHolder[];
   battleBubbles: GameBattleBubble[];
   bullets: GameBullet[];
   damageNumbers: GameDamageNumber[];
   vfx: GameVfx[];
+  mines: GameMine[];
+  decoyClones: GameDecoyClone[];
   killFeed: GameKillFeed[];
   eventLog: string[];
   topKillers: { address: string; kills: number; level: number }[];
@@ -152,6 +196,7 @@ export interface GameState {
   } | null;
   dimensions: { width: number; height: number };
   timestamp: number;
+  seasonId?: number;
   magicBlock?: {
     ready: boolean;
     arenaPda: string | null;
@@ -348,6 +393,21 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
   }, []);
 
+  // Select class (Fortify/Velocity/Impact)
+  const selectClass = useCallback((walletAddress: string, classId: number): Promise<{ success: boolean; classId?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("selectClass", { walletAddress, classId });
+      socketRef.current.once("classResult", (result: { success: boolean; classId?: number; error?: string }) => {
+        resolve(result);
+      });
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 10000);
+    });
+  }, []);
+
   // Reset all talent points
   const resetTalents = useCallback((walletAddress: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
     return new Promise((resolve) => {
@@ -440,6 +500,13 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       setGuestAddress(null);
     });
 
+    socket.on("seasonReset", (payload: { seasonId: number }) => {
+      const updated = { ...(nextStateRef.current || {}), seasonId: payload.seasonId } as GameState;
+      nextStateRef.current = updated;
+      if (prevStateRef.current) prevStateRef.current = { ...prevStateRef.current, seasonId: payload.seasonId };
+      setGameState((prev) => (prev ? { ...prev, seasonId: payload.seasonId } : prev));
+    });
+
     socket.on("connect_error", (error) => {
       console.error("Connection error:", error);
     });
@@ -469,6 +536,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     setDimensions,
     sendTransaction,
     upgradeStat,
+    selectClass,
     allocateTalent,
     resetTalents,
     getOnchainStats,

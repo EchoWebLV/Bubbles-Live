@@ -18,6 +18,8 @@ export interface BattleBubble {
   talents?: Record<string, number>;
   talentPoints?: number;
   manualBuild?: boolean;
+  classId?: number;
+  talentResetsUsed?: number;
 }
 
 export interface Bullet {
@@ -42,6 +44,7 @@ export interface Bullet {
   isLifeTap?: boolean;
   isBloodWave?: boolean;
   isShrapnel?: boolean;
+  isRocket?: boolean;
   radius?: number;
 }
 
@@ -57,10 +60,41 @@ export interface DamageNumber {
   type?: string;
 }
 
+export interface Mine {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  isMegaMine: boolean;
+  isDetonating: boolean;
+  createdAt: number;
+  durationMs: number;
+  singularityRank: number;
+  singularityState: {
+    rank: number;
+    startTime: number;
+    pullRadius: number;
+  } | null;
+}
+
+export interface DecoyClone {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  health: number;
+  maxHealth: number;
+}
+
 export interface BattleState {
   bubbles: Map<string, BattleBubble>;
   bullets: Bullet[];
   damageNumbers: DamageNumber[];
+  mines: Mine[];
+  decoyClones: DecoyClone[];
   lastUpdateTime: number;
 }
 
@@ -71,8 +105,8 @@ export const BATTLE_CONFIG = {
   fireRate: 200, // ms between shots (0.2 seconds)
   bulletSpeed: 8, // pixels per frame
   bulletRadius: 3,
-  ghostBaseMs: 20000,   // 20s at level 1, +1s per level (server-authoritative)
-  ghostPerLevelMs: 1000,
+  ghostBaseMs: 8000,    // 8s at level 1 (balance: was 20s)
+  ghostPerLevelMs: 400,
   respawnHealth: 100,
 };
 
@@ -96,6 +130,8 @@ export function createBattleState(): BattleState {
     bubbles: new Map(),
     bullets: [],
     damageNumbers: [],
+    mines: [],
+    decoyClones: [],
     lastUpdateTime: Date.now(),
   };
 }

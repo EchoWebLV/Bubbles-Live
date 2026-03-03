@@ -34,9 +34,9 @@ const TALENT_TREES = {
     icon: '\u{1F3AF}',
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
       { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
     ],
   },
@@ -57,10 +57,10 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '\u{1F4A5}',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
-      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
@@ -74,6 +74,18 @@ const TALENT_TREES = {
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
       { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
+    ],
+  },
+  sapper: {
+    name: 'Sapper',
+    color: 'teal',
+    icon: '\u{1F4A3}',
+    talents: [
+      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 18/16/14/12/10s. 5/5.5/6/6.5/7% max HP dmg', maxRank: 5 },
+      { id: 'volatileBlood', name: 'Volatile Blood', desc: '0.5/1/1.5/2/2.5% chance to drop a mine when you take damage', maxRank: 5 },
+      { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Clone every 20/18/16/14/10s. Shoots for 5s. Explodes on death', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/5/7% detonation', maxRank: 3 },
     ],
   },
 } as const;
@@ -109,6 +121,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
     red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
     yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
     purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
+    teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
   };
 
   return (
@@ -126,11 +139,14 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
             </motion.div>
             <div>
               <div className="font-mono text-lg">{shortenAddress(holder.address, 6)}</div>
-              <DialogDescription className="text-sm">
-                {token ? `${token.symbol} Holder` : "Token Holder"}
+              <DialogDescription className="text-sm flex items-center gap-1.5 flex-wrap">
+                <span>{token ? `${token.symbol} Holder` : "Token Holder"}</span>
                 {battleBubble && (
-                  <span className="ml-2 text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
+                  <span className="text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
                 )}
+                {battleBubble && (battleBubble.classId ?? 0) === 1 && <span className="text-[10px] text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">FORTIFY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 2 && <span className="text-[10px] text-sky-400 bg-sky-500/20 px-1.5 py-0.5 rounded font-bold">VELOCITY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 3 && <span className="text-[10px] text-rose-400 bg-rose-500/20 px-1.5 py-0.5 rounded font-bold">IMPACT</span>}
               </DialogDescription>
             </div>
           </DialogTitle>
@@ -209,6 +225,16 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                     {battleBubble.deaths > 0 ? (battleBubble.kills / battleBubble.deaths).toFixed(1) : battleBubble.kills.toFixed(0)}
                   </div>
                 </motion.div>
+              </div>
+            )}
+
+            {/* Class Badge */}
+            {battleBubble && (battleBubble.classId ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500">Class:</span>
+                {(battleBubble.classId ?? 0) === 1 && <span className="text-xs text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-lg font-bold">🛡️ Fortify <span className="text-[9px] text-slate-400 font-normal">+1% HP/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 2 && <span className="text-xs text-sky-400 bg-sky-500/20 border border-sky-500/30 px-2 py-0.5 rounded-lg font-bold">⚡ Velocity <span className="text-[9px] text-slate-400 font-normal">+1% fire rate/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 3 && <span className="text-xs text-rose-400 bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded-lg font-bold">🗡️ Impact <span className="text-[9px] text-slate-400 font-normal">+1% dmg/lvl</span></span>}
               </div>
             )}
 

@@ -4,7 +4,9 @@
 // 1 talent point per 2 levels → 50 points at level 100 → enough for 2 full trees + 4 spare.
 
 const MAX_LEVEL = 100;
-const LEVEL_SCALE = 10;
+const LEVEL_SCALE_EARLY = 10;  // levels 1-25: easier to reach
+const LEVEL_SCALE = 22;        // levels 26-50
+const LEVEL_SCALE_50PLUS = 25; // levels 51-100: scales to ~450k total at 100
 const MAX_RANK = 5;
 const MAX_RANK_CAPSTONE = 3;
 
@@ -85,32 +87,32 @@ const FIREPOWER = {
     tier: 2,
     requires: 'heavyHitter',
     maxRank: MAX_RANK,
-    perRank: [0.06, 0.12, 0.18, 0.24, 0.30],
+    perRank: [0.04, 0.06, 0.08, 0.10, 0.14],
     minCooldownMs: 80,
   },
   criticalStrike: {
     id: 'criticalStrike',
     name: 'Critical Strike',
-    description: '{value}% crit chance (2/2.2/2.6/2.8/3x dmg)',
+    description: '{value}% crit chance (2x dmg)',
     tree: 'firepower',
     tier: 3,
     requires: 'rapidFire',
     maxRank: MAX_RANK,
     perRank: 0.07,
     hardCap: 0.35,
-    critMultiplier: [2.0, 2.2, 2.6, 2.8, 3.0],
+    critMultiplier: 2,
   },
   multiShot: {
     id: 'multiShot',
     name: 'Multi Shot',
-    description: '{value}% chance to fire 2 bullets (75% dmg)',
+    description: '{value}% chance to fire 2 bullets (50% dmg)',
     tree: 'firepower',
     tier: 4,
     requires: 'criticalStrike',
     maxRank: MAX_RANK,
-    perRank: 0.12,
-    hardCap: 0.60,
-    secondBulletDamage: 0.75,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+    hardCap: 0.50,
+    secondBulletDamage: 0.50,
   },
   dualCannon: {
     id: 'dualCannon',
@@ -210,14 +212,15 @@ const MASS_DAMAGE = {
     maxRank: MAX_RANK,
     perRank: 0.08,
     hardCap: 0.40,
+    _retired: true,
   },
   focusFire: {
     id: 'focusFire',
     name: 'Focus Fire',
     description: '+{value}% damage per consecutive hit on same target (max 3 stacks)',
     tree: 'massDamage',
-    tier: 3,
-    requires: 'counterAttack',
+    tier: 2,
+    requires: 'ricochet',
     maxRank: MAX_RANK,
     perRank: [0.03, 0.06, 0.09, 0.12, 0.15],
     maxStacks: 3,
@@ -227,7 +230,7 @@ const MASS_DAMAGE = {
     name: 'Nova',
     description: 'Emit {value} projectiles every 2s',
     tree: 'massDamage',
-    tier: 4,
+    tier: 3,
     requires: 'focusFire',
     maxRank: MAX_RANK,
     projectiles: [5, 8, 11, 14, 18],
@@ -237,13 +240,26 @@ const MASS_DAMAGE = {
     novaRange: 500,
     spiralSpread: 0.5,
   },
+  rocket: {
+    id: 'rocket',
+    name: 'Rocket',
+    description: 'Every {value}th shot fires a homing rocket that explodes on impact',
+    tree: 'massDamage',
+    tier: 4,
+    requires: 'nova',
+    maxRank: MAX_RANK,
+    fireFrequency: [18, 16, 14, 12, 10],
+    blastRadius: 300,
+    blastDamageMultiplier: [1.0, 1.0, 1.0, 1.0, 1.0],
+    rocketSpeed: 4,
+  },
   chainLightning: {
     id: 'chainLightning',
     name: 'Chain Lightning',
     description: 'Every hit arcs lightning to {value} nearby enemies (400% dmg, -50% per jump)',
     tree: 'massDamage',
     tier: 5,
-    requires: 'nova',
+    requires: 'rocket',
     maxRank: MAX_RANK_CAPSTONE,
     procChance: [0.04, 0.08, 0.12],
     arcTargets: [2, 3, 4],
@@ -329,6 +345,77 @@ const BLOOD_THIRST = {
   },
 };
 
+// ─── SAPPER ──────────────────────────────────────────────────────────────
+const SAPPER = {
+  landmine: {
+    id: 'landmine',
+    name: 'Landmine',
+    description: 'Drop a mine every {value}s. Enemies that touch it take 5% of your max HP',
+    tree: 'sapper',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    cooldownMs: [18000, 16000, 14000, 12000, 10000],
+    mineDamagePct: [0.05, 0.055, 0.06, 0.065, 0.07],
+    mineDurationMs: 20000,
+    maxActiveMines: [3, 4, 5, 6, 8],
+    mineRadius: 18,
+    mineDetectionRadius: 22,
+  },
+  volatileBlood: {
+    id: 'volatileBlood',
+    name: 'Volatile Blood',
+    description: '{value}% chance to drop a mine when you take damage',
+    tree: 'sapper',
+    tier: 2,
+    requires: 'landmine',
+    maxRank: MAX_RANK,
+    perRank: [0.005, 0.01, 0.015, 0.02, 0.025],
+  },
+  deadDrop: {
+    id: 'deadDrop',
+    name: 'Dead Drop',
+    description: '-{value}% respawn time + leave a mega-mine on death',
+    tree: 'sapper',
+    tier: 3,
+    requires: 'volatileBlood',
+    maxRank: MAX_RANK,
+    respawnReduction: [0.10, 0.15, 0.20, 0.25, 0.30],
+    megaMineDamagePct: [0.06, 0.09, 0.12, 0.15, 0.18],
+    megaMineDurationMs: 30000,
+    megaMineRadius: [30, 30, 40, 40, 50],
+  },
+  decoy: {
+    id: 'decoy',
+    name: 'Decoy',
+    description: 'Spawn a clone every {value}s that shoots for 5s. Explodes like a mine on death',
+    tree: 'sapper',
+    tier: 4,
+    requires: 'deadDrop',
+    maxRank: MAX_RANK,
+    cooldownMs: [20000, 18000, 16000, 14000, 10000],
+    cloneHpPct: [0.30, 0.40, 0.50, 0.60, 0.70],
+    cloneDamagePct: [0.50, 0.60, 0.70, 0.80, 0.90],
+    cloneDurationMs: 5000,
+    deathExplosionPct: 0.05,
+  },
+  singularity: {
+    id: 'singularity',
+    name: 'Singularity',
+    description: 'Mines become black holes: pull enemies for {value}s, 2% max HP/s DoT, then detonate',
+    tree: 'sapper',
+    tier: 5,
+    requires: 'decoy',
+    maxRank: MAX_RANK_CAPSTONE,
+    pullDurationMs: [1000, 2000, 3000],
+    pullRadius: [90, 120, 150],
+    dotPerSecondPct: 0.01,
+    detonationBonus: [0.03, 0.05, 0.07],
+    maxPulled: [1, 2, 3],
+    pullStrength: 0.03,
+  },
+};
+
 // ─── Flat lookup ──────────────────────────────────────────────────────────
 const ALL_TALENTS = {
   ...TANK,
@@ -336,6 +423,7 @@ const ALL_TALENTS = {
   ...BRAWLER,
   ...MASS_DAMAGE,
   ...BLOOD_THIRST,
+  ...SAPPER,
 };
 
 // UI order per tree
@@ -343,39 +431,42 @@ const TREE_ORDER = {
   tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
-  massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
+  massDamage:  ['ricochet', 'focusFire', 'nova', 'rocket', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
+  sapper:      ['landmine', 'volatileBlood', 'deadDrop', 'decoy', 'singularity'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
-  'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
-  'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'orbit', 'nova', 'reaperArc',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'landmine',
+  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'volatileBlood',
+  'regeneration', 'criticalStrike', 'relentless', 'nova', 'killRush', 'deadDrop',
+  'lifesteal', 'multiShot', 'orbit', 'rocket', 'reaperArc', 'decoy',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity',
 ];
 
-// ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
+// ─── Chain-ID mapping (on-chain u8 slots 0-29) ───────────────────────────
 const TALENT_NAME_TO_CHAIN_ID = {
   armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
-  ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
+  ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19, rocket: 30,
   experience: 20, execute: 21, killRush: 22, reaperArc: 23, berserker: 24,
+  landmine: 25, volatileBlood: 26, deadDrop: 27, decoy: 28, singularity: 29,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
   Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
 );
 
-// On-chain account field names in the order they map to chain slot 0-24
+// On-chain account field names in the order they map to chain slot 0-29
 const CHAIN_SLOT_FIELDS = [
   'talentIronSkin', 'talentHeavyHitter', 'talentRegeneration', 'talentLifesteal', 'talentArmor',
   'talentSwift', 'talentRapidFire', 'talentEvasion', 'talentQuickRespawn', 'talentMomentum',
   'talentWeakspot', 'talentCriticalStrike', 'talentFocusFire', 'talentMultiShot', 'talentDualCannon',
   'talentDeflect', 'talentAbsorb', 'talentLastStand', 'talentCloak', 'talentDash',
   'talentRampage', 'talentHoming', 'talentRicochet', 'talentDeathbomb', 'talentFrenzy',
+  'talentLandmine', 'talentEvasionSapper', 'talentDeadDrop', 'talentDecoy', 'talentSingularity',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -424,9 +515,14 @@ function pointsInTree(talents, treeName) {
   return total;
 }
 
+const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity'];
+const MAX_CAPSTONES = 2;
+
 module.exports = {
   MAX_LEVEL,
+  LEVEL_SCALE_EARLY,
   LEVEL_SCALE,
+  LEVEL_SCALE_50PLUS,
   MAX_RANK,
   MAX_RANK_CAPSTONE,
   TANK,
@@ -434,9 +530,12 @@ module.exports = {
   BRAWLER,
   MASS_DAMAGE,
   BLOOD_THIRST,
+  SAPPER,
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
+  CAPSTONE_TALENTS,
+  MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID,
   CHAIN_ID_TO_TALENT_NAME,
   CHAIN_SLOT_FIELDS,
