@@ -902,11 +902,13 @@ class GameState {
     this.bullets.forEach(bullet => {
       if (bulletsToRemove.has(bullet.id)) return;
 
-      // Remove bullets from dead/ghost shooters
-      const shooterBubble = this.battleBubbles.get(bullet.shooterAddress);
-      if (shooterBubble && (shooterBubble.isGhost || !shooterBubble.isAlive)) {
-        bulletsToRemove.add(bullet.id);
-        return;
+      // Remove bullets from dead/ghost shooters (but not decoy bullets — mirages fire while owner is dead)
+      if (!bullet.isDecoyBullet) {
+        const shooterBubble = this.battleBubbles.get(bullet.shooterAddress);
+        if (shooterBubble && (shooterBubble.isGhost || !shooterBubble.isAlive)) {
+          bulletsToRemove.add(bullet.id);
+          return;
+        }
       }
 
       // Homing Cannon: home toward the shooter's current target
@@ -1171,15 +1173,6 @@ class GameState {
               color: '#ff6600', fontSize: 16, type: 'rocket',
             });
 
-            // Volatile Blood
-            const rVbRank = rTargetBattle.talents?.volatileBlood || 0;
-            if (rVbRank > 0 && rTargetBattle.talents?.landmine > 0) {
-              const rVbChance = ALL_TALENTS.volatileBlood.perRank[rVbRank - 1];
-              if (Math.random() < rVbChance) {
-                this._spawnMine(rTarget.address, rTarget.x, rTarget.y, rTargetBattle, rTargetBattle.talents.landmine, now, false);
-              }
-            }
-
             // Counter Attack
             const rCounterChance = getTalentValue('counterAttack', rTargetBattle.talents?.counterAttack || 0);
             if (rCounterChance > 0 && Math.random() < rCounterChance) {
@@ -1322,15 +1315,6 @@ class GameState {
 
 
         actualDmg = this._applyDamage(targetBattle, actualDmg, now);
-
-        // Volatile Blood: chance to drop a mine when taking damage
-        const vbRank = targetBattle.talents?.volatileBlood || 0;
-        if (vbRank > 0 && targetBattle.talents?.landmine > 0) {
-          const vbChance = ALL_TALENTS.volatileBlood.perRank[vbRank - 1];
-          if (Math.random() < vbChance) {
-            this._spawnMine(target.address, target.x, target.y, targetBattle, targetBattle.talents.landmine, now, false);
-          }
-        }
 
         // Counter Attack talent: chance to fire straight bullet back at attacker
         if (!bullet.isCounterAttack) {
@@ -1571,12 +1555,12 @@ class GameState {
           const victimLevel = calcLevel(targetBattle.xp || 0);
           let ghostMs = calcGhostMs(victimLevel);
 
-          // Dead Drop talent: reduced respawn time + mega-mine on death
-          const deadDropRank = targetBattle.talents?.deadDrop || 0;
-          if (deadDropRank > 0) {
-            const reduction = ALL_TALENTS.deadDrop.respawnReduction[deadDropRank - 1];
+          // Death Mirage talent: reduced respawn + leave a decoy on death
+          const mirageRank = targetBattle.talents?.deathMirage || 0;
+          if (mirageRank > 0) {
+            const reduction = ALL_TALENTS.deathMirage.respawnReduction[mirageRank - 1];
             ghostMs = Math.round(ghostMs * (1 - reduction));
-            this._spawnMegaMine(target.address, target.x, target.y, targetBattle, deadDropRank, now);
+            this._spawnDeathMirage(target.address, target.x, target.y, targetBattle, mirageRank, now);
           }
 
           targetBattle.ghostUntil = now + ghostMs;
@@ -1944,15 +1928,6 @@ class GameState {
 
         if (this.magicBlockReady) this._queueAttack(address, e.holder.address);
 
-        // Volatile Blood on target
-        const vbRank = e.battle.talents?.volatileBlood || 0;
-        if (vbRank > 0 && e.battle.talents?.landmine > 0) {
-          const vbChance = ALL_TALENTS.volatileBlood.perRank[vbRank - 1];
-          if (Math.random() < vbChance) {
-            this._spawnMine(e.holder.address, e.holder.x, e.holder.y, e.battle, e.battle.talents.landmine, now, false);
-          }
-        }
-
         // Counter Attack on target
         const counterChance = getTalentValue('counterAttack', e.battle.talents?.counterAttack || 0);
         if (counterChance > 0 && Math.random() < counterChance) {
@@ -2092,7 +2067,7 @@ class GameState {
     // Expire old mines
     this.mines = this.mines.filter(m => {
       if (m.isDetonating) return true;
-      const duration = m.isMegaMine ? ALL_TALENTS.deadDrop.megaMineDurationMs : cfg.mineDurationMs;
+      const duration = m.isMegaMine ? 30000 : cfg.mineDurationMs;
       return now - m.createdAt < duration;
     });
   }
@@ -2118,32 +2093,8 @@ class GameState {
     });
   }
 
-  _spawnMegaMine(ownerAddress, x, y, bubble, deadDropRank, now) {
-    const cfg = ALL_TALENTS.deadDrop;
-    const singRank = bubble.talents?.singularity || 0;
-
-    // Remove any existing mega-mine from this owner
-    this.mines = this.mines.filter(m => !(m.ownerAddress === ownerAddress && m.isMegaMine));
-
-    this.mines.push({
-      id: `mine-${this.mineIdCounter++}`,
-      ownerAddress,
-      x, y,
-      createdAt: now,
-      isMegaMine: true,
-      landmineRank: bubble.talents?.landmine || 0,
-      singularityRank: singRank,
-      radius: cfg.megaMineRadius[deadDropRank - 1],
-      detectionRadius: cfg.megaMineRadius[deadDropRank - 1] + 10,
-      damagePct: cfg.megaMineDamagePct[deadDropRank - 1],
-      ownerMaxHealth: bubble.maxHealth,
-      isDetonating: false,
-      singularityState: null,
-    });
-
-    const megaHolder = this.holders.find(h => h.address === ownerAddress);
-    this.vfx.push({ type: 'megaMine', x, y, color: megaHolder?.color || '#ff6600', createdAt: now });
-  }
+  // _spawnMegaMine — kept for future mine rework
+  _spawnMegaMine() { /* no-op: mega-mines retired, see landmine._retired */ }
 
   // ─── Sapper: Mine detonation + Singularity black holes ────────────
   _processMineDetonations(now) {
@@ -2331,12 +2282,17 @@ class GameState {
       return;
     }
 
+    const volatileRank = ownerBubble.talents?.volatileDecoy || 0;
+    if (volatileRank <= 0) {
+      this.vfx.push({ type: 'decoyDeath', x: clone.x, y: clone.y, createdAt: now });
+      return;
+    }
+
     const singularityRank = ownerBubble.talents?.singularity || 0;
 
-    // If owner has Singularity, the decoy becomes a black hole on death
-    if (singularityRank > 0) {
+    // Singularity: 33% chance the explosion becomes a black hole instead
+    if (singularityRank > 0 && Math.random() < ALL_TALENTS.singularity.procChance) {
       const pullRadius = ALL_TALENTS.singularity.pullRadius[singularityRank - 1];
-      const detectionRadius = pullRadius;
 
       this.mines.push({
         id: `mine-${this.mineIdCounter++}`,
@@ -2345,11 +2301,12 @@ class GameState {
         x: clone.x,
         y: clone.y,
         radius: clone.radius,
-        damagePct: ALL_TALENTS.decoy.deathExplosionPct,
-        detectionRadius,
+        damagePct: ALL_TALENTS.volatileDecoy.explosionDmgPct[volatileRank - 1],
+        detectionRadius: pullRadius,
         createdAt: now,
         expiresAt: now + 30000,
         isMegaMine: false,
+        landmineRank: 0,
         singularityRank,
         isDetonating: true,
         singularityState: {
@@ -2360,7 +2317,6 @@ class GameState {
         },
       });
 
-      // Pull in any enemies within range immediately
       const mine = this.mines[this.mines.length - 1];
       const maxPulled = ALL_TALENTS.singularity.maxPulled[singularityRank - 1];
       for (const h of this.holders) {
@@ -2391,9 +2347,9 @@ class GameState {
       return;
     }
 
-    // Normal mine explosion
-    const explosionDmg = ownerBubble.maxHealth * ALL_TALENTS.decoy.deathExplosionPct;
-    const blastRadius = clone.radius * 4;
+    // Volatile Decoy: AoE explosion on death
+    const explosionDmg = ownerBubble.maxHealth * ALL_TALENTS.volatileDecoy.explosionDmgPct[volatileRank - 1];
+    const blastRadius = ALL_TALENTS.volatileDecoy.explosionRadius[volatileRank - 1];
 
     for (const h of this.holders) {
       if (h.address === clone.ownerAddress || h.x === undefined) continue;
@@ -2409,7 +2365,7 @@ class GameState {
       this.damageNumbers.push({
         id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 20,
         damage: explosionDmg, createdAt: now, alpha: 1,
-        color: '#ff6600', fontSize: 18, type: 'mine',
+        color: '#ff6600', fontSize: 18, type: 'decoyExplosion',
       });
       if (this.magicBlockReady) this._queueAttack(clone.ownerAddress, h.address);
 
@@ -2432,14 +2388,14 @@ class GameState {
     const victimLevel = calcLevel(victim.xp || 0);
     let ghostMs = calcGhostMs(victimLevel);
 
-    // Dead Drop: reduced respawn + mega-mine on death
-    const deadDropRank = victim.talents?.deadDrop || 0;
-    if (deadDropRank > 0) {
-      const reduction = ALL_TALENTS.deadDrop.respawnReduction[deadDropRank - 1];
+    // Death Mirage: reduced respawn + leave a decoy on death
+    const mirageRank = victim.talents?.deathMirage || 0;
+    if (mirageRank > 0) {
+      const reduction = ALL_TALENTS.deathMirage.respawnReduction[mirageRank - 1];
       ghostMs = Math.round(ghostMs * (1 - reduction));
       const vh = this.holders.find(h => h.address === victimAddress);
       if (vh && vh.x !== undefined) {
-        this._spawnMegaMine(victimAddress, vh.x, vh.y, victim, deadDropRank, now);
+        this._spawnDeathMirage(victimAddress, vh.x, vh.y, victim, mirageRank, now);
       }
     }
 
@@ -2505,37 +2461,114 @@ class GameState {
     this.updateTopKillers();
   }
 
-  // ─── Sapper: Decoy clone logic ────────────────────────────────────
-  _processDecoyClones(now, deltaTime) {
-    const { width, height } = this.dimensions;
+  // ─── Sapper: Spawn a decoy clone helper ──────────────────────────
+  _spawnDecoyClone(ownerAddress, x, y, bubble, decoyRank, now, vx, vy, radius, color) {
+    const cloneHp = bubble.maxHealth * ALL_TALENTS.decoy.cloneHpPct[decoyRank - 1];
+    const cloneDmgMult = ALL_TALENTS.decoy.cloneDamagePct[decoyRank - 1];
 
-    // Spawn new clones
+    this.decoyClones.push({
+      id: `decoy-${this.decoyIdCounter++}`,
+      ownerAddress,
+      x, y,
+      vx: vx || 0,
+      vy: vy || 0,
+      radius: radius || 15,
+      color,
+      health: cloneHp,
+      maxHealth: cloneHp,
+      damageMult: cloneDmgMult,
+      attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
+      createdAt: now,
+      lastShotTime: now,
+      alive: true,
+    });
+
+    this.vfx.push({ type: 'decoySpawn', x, y, createdAt: now });
+  }
+
+  // ─── Sapper T2: Spawn a death mirage (decoy on death) ───────────
+  _spawnDeathMirage(ownerAddress, x, y, bubble, mirageRank, now) {
+    const cfg = ALL_TALENTS.deathMirage;
+    const holder = this.holders.find(h => h.address === ownerAddress);
+    const cloneHp = bubble.maxHealth * cfg.mirageHpPct[mirageRank - 1];
+    const decoyRank = bubble.talents?.decoy || 1;
+    const cloneDmgMult = ALL_TALENTS.decoy.cloneDamagePct[Math.min(decoyRank, ALL_TALENTS.decoy.maxRank) - 1];
+
+    this.decoyClones.push({
+      id: `decoy-${this.decoyIdCounter++}`,
+      ownerAddress,
+      x, y,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      radius: holder?.radius || 15,
+      color: holder?.color || '#88aaff',
+      health: cloneHp,
+      maxHealth: cloneHp,
+      damageMult: cloneDmgMult,
+      attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
+      createdAt: now,
+      lastShotTime: now,
+      alive: true,
+      isMirage: true,
+      mirageDuration: cfg.mirageDurationMs,
+    });
+
+    this.vfx.push({ type: 'decoySpawn', x, y, color: holder?.color || '#88aaff', createdAt: now });
+  }
+
+  // ─── Sapper T3: Launch decoys at enemies ────────────────────────
+  _processDecoyBarrage(now) {
+    const cfg = ALL_TALENTS.decoyBarrage;
+
     this.battleBubbles.forEach((bubble, address) => {
       if (bubble.isGhost) return;
-      const decoyRank = bubble.talents?.decoy || 0;
-      if (decoyRank <= 0) return;
+      const barrageRank = bubble.talents?.decoyBarrage || 0;
+      if (barrageRank <= 0) return;
 
-      const cooldown = ALL_TALENTS.decoy.cooldownMs[decoyRank - 1];
-      if (!bubble._lastDecoySpawn) bubble._lastDecoySpawn = now - Math.random() * cooldown;
-      if (now - bubble._lastDecoySpawn < cooldown) return;
+      const cooldown = cfg.cooldownMs[barrageRank - 1];
+      if (!bubble._lastBarrage) bubble._lastBarrage = now - Math.random() * cooldown;
+      if (now - bubble._lastBarrage < cooldown) return;
 
-      // Only one clone active at a time
-      if (this.decoyClones.some(c => c.ownerAddress === address && c.alive)) return;
+      const barrageActive = this.decoyClones.filter(c => c.ownerAddress === address && c.isBarrage && c.alive).length;
+      if (barrageActive >= 2) return;
 
-      bubble._lastDecoySpawn = now;
+      bubble._lastBarrage = now;
+
       const holder = this.holders.find(h => h.address === address);
       if (!holder || holder.x === undefined) return;
 
-      const cloneHp = bubble.maxHealth * ALL_TALENTS.decoy.cloneHpPct[decoyRank - 1];
-      const cloneDmgMult = ALL_TALENTS.decoy.cloneDamagePct[decoyRank - 1];
+      // Find nearest enemy
+      let closest = null;
+      let closestDist = Infinity;
+      for (const h of this.holders) {
+        if (h.address === address || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+        const dx = h.x - holder.x;
+        const dy = h.y - holder.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = h;
+        }
+      }
+
+      if (!closest || closestDist > 800) return;
+
+      const dx = closest.x - holder.x;
+      const dy = closest.y - holder.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      const cloneHp = bubble.maxHealth * cfg.barrageHpPct[barrageRank - 1];
+      const cloneDmgMult = cfg.barrageDmgPct[barrageRank - 1];
 
       this.decoyClones.push({
         id: `decoy-${this.decoyIdCounter++}`,
         ownerAddress: address,
         x: holder.x,
         y: holder.y,
-        vx: -(holder.vx || 0),
-        vy: -(holder.vy || 0),
+        vx: (dx / dist) * cfg.launchSpeed,
+        vy: (dy / dist) * cfg.launchSpeed,
         radius: holder.radius || 15,
         color: holder.color,
         health: cloneHp,
@@ -2545,27 +2578,68 @@ class GameState {
         createdAt: now,
         lastShotTime: now,
         alive: true,
+        isBarrage: true,
+        barrageDuration: cfg.barrageDurationMs,
       });
 
       this.vfx.push({ type: 'decoySpawn', x: holder.x, y: holder.y, createdAt: now });
     });
+  }
 
-    // Update existing clones
-    for (const clone of this.decoyClones) {
+  // ─── Sapper: Decoy clone logic ────────────────────────────────────
+  _processDecoyClones(now, deltaTime) {
+    const { width, height } = this.dimensions;
+
+    // T1 Decoy: spawn clones periodically
+    this.battleBubbles.forEach((bubble, address) => {
+      if (bubble.isGhost) return;
+      const decoyRank = bubble.talents?.decoy || 0;
+      if (decoyRank <= 0) return;
+
+      const cooldown = ALL_TALENTS.decoy.cooldownMs[decoyRank - 1];
+      if (!bubble._lastDecoySpawn) bubble._lastDecoySpawn = now - Math.random() * cooldown;
+      if (now - bubble._lastDecoySpawn < cooldown) return;
+
+      const activeCount = this.decoyClones.filter(c => c.ownerAddress === address && c.alive).length;
+      if (activeCount >= 2) return;
+
+      bubble._lastDecoySpawn = now;
+      const holder = this.holders.find(h => h.address === address);
+      if (!holder || holder.x === undefined) return;
+
+      this._spawnDecoyClone(address, holder.x, holder.y, bubble, decoyRank, now, -(holder.vx || 0), -(holder.vy || 0), holder.radius, holder.color);
+    });
+
+    // T3 Decoy Barrage: launch decoys at enemies
+    this._processDecoyBarrage(now);
+
+    // Global cap on decoy clones to prevent runaway growth
+    if (this.decoyClones.length > 100) {
+      const alive = this.decoyClones.filter(c => c.alive).sort((a, b) => a.createdAt - b.createdAt);
+      for (let i = 0; i < alive.length - 80; i++) alive[i].alive = false;
+      this.decoyClones = this.decoyClones.filter(c => c.alive || now - c.createdAt < 500);
+    }
+
+    // Update existing clones — snapshot length to avoid processing newly-added clones this tick
+    const cloneCount = this.decoyClones.length;
+    for (let ci = 0; ci < cloneCount; ci++) {
+      const clone = this.decoyClones[ci];
       if (!clone.alive) continue;
 
       const elapsed = now - clone.createdAt;
-      if (elapsed >= ALL_TALENTS.decoy.cloneDurationMs || clone.health <= 0) {
+      const maxDuration = clone.mirageDuration || clone.barrageDuration || ALL_TALENTS.decoy.cloneDurationMs;
+      if (elapsed >= maxDuration || clone.health <= 0) {
         clone.alive = false;
         this._decoyDeathExplosion(clone, now);
         continue;
       }
 
-      // Move clone
+      // Move clone — barrage decoys decelerate faster for a smooth arc
       clone.x += (clone.vx || 0) * deltaTime;
       clone.y += (clone.vy || 0) * deltaTime;
-      clone.vx *= PHYSICS_CONFIG.velocityDecay;
-      clone.vy *= PHYSICS_CONFIG.velocityDecay;
+      const decay = clone.isBarrage ? 0.985 : PHYSICS_CONFIG.velocityDecay;
+      clone.vx *= decay;
+      clone.vy *= decay;
 
       const margin = clone.radius + 10;
       if (clone.x < margin) { clone.x = margin; clone.vx = Math.abs(clone.vx) * PHYSICS_CONFIG.wallBounce; }
@@ -2631,10 +2705,12 @@ class GameState {
     }
 
     // Decoy clones take damage from enemy bullets (check collisions)
+    const consumedBullets = new Set();
     for (const clone of this.decoyClones) {
       if (!clone.alive) continue;
-      for (let bi = this.bullets.length - 1; bi >= 0; bi--) {
+      for (let bi = 0; bi < this.bullets.length; bi++) {
         const bullet = this.bullets[bi];
+        if (consumedBullets.has(bullet.id)) continue;
         if (bullet.shooterAddress === clone.ownerAddress) continue;
         if (bullet.isDecoyBullet) continue;
         const dx = bullet.x - clone.x;
@@ -2642,7 +2718,7 @@ class GameState {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < clone.radius + 3) {
           clone.health -= Math.min(bullet.damage, 5);
-          this.bullets.splice(bi, 1);
+          consumedBullets.add(bullet.id);
           this.damageNumbers.push({
             id: `dmg-${now}-${Math.random()}`, x: clone.x, y: clone.y - 10,
             damage: bullet.damage, createdAt: now, alpha: 1,
@@ -2655,6 +2731,9 @@ class GameState {
           }
         }
       }
+    }
+    if (consumedBullets.size > 0) {
+      this.bullets = this.bullets.filter(b => !consumedBullets.has(b.id));
     }
 
     this.decoyClones = this.decoyClones.filter(c => c.alive || now - c.createdAt < 500);
@@ -3455,7 +3534,7 @@ class GameState {
         isDetonating: m.isDetonating,
         singularityRank: m.singularityRank,
         createdAt: m.createdAt,
-        durationMs: m.isMegaMine ? ALL_TALENTS.deadDrop.megaMineDurationMs : ALL_TALENTS.landmine.mineDurationMs,
+        durationMs: m.isMegaMine ? 30000 : ALL_TALENTS.landmine.mineDurationMs,
         singularityState: m.singularityState ? {
           rank: m.singularityState.rank,
           startTime: m.singularityState.startTime,

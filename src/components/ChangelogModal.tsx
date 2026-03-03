@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Swords, Heart, Zap, TrendingUp, TrendingDown, Shield, RotateCcw, Crosshair, Droplets, Target, Layout, Rocket, Repeat } from "lucide-react";
+import { X, Swords, Zap, TrendingDown, Target, Repeat, Rocket, Ghost, Copy, Bomb, Flame, Crosshair } from "lucide-react";
 
 const STORAGE_KEY_DISMISSED_SEASON = "hodlwarz-changelog-dismissed-season";
 const STORAGE_KEY_EVER_SEEN = "hodlwarz-changelog-ever-seen";
@@ -14,14 +14,14 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Droplets, color: "#ff3366", title: "Volatile Blood", desc: "Evasion removed — replaced with Volatile Blood: chance to drop a mine when you take damage" },
-  { icon: Swords, color: "#ff9900", title: "Decoy Rework", desc: "Decoys now explode like a mine on death. With Singularity, they become black holes" },
-  { icon: Target, color: "#cc44ff", title: "Singularity Balance", desc: "Smaller pull radius & shorter duration, but detonation bonus buffed to +3/5/7%" },
-  { icon: TrendingDown, color: "#00ccff", title: "Firepower Tuning", desc: "Rapid Fire, Crit Strike & Multi Shot toned down for healthier TTK" },
-  { icon: Crosshair, color: "#00ffaa", title: "Landmine Scaling", desc: "Mine damage now scales per rank: 5/5.5/6/6.5/7% max HP" },
-  { icon: Layout, color: "#a855f7", title: "Tabbed Talent UI", desc: "New compact tabbed talent tree — switch between 6 trees, no scrolling needed" },
-  { icon: Repeat, color: "#22d3ee", title: "Ricochet Homing", desc: "Ricochet bounce bullet now homes in on its secondary target" },
-  { icon: Rocket, color: "#ff6600", title: "Rocket (Mass Damage T4)", desc: "New talent — every Nth shot fires a homing rocket that explodes on impact (300px AoE, triggers all modifiers)" },
+  { icon: Copy, color: "#22d3ee", title: "Echo Tree (was Sapper)", desc: "Full decoy-oriented rework — mines retired, the tree is now all about clones" },
+  { icon: Ghost, color: "#a855f7", title: "Death Mirage (T2)", desc: "When you die, leave a fighting decoy behind + reduced respawn time" },
+  { icon: Rocket, color: "#ff6600", title: "Decoy Barrage (T3)", desc: "Periodically launch a decoy toward the nearest enemy — it flies in and starts shooting" },
+  { icon: Bomb, color: "#ff3366", title: "Volatile Decoy (T4)", desc: "All decoys now explode on death for up to 6% max HP AoE damage" },
+  { icon: Target, color: "#cc44ff", title: "Singularity Rework (T5)", desc: "33% chance any decoy explosion becomes a black hole — pull, DoT, then detonate" },
+  { icon: Flame, color: "#ff4400", title: "Infernal Lance", desc: "Nova replaced with Infernal Lance — piercing beam dealing 222-666% ATK, triggers all modifiers" },
+  { icon: Repeat, color: "#00ffaa", title: "Ricochet Rebalance", desc: "Ricochet chance now scales evenly: 11/18/25/33/40% per rank" },
+  { icon: TrendingDown, color: "#00ccff", title: "Damage Tuning", desc: "Volatile Decoy and Singularity damage spread evenly to 6% cap for healthier balance" },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
@@ -107,7 +107,7 @@ export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProp
                   transition={{ delay: 0.2 }}
                   className="text-sm text-slate-400 tracking-widest uppercase"
                 >
-                  Black Hole Balance Patch
+                  Phantom Decoy Patch
                 </motion.p>
               </div>
 

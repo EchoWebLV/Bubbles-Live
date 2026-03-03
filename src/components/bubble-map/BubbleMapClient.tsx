@@ -116,15 +116,15 @@ const TALENT_TREES = {
     ],
   },
   sapper: {
-    name: 'Sapper',
+    name: 'Echo',
     color: 'teal',
-    icon: '💣',
+    icon: '👻',
     talents: [
-      { id: 'landmine', name: 'Landmine', desc: 'Drop mine every 18/16/14/12/10s. 5/5.5/6/6.5/7% max HP dmg', maxRank: 5 },
-      { id: 'volatileBlood', name: 'Volatile Blood', desc: '0.5/1/1.5/2/2.5% chance to drop a mine when you take damage', maxRank: 5 },
-      { id: 'deadDrop', name: 'Dead Drop', desc: '-10/15/20/25/30% respawn + mega-mine on death', maxRank: 5 },
-      { id: 'decoy', name: 'Decoy', desc: 'Clone every 20/18/16/14/10s. Shoots for 5s. Explodes on death', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: 'Mines become black holes: 1/2/3s pull, 1% HP/s DoT, +3/5/7% detonation', maxRank: 3 },
+      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
+      { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -5/10/15/20/25% respawn time', maxRank: 5 },
+      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 16/14/12/10/8s', maxRank: 5 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 1.2/2.4/3.6/4.8/6% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1% HP/s, +2/4/6% detonation', maxRank: 3 },
     ],
   },
 } as const;

@@ -49,11 +49,11 @@ export interface TalentRanks {
   killRush: number;
   reaperArc: number;
   berserker: number;
-  // Sapper
-  landmine: number;
-  volatileBlood: number;
-  deadDrop: number;
+  // Echo
   decoy: number;
+  deathMirage: number;
+  decoyBarrage: number;
+  volatileDecoy: number;
   singularity: number;
   [key: string]: number;
 }
