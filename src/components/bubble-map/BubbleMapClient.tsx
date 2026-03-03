@@ -26,6 +26,7 @@ import {
   createSingularityExplosion,
   type LightningArc,
   type ReaperArcVfx,
+  type OrbitalLaserVfx,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
@@ -95,9 +96,9 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '💥',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance homing bounce', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/18/25/33/40% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (222/333/444/555/666% dmg)', maxRank: 5 },
       { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
@@ -314,8 +315,14 @@ export function BubbleMapClient() {
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
   const [selectedTalentTree, setSelectedTalentTree] = useState<string>('tank');
   const [changelogDismissedSeason, setChangelogDismissedSeason] = useState<number | null>(null);
+  const [changelogReady, setChangelogReady] = useState(false);
 
   const seasonId = gameState?.seasonId ?? 0;
+
+  useEffect(() => {
+    setChangelogReady(true);
+  }, []);
+
   // When we dismissed as "init" (before seasonId arrived) and now have real seasonId, persist it so season reset works
   useEffect(() => {
     if (gameState?.seasonId && gameState.seasonId > 0) {
@@ -325,7 +332,7 @@ export function BubbleMapClient() {
       } catch {}
     }
   }, [gameState?.seasonId]);
-  const showChangelog = shouldShowChangelog(gameState?.seasonId) && changelogDismissedSeason !== (gameState?.seasonId ?? 0);
+  const showChangelog = changelogReady && shouldShowChangelog(gameState?.seasonId) && changelogDismissedSeason !== (gameState?.seasonId ?? 0);
 
   const handleAllocateTalent = useCallback(async (talentId: string) => {
     if (!effectiveAddress || allocatingTalent) return;
@@ -795,12 +802,14 @@ export function BubbleMapClient() {
   const processedVfxRef = useRef<Set<string>>(new Set());
   const [lightningArcs, setLightningArcs] = useState<LightningArc[]>([]);
   const [reaperArcs, setReaperArcs] = useState<ReaperArcVfx[]>([]);
+  const [laserBeams, setLaserBeams] = useState<OrbitalLaserVfx[]>([]);
   const vfxList = gameState?.vfx || [];
   useEffect(() => {
     if (vfxList.length === 0) return;
     const newEffects: ReturnType<typeof createDeathbombExplosion>[] = [];
     const newArcs: LightningArc[] = [];
     const newReaperArcs: ReaperArcVfx[] = [];
+    const newLasers: OrbitalLaserVfx[] = [];
     for (const v of vfxList) {
       const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
       if (processedVfxRef.current.has(key)) continue;
@@ -811,6 +820,8 @@ export function BubbleMapClient() {
         newEffects.push(v.small ? createSmallBulletPop(v.x, v.y, v.color) : createBulletPopFirework(v.x, v.y, v.color));
       } else if (v.type === 'rocketExplode') {
         newEffects.push(createMineExplosion(v.x, v.y, v.radius || 120, '#ff6600'));
+      } else if (v.type === 'orbitalLaser' && v.targetX !== undefined && v.targetY !== undefined) {
+        newLasers.push({ x: v.x, y: v.y, targetX: v.targetX, targetY: v.targetY, beamWidth: v.beamWidth ?? 16, color: v.color, createdAt: Date.now(), duration: 350 });
       } else if (v.type === 'lightning' && v.targetX !== undefined && v.targetY !== undefined) {
         newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
         newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
@@ -836,17 +847,21 @@ export function BubbleMapClient() {
     if (newReaperArcs.length > 0) {
       setReaperArcs(prev => [...prev, ...newReaperArcs].filter(a => Date.now() - a.createdAt < a.duration));
     }
+    if (newLasers.length > 0) {
+      setLaserBeams(prev => [...prev, ...newLasers].filter(a => Date.now() - a.createdAt < a.duration));
+    }
     if (processedVfxRef.current.size > 500) {
       const entries = Array.from(processedVfxRef.current);
       processedVfxRef.current = new Set(entries.slice(-200));
     }
   }, [vfxList]);
 
-  // Clean up expired lightning arcs and reaper arcs
+  // Clean up expired VFX arcs
   useEffect(() => {
     const interval = setInterval(() => {
       setLightningArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
       setReaperArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
+      setLaserBeams(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
     }, 100);
     return () => clearInterval(interval);
   }, []);
@@ -1692,6 +1707,7 @@ export function BubbleMapClient() {
           connectedWallet={effectiveAddress}
           lightningArcs={lightningArcs}
           reaperArcs={reaperArcs}
+          laserBeams={laserBeams}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />

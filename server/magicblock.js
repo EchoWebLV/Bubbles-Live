@@ -777,7 +777,7 @@ class MagicBlockService {
         ricochet: account.talentDeflect || 0,
         counterAttack: account.talentAbsorb || 0,
         chainLightning: account.talentLastStand || 0,
-        nova: account.talentCloak || 0,
+        orbitalLaser: account.talentCloak || 0,
         focusFire: account.talentDash || 0,
         experience: account.talentRampage || 0,
         execute: account.talentHoming || 0,

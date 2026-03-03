@@ -506,8 +506,8 @@ class GameState {
           _lastContactDmg: 0,
           // Blood Thirst state
           killRushUntil: 0,
-          // Nova state
-          _lastNova: 0,
+          // Orbital Laser state
+          _lastLaser: 0,
         };
         if (bubble.classId === 1) {
           const fm = classMultiplier(1, lvl);
@@ -720,8 +720,8 @@ class GameState {
       }
     });
 
-    // Nova talent: emit projectiles periodically
-    this._processNova(now);
+    // Orbital Laser talent: piercing beam through all enemies in a line
+    this._processOrbitalLaser(now);
 
     // Sapper: drop mines, update decoy clones, process mine detonations/singularity
     this._processLandmines(now);
@@ -909,46 +909,6 @@ class GameState {
         return;
       }
 
-      // Nova bullets: straight-line movement, hit detection uses normal pipeline below
-      if (bullet.isNova) {
-        bullet.x += bullet.vx * deltaTime;
-        bullet.y += bullet.vy * deltaTime;
-        const travelDx = bullet.x - bullet.startX;
-        const travelDy = bullet.y - bullet.startY;
-        const traveled = Math.sqrt(travelDx * travelDx + travelDy * travelDy);
-        bullet.progress = traveled / (bullet.novaMaxDist || 350);
-
-        if (traveled >= (bullet.novaMaxDist || 350) ||
-            bullet.x < -50 || bullet.x > width + 50 ||
-            bullet.y < -50 || bullet.y > height + 50) {
-          if (bullet.x > -10 && bullet.x < width + 10 && bullet.y > -10 && bullet.y < height + 10) {
-            this.vfx.push({ type: 'bulletPop', x: bullet.x, y: bullet.y, color: bullet.shooterColor || '#ffff00', createdAt: now, small: true });
-          }
-          bulletsToRemove.add(bullet.id);
-          return;
-        }
-
-        // Find closest enemy in hit range and assign as target for normal pipeline
-        let novaHit = null;
-        let novaHitDist = Infinity;
-        for (const h of this.holders) {
-          if (h.address === bullet.shooterAddress || h.x === undefined) continue;
-          const hb = this.battleBubbles.get(h.address);
-          if (!hb || hb.isGhost) continue;
-          const hdx = bullet.x - h.x;
-          const hdy = bullet.y - h.y;
-          const hDist = Math.sqrt(hdx * hdx + hdy * hdy);
-          if (hDist < h.radius + 3 && hDist < novaHitDist) {
-            novaHit = h;
-            novaHitDist = hDist;
-          }
-        }
-        if (!novaHit) return;
-        bullet.targetAddress = novaHit.address;
-        // Fall through to normal hit detection below
-      }
-
-
       // Homing Cannon: home toward the shooter's current target
       if (bullet.isHoming) {
         const lockedTarget = this.holders.find(h => h.address === bullet.targetAddress);
@@ -1042,7 +1002,7 @@ class GameState {
       }
 
       // If original target died, expire the bullet (explode mid-air)
-      if (!bullet.isHoming && !bullet.isBloodBolt && !bullet.isNova) {
+      if (!bullet.isHoming && !bullet.isBloodBolt) {
         const curTarget = this.holders.find(h => h.address === bullet.targetAddress);
         const curBattle = curTarget ? this.battleBubbles.get(curTarget.address) : null;
         const targetAlive = curTarget && curTarget.x !== undefined && curBattle && !curBattle.isGhost && curBattle.isAlive !== false;
@@ -1835,52 +1795,269 @@ class GameState {
     });
   }
 
-  // ─── Nova: periodic burst of straight-line bullets in all directions ───
-  _processNova(now) {
+  // ─── Orbital Laser: piercing beam that damages all enemies in a line ───
+  _processOrbitalLaser(now) {
+    const cfg = ALL_TALENTS.orbitalLaser;
     this.battleBubbles.forEach((bubble, address) => {
       if (bubble.isGhost) return;
-      const novaRank = bubble.talents?.nova || 0;
-      if (novaRank <= 0) return;
-      const interval = ALL_TALENTS.nova.intervalMs;
-      if (!bubble._lastNova) bubble._lastNova = now - Math.random() * interval;
-      if (now - bubble._lastNova < interval) return;
-      bubble._lastNova = now;
+      const rank = bubble.talents?.orbitalLaser || 0;
+      if (rank <= 0) return;
+
+      const interval = cfg.intervalMs[rank - 1];
+      if (!bubble._lastLaser) bubble._lastLaser = now - Math.random() * interval;
+      if (now - bubble._lastLaser < interval) return;
+      bubble._lastLaser = now;
 
       const holder = this.holders.find(h => h.address === address);
       if (!holder || holder.x === undefined) return;
 
-      const count = ALL_TALENTS.nova.projectiles[novaRank - 1];
-      const baseDmg = (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * ALL_TALENTS.nova.novaDamageMultiplier;
-      const novaSpeed = ALL_TALENTS.nova.novaSpeed;
-      const range = ALL_TALENTS.nova.novaRange;
+      const dmgMult = cfg.damageMultiplier[rank - 1];
+      const beamW = cfg.beamWidth[rank - 1];
+      const range = cfg.beamRange;
 
-      if (!bubble._novaRotation) bubble._novaRotation = 0;
-      bubble._novaRotation += ALL_TALENTS.nova.spiralSpread;
-
-      for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 / count) * i + bubble._novaRotation;
-        const endX = holder.x + Math.cos(angle) * range;
-        const endY = holder.y + Math.sin(angle) * range;
-
-        this.bullets.push({
-          id: `b-${this.bulletIdCounter++}`,
-          shooterAddress: address,
-          targetAddress: address,
-          shooterColor: holder.color,
-          x: holder.x, y: holder.y,
-          startX: holder.x, startY: holder.y,
-          targetX: endX, targetY: endY,
-          progress: 0,
-          curveDirection: 0,
-          curveStrength: 0,
-          vx: Math.cos(angle) * novaSpeed,
-          vy: Math.sin(angle) * novaSpeed,
-          damage: baseDmg,
-          createdAt: now,
-          isNova: true,
-          novaMaxDist: range,
-        });
+      // Collect enemies in range
+      const enemies = [];
+      for (const h of this.holders) {
+        if (h.address === address || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+        const dx = h.x - holder.x;
+        const dy = h.y - holder.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= range + h.radius) {
+          enemies.push({ holder: h, battle: hb, dx, dy, dist, angle: Math.atan2(dy, dx) });
+        }
       }
+
+      // Aim at the angle that pierces the most enemies
+      let bestAngle = Math.random() * Math.PI * 2;
+      let bestScore = -1;
+      if (enemies.length > 0) {
+        for (const candidate of enemies) {
+          let score = 0;
+          const cosA = Math.cos(candidate.angle);
+          const sinA = Math.sin(candidate.angle);
+          for (const e of enemies) {
+            const proj = e.dx * cosA + e.dy * sinA;
+            if (proj < 0) continue;
+            const perp = Math.abs(-e.dx * sinA + e.dy * cosA);
+            if (perp < beamW / 2 + e.holder.radius) score++;
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestAngle = candidate.angle;
+          }
+        }
+      }
+
+      const cosB = Math.cos(bestAngle);
+      const sinB = Math.sin(bestAngle);
+      const endX = holder.x + cosB * range;
+      const endY = holder.y + sinB * range;
+
+      // Deal damage to every enemy the beam passes through
+      for (const e of enemies) {
+        const proj = e.dx * cosB + e.dy * sinB;
+        if (proj < 0) continue;
+        const perp = Math.abs(-e.dx * sinB + e.dy * cosB);
+        if (perp >= beamW / 2 + e.holder.radius) continue;
+
+        // Base damage = attack power * lance multiplier
+        let lanceDmg = (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * dmgMult;
+
+        // Class multiplier (Assassin)
+        if (bubble.classId === 3) lanceDmg *= classMultiplier(3, calcLevel(bubble.xp));
+
+        // Heavy Hitter
+        const hhVal = getTalentValue('heavyHitter', bubble.talents?.heavyHitter || 0);
+        if (hhVal > 0) lanceDmg *= (1 + hhVal);
+
+        // Berserker
+        const bersRank = bubble.talents?.berserker || 0;
+        if (bersRank > 0 && bubble.health < bubble.maxHealth * ALL_TALENTS.berserker.hpThreshold) {
+          lanceDmg *= (1 + ALL_TALENTS.berserker.dmgBonus[bersRank - 1]);
+        }
+
+        // Vitality Strike
+        const vitVal = getTalentValue('vitalityStrike', bubble.talents?.vitalityStrike || 0);
+        if (vitVal > 0) lanceDmg += bubble.maxHealth * vitVal;
+
+        // Critical Strike
+        const critRank = bubble.talents?.criticalStrike || 0;
+        const critChance = getTalentValue('criticalStrike', critRank);
+        if (critChance > 0 && Math.random() < critChance) {
+          const critMult = Array.isArray(ALL_TALENTS.criticalStrike.critMultiplier)
+            ? ALL_TALENTS.criticalStrike.critMultiplier[critRank - 1]
+            : ALL_TALENTS.criticalStrike.critMultiplier;
+          lanceDmg *= critMult;
+        }
+
+        // Execute
+        const execVal = getTalentValue('execute', bubble.talents?.execute || 0);
+        if (execVal > 0 && e.battle.health / e.battle.maxHealth <= ALL_TALENTS.execute.hpThreshold) {
+          lanceDmg *= (1 + execVal);
+        }
+
+        // Focus Fire
+        const focusRank = bubble.talents?.focusFire || 0;
+        if (focusRank > 0) {
+          if (bubble.lastHitTarget === e.holder.address) {
+            bubble.focusFireStacks = Math.min((bubble.focusFireStacks || 0) + 1, ALL_TALENTS.focusFire.maxStacks);
+          } else {
+            bubble.lastHitTarget = e.holder.address;
+            bubble.focusFireStacks = 1;
+          }
+          const stackBonus = getTalentValue('focusFire', focusRank) * bubble.focusFireStacks;
+          lanceDmg *= (1 + stackBonus);
+          if (bubble.focusFireStacks >= ALL_TALENTS.focusFire.maxStacks) bubble.focusFireStacks = 0;
+        }
+
+        // Target: Armor
+        const armorVal = getTalentValue('armor', e.battle.talents?.armor || 0);
+        if (armorVal > 0) lanceDmg *= (1 - armorVal);
+
+        // Target: Iron Skin + Fortify
+        const ironVal = getTalentValue('ironSkin', e.battle.talents?.ironSkin || 0);
+        const fortMult = e.battle.classId === 1 ? classMultiplier(1, calcLevel(e.battle.xp)) : 1;
+        if (ironVal > 0 || fortMult > 1) {
+          const boostedMax = calcMaxHealth(e.battle.healthLevel) * (ironVal > 0 ? (1 + ironVal) : 1) * fortMult;
+          if (e.battle.maxHealth < Math.round(boostedMax)) e.battle.maxHealth = Math.round(boostedMax);
+        }
+
+        const actualDmg = this._applyDamage(e.battle, lanceDmg, now);
+
+        // Lifesteal
+        const lsVal = getTalentValue('lifesteal', bubble.talents?.lifesteal || 0);
+        if (lsVal > 0) {
+          const healAmt = actualDmg * lsVal;
+          const healCeil = bubble.maxHealth * ALL_TALENTS.lifesteal.healCeiling;
+          bubble.health = Math.min(bubble.health + healAmt, healCeil);
+        }
+
+        this.damageNumbers.push({
+          id: `dmg-${now}-${Math.random()}`,
+          x: e.holder.x + (Math.random() - 0.5) * 10,
+          y: e.holder.y - 10,
+          damage: actualDmg, createdAt: now, alpha: 1,
+          color: '#ff4400', fontSize: 22, type: 'orbitalLaser',
+        });
+
+        if (this.magicBlockReady) this._queueAttack(address, e.holder.address);
+
+        // Volatile Blood on target
+        const vbRank = e.battle.talents?.volatileBlood || 0;
+        if (vbRank > 0 && e.battle.talents?.landmine > 0) {
+          const vbChance = ALL_TALENTS.volatileBlood.perRank[vbRank - 1];
+          if (Math.random() < vbChance) {
+            this._spawnMine(e.holder.address, e.holder.x, e.holder.y, e.battle, e.battle.talents.landmine, now, false);
+          }
+        }
+
+        // Counter Attack on target
+        const counterChance = getTalentValue('counterAttack', e.battle.talents?.counterAttack || 0);
+        if (counterChance > 0 && Math.random() < counterChance) {
+          const counterHolder = e.holder;
+          const cdx = holder.x - counterHolder.x;
+          const cdy = holder.y - counterHolder.y;
+          const cDist = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (cDist > 0) {
+            this.bullets.push({
+              id: `b-${this.bulletIdCounter++}`,
+              shooterAddress: counterHolder.address,
+              targetAddress: holder.address,
+              shooterColor: counterHolder.color,
+              x: counterHolder.x, y: counterHolder.y,
+              startX: counterHolder.x, startY: counterHolder.y,
+              targetX: holder.x, targetY: holder.y,
+              progress: 0, curveDirection: Math.random() > 0.5 ? 1 : -1,
+              curveStrength: 0.3,
+              vx: (cdx / cDist) * BATTLE_CONFIG.bulletSpeed,
+              vy: (cdy / cDist) * BATTLE_CONFIG.bulletSpeed,
+              damage: (e.battle.attackPower || BATTLE_CONFIG.bulletDamage),
+              createdAt: now,
+            });
+          }
+        }
+
+        // Each pierced enemy can independently proc Chain Lightning
+        const clRank = bubble.talents?.chainLightning || 0;
+        if (clRank > 0) {
+          const procChance = Array.isArray(ALL_TALENTS.chainLightning.procChance)
+            ? ALL_TALENTS.chainLightning.procChance[clRank - 1]
+            : ALL_TALENTS.chainLightning.procChance;
+          if (Math.random() < procChance) {
+            const arcCount = ALL_TALENTS.chainLightning.arcTargets[clRank - 1];
+            const arcBaseMult = ALL_TALENTS.chainLightning.arcDamage;
+            const decay = ALL_TALENTS.chainLightning.arcDecay;
+            const arcRange = ALL_TALENTS.chainLightning.arcRange;
+            const nearbyTargets = [];
+            this.holders.forEach(h => {
+              if (h.address === address || h.x === undefined) return;
+              const hb = this.battleBubbles.get(h.address);
+              if (!hb || hb.isGhost) return;
+              const fdx = h.x - e.holder.x;
+              const fdy = h.y - e.holder.y;
+              const fd = Math.sqrt(fdx * fdx + fdy * fdy);
+              if (fd < arcRange) nearbyTargets.push({ holder: h, battle: hb, dist: fd });
+            });
+            nearbyTargets.sort((a, b) => a.dist - b.dist);
+            let prevX = e.holder.x, prevY = e.holder.y;
+            let currentMult = arcBaseMult;
+            for (let ai = 0; ai < Math.min(arcCount, nearbyTargets.length); ai++) {
+              const arcTarget = nearbyTargets[ai];
+              const arcDmg = Math.min(actualDmg * currentMult, 5);
+              arcTarget.battle.health -= arcDmg;
+              if (this.magicBlockReady) this._queueAttack(address, arcTarget.holder.address);
+              this.damageNumbers.push({
+                id: `dmg-${now}-${Math.random()}`,
+                x: arcTarget.holder.x + (Math.random() - 0.5) * 10,
+                y: arcTarget.holder.y - 10,
+                damage: arcDmg, createdAt: now, alpha: 1,
+                color: '#00ccff', fontSize: 14,
+              });
+              this.vfx.push({
+                type: 'lightning',
+                x: prevX, y: prevY,
+                targetX: arcTarget.holder.x, targetY: arcTarget.holder.y,
+                color: holder.color || '#00ccff', createdAt: now,
+              });
+              prevX = arcTarget.holder.x;
+              prevY = arcTarget.holder.y;
+              currentMult *= decay;
+            }
+          }
+        }
+
+        if (e.battle.health <= 0) {
+          e.battle.health = 0;
+          e.battle.isGhost = true;
+          e.battle.isAlive = false;
+          const victimLevel = calcLevel(e.battle.xp || 0);
+          e.battle.ghostUntil = now + calcGhostMs(victimLevel);
+
+          bubble.kills++;
+          e.battle.deaths = (e.battle.deaths || 0) + 1;
+          let killXp = PROGRESSION.xpPerKillBase + (victimLevel - 1) * PROGRESSION.xpPerKillPerLevel;
+          if (victimLevel >= 50) killXp *= 2;
+          const expVal = getTalentValue('experience', bubble.talents?.experience || 0);
+          if (expVal > 0) killXp = Math.round(killXp * (1 + expVal));
+          bubble.xp = (bubble.xp || 0) + killXp;
+
+          this.killFeed.unshift({ killer: address, victim: e.holder.address, time: now });
+          this.killFeed = this.killFeed.slice(0, 20);
+          this.updateTopKillers();
+        }
+      }
+
+      // Emit beam VFX
+      this.vfx.push({
+        type: 'orbitalLaser',
+        x: holder.x, y: holder.y,
+        targetX: endX, targetY: endY,
+        beamWidth: beamW,
+        color: holder.color || '#00ffcc',
+        createdAt: now,
+      });
     });
   }
 
@@ -2798,7 +2975,7 @@ class GameState {
       bubble._dashActive = 0;
       bubble._lastDashHit = 0;
       bubble._lastContactDmg = 0;
-      bubble._lastNova = 0;
+      bubble._lastLaser = 0;
       bubble.classId = 1 + Math.floor(Math.random() * 3);
       bubble.manualClass = false;
       bubble.talentResetsUsed = 0;
@@ -3182,7 +3359,7 @@ class GameState {
       _lastDashHit: 0,
       _lastContactDmg: 0,
       killRushUntil: 0,
-      _lastNova: 0,
+      _lastLaser: 0,
     };
     if (bubble.classId === 1) {
       const fm = classMultiplier(1, lvl);

@@ -57,9 +57,9 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '\u{1F4A5}',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance homing bounce', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/18/25/33/40% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (222/333/444/555/666% dmg)', maxRank: 5 },
       { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],

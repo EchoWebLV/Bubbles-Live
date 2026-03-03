@@ -40,7 +40,7 @@ export interface TalentRanks {
   ricochet: number;
   counterAttack: number;
   chainLightning: number;
-  nova: number;
+  orbitalLaser: number;
   focusFire: number;
   rocket: number;
   // Blood Thirst
@@ -124,7 +124,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'rocketExplode';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'rocketExplode' | 'orbitalLaser';
   x: number;
   y: number;
   targetX?: number;
@@ -132,6 +132,7 @@ export interface GameVfx {
   radius?: number;
   angle?: number;
   range?: number;
+  beamWidth?: number;
   color: string;
   createdAt: number;
   small?: boolean;

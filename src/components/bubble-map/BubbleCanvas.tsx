@@ -4,7 +4,7 @@ import { useRef, useEffect, useCallback } from "react";
 import type { Holder, PopEffect } from "./types";
 import type { EffectsState } from "./effects";
 import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
-import type { LightningArc, ReaperArcVfx } from "./effects";
+import type { LightningArc, ReaperArcVfx, OrbitalLaserVfx } from "./effects";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
 import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
 
@@ -30,6 +30,7 @@ interface BubbleCanvasProps {
   connectedWallet?: string | null;
   lightningArcs?: LightningArc[];
   reaperArcs?: ReaperArcVfx[];
+  laserBeams?: OrbitalLaserVfx[];
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -59,6 +60,7 @@ export function BubbleCanvas({
   connectedWallet,
   lightningArcs = [],
   reaperArcs = [],
+  laserBeams = [],
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -672,6 +674,13 @@ export function BubbleCanvas({
       drawLightningBolt(ctx, arc, alpha);
     }
 
+    // Draw Orbital Laser beams
+    for (const beam of laserBeams) {
+      const age = nowMs - beam.createdAt;
+      if (age > beam.duration) continue;
+      drawOrbitalLaser(ctx, beam, age);
+    }
+
     // Draw Reaper's Arc VFX — rotating sword with trailing sweep
     for (const arc of reaperArcs) {
       const age = nowMs - arc.createdAt;
@@ -887,6 +896,7 @@ export function BubbleCanvas({
     // Draw explosion particles on top
     effectsState.explosions.forEach(explosion => {
       explosion.particles.forEach(particle => {
+        if (!isFinite(particle.x) || !isFinite(particle.y) || !isFinite(particle.radius) || particle.radius <= 0) return;
         ctx.beginPath();
         ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
         
@@ -961,7 +971,7 @@ export function BubbleCanvas({
       }
     });
     
-  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs, reaperArcs]);
+  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs, reaperArcs, laserBeams]);
 
   // Store camera ref for click detection
   const cameraRef = useRef(camera);
@@ -1388,6 +1398,82 @@ function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alp
     }
     ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+function drawOrbitalLaser(ctx: CanvasRenderingContext2D, beam: OrbitalLaserVfx, age: number) {
+  const progress = age / beam.duration;
+  const alpha = progress < 0.15 ? progress / 0.15 : 1 - (progress - 0.15) / 0.85;
+  if (alpha <= 0) return;
+
+  const col = beam.color || '#00ffcc';
+  const r = parseInt(col.slice(1, 3), 16) || 0;
+  const g = parseInt(col.slice(3, 5), 16) || 255;
+  const b = parseInt(col.slice(5, 7), 16) || 200;
+  const w = beam.beamWidth;
+
+  const dx = beam.targetX - beam.x;
+  const dy = beam.targetY - beam.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const angle = Math.atan2(dy, dx);
+
+  ctx.save();
+  ctx.translate(beam.x, beam.y);
+  ctx.rotate(angle);
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 1.5, dist, w * 3);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.08})`;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 0.8, dist, w * 1.6);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.25})`;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 0.35, dist, w * 0.7);
+  ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+  ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 1)`;
+  ctx.shadowBlur = 20;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.6})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -w * 0.5);
+  ctx.lineTo(dist, -w * 0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, w * 0.5);
+  ctx.lineTo(dist, w * 0.5);
+  ctx.stroke();
+
+  if (progress < 0.6) {
+    const sparkCount = Math.floor(dist / 50);
+    for (let i = 0; i < sparkCount; i++) {
+      const sx = Math.random() * dist;
+      const sy = (Math.random() - 0.5) * w * 1.5;
+      const sr = 1 + Math.random() * 3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * (0.3 + Math.random() * 0.5)})`;
+      ctx.fill();
+    }
+  }
+
+  // Endpoint flare
+  const flareRadius = w * 2;
+  const flareGrad = ctx.createRadialGradient(dist, 0, 0, dist, 0, flareRadius);
+  flareGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.8})`);
+  flareGrad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, ${alpha * 0.5})`);
+  flareGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+  ctx.beginPath();
+  ctx.arc(dist, 0, flareRadius, 0, Math.PI * 2);
+  ctx.fillStyle = flareGrad;
+  ctx.fill();
 
   ctx.restore();
 }

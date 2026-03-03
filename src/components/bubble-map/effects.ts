@@ -235,6 +235,18 @@ export function createSmallBulletPop(x: number, y: number, color: string): Explo
   return { x, y, particles, createdAt: Date.now(), duration: 400 };
 }
 
+// Orbital Laser beam VFX
+export interface OrbitalLaserVfx {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  beamWidth: number;
+  color: string;
+  createdAt: number;
+  duration: number;
+}
+
 // Lightning arc data stored for direct canvas rendering
 export interface ReaperArcVfx {
   x: number;
@@ -579,10 +591,10 @@ export function drawEffects(
   // Draw explosion particles
   state.explosions.forEach(explosion => {
     explosion.particles.forEach(particle => {
+      if (!isFinite(particle.x) || !isFinite(particle.y) || !isFinite(particle.radius) || particle.radius <= 0) return;
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
       
-      // Create glow effect
       const gradient = ctx.createRadialGradient(
         particle.x, particle.y, 0,
         particle.x, particle.y, particle.radius
