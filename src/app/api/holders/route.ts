@@ -212,6 +212,7 @@ export async function GET(request: NextRequest) {
     const totalSupply = tokenInfo.totalSupply || totalFromHolders;
 
     // Process holders with percentages and visual properties
+    // Exclude wallets holding >4% supply (liquidity pools, locked supply)
     const holders: Holder[] = rawHolders.map((h) => {
       const percentage = totalSupply > 0 ? (h.amount / totalSupply) * 100 : 0;
       return {
@@ -221,7 +222,7 @@ export async function GET(request: NextRequest) {
         radius: calculateRadius(percentage),
         color: getHolderColor(percentage, h.owner),
       };
-    });
+    }).filter(h => h.percentage <= 4);
 
     const response: HoldersResponse = {
       token: {

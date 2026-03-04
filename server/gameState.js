@@ -382,7 +382,7 @@ class GameState {
             vy: (Math.random() - 0.5) * 2,
           };
         })
-        .filter(h => h.percentage > minPercentage)
+        .filter(h => h.percentage > minPercentage && h.percentage <= 4)
         .slice(0, maxHolders);
 
       return holders;
@@ -1252,7 +1252,7 @@ class GameState {
           return;
         }
 
-        let actualDmg = Math.min(bullet.damage, 5);
+        let actualDmg = bullet.isDecoyBullet ? bullet.damage : Math.min(bullet.damage, 5);
         const shooterBattle = this.battleBubbles.get(bullet.shooterAddress);
 
         // Critical Strike talent
@@ -1316,6 +1316,26 @@ class GameState {
 
         actualDmg = this._applyDamage(targetBattle, actualDmg, now);
 
+        // Retaliate (Brawler T3): chance to dash toward attacker when hit
+        const retRank = targetBattle.talents?.relentless || 0;
+        if (retRank > 0 && !targetBattle.isGhost) {
+          const retCfg = ALL_TALENTS.relentless;
+          const retCD = retCfg.cooldownMs;
+          if (!targetBattle._lastRetaliate || now - targetBattle._lastRetaliate >= retCD) {
+            if (Math.random() < retCfg.procChance[retRank - 1]) {
+              targetBattle._lastRetaliate = now;
+              const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
+              if (shooter && shooter.x !== undefined) {
+                const rdx = shooter.x - target.x;
+                const rdy = shooter.y - target.y;
+                const rDist = Math.sqrt(rdx * rdx + rdy * rdy) || 1;
+                target.vx = (rdx / rDist) * retCfg.dashStrength;
+                target.vy = (rdy / rDist) * retCfg.dashStrength;
+              }
+            }
+          }
+        }
+
         // Counter Attack talent: chance to fire straight bullet back at attacker
         if (!bullet.isCounterAttack) {
           const counterChance = getTalentValue('counterAttack', targetBattle.talents?.counterAttack || 0);
@@ -1356,7 +1376,7 @@ class GameState {
           }
         }
 
-        // Chain Lightning: % chance on hit to arc lightning from caster to nearby enemies
+        // Chain Lightning: % chance on hit to arc lightning from source to nearby enemies
         if (shooterBattle) {
           const clRank = shooterBattle.talents?.chainLightning || 0;
           if (clRank > 0) {
@@ -1366,24 +1386,26 @@ class GameState {
               const baseDmgMult = ALL_TALENTS.chainLightning.arcDamage;
               const decay = ALL_TALENTS.chainLightning.arcDecay;
               const arcRange = ALL_TALENTS.chainLightning.arcRange;
-              const shooter = this.holders.find(h => h.address === bullet.shooterAddress);
-              if (shooter && shooter.x !== undefined) {
+              const sourceX = bullet.decoySourceX ?? this.holders.find(h => h.address === bullet.shooterAddress)?.x;
+              const sourceY = bullet.decoySourceY ?? this.holders.find(h => h.address === bullet.shooterAddress)?.y;
+              const sourceColor = bullet.shooterColor || '#00ccff';
+              if (sourceX !== undefined && sourceY !== undefined) {
                 const nearbyTargets = [];
                 this.holders.forEach(h => {
                   if (h.address === bullet.shooterAddress || h.x === undefined) return;
                   const hb = this.battleBubbles.get(h.address);
                   if (!hb || hb.isGhost) return;
-                  const fdx = h.x - shooter.x;
-                  const fdy = h.y - shooter.y;
+                  const fdx = h.x - sourceX;
+                  const fdy = h.y - sourceY;
                   const fd = Math.sqrt(fdx * fdx + fdy * fdy);
                   if (fd < arcRange) nearbyTargets.push({ holder: h, battle: hb, dist: fd });
                 });
                 nearbyTargets.sort((a, b) => a.dist - b.dist);
-                let prevX = shooter.x, prevY = shooter.y;
+                let prevX = sourceX, prevY = sourceY;
                 let currentMult = baseDmgMult;
                 for (let ai = 0; ai < Math.min(arcCount, nearbyTargets.length); ai++) {
                   const arcTarget = nearbyTargets[ai];
-                  const arcDmg = Math.min(bullet.damage * currentMult, 5);
+                  const arcDmg = bullet.isDecoyBullet ? bullet.damage * currentMult : Math.min(bullet.damage * currentMult, 5);
                   this._applyDamage(arcTarget.battle, arcDmg, now);
                   if (this.magicBlockReady) this._queueAttack(bullet.shooterAddress, arcTarget.holder.address);
                   this.damageNumbers.push({
@@ -1397,7 +1419,7 @@ class GameState {
                     type: 'lightning',
                     x: prevX, y: prevY,
                     targetX: arcTarget.holder.x, targetY: arcTarget.holder.y,
-                    color: shooter.color || '#00ccff', createdAt: now,
+                    color: sourceColor, createdAt: now,
                   });
                   prevX = arcTarget.holder.x;
                   prevY = arcTarget.holder.y;
@@ -1670,7 +1692,14 @@ class GameState {
 
           attacker._lastBodySlam = now;
           const pct = getTalentValue('bodySlam', bodyRank);
-          const dmg = attacker.maxHealth * pct;
+          let dmg = attacker.maxHealth * pct;
+
+          // Retaliate: flat Body Slam damage bonus
+          const retaliateRank = attacker.talents?.relentless || 0;
+          if (retaliateRank > 0) {
+            dmg *= (1 + ALL_TALENTS.relentless.dmgBonus[retaliateRank - 1]);
+          }
+
           this._applyDamage(victim, dmg, now);
           this.damageNumbers.push({
             id: `dmg-${now}-${Math.random()}`, x: vH.x, y: vH.y - 20,
@@ -1679,7 +1708,7 @@ class GameState {
           });
           if (this.magicBlockReady) this._queueAttack(aH.address, vH.address);
 
-          // Shockwave: AoE on body hit (no CD during pinball)
+          // Shockwave: AoE on body hit
           const swRank = attacker.talents?.shockwave || 0;
           if (swRank > 0) {
             const swPct = getTalentValue('shockwave', swRank);
@@ -1700,30 +1729,6 @@ class GameState {
                 if (this.magicBlockReady) this._queueAttack(aH.address, h.address);
               }
             });
-          }
-
-          // Pinball: bounce off victim like a bumper (reflect away)
-          const pinballRank = attacker.talents?.relentless || 0;
-          if (pinballRank > 0) {
-            // Direction from victim back to attacker (away from impact)
-            const awayX = aH.x - vH.x;
-            const awayY = aH.y - vH.y;
-            const awayDist = Math.sqrt(awayX * awayX + awayY * awayY) || 1;
-            const nx = awayX / awayDist;
-            const ny = awayY / awayDist;
-
-            // Pick a random side to bounce (perpendicular left or right)
-            const side = Math.random() < 0.5 ? 1 : -1;
-            const perpX = -ny * side;
-            const perpY = nx * side;
-
-            // 45° between away and perpendicular for a natural ricochet
-            const bx = (nx + perpX) * 0.707;
-            const by = (ny + perpY) * 0.707;
-
-            const strength = ALL_TALENTS.dash.dashStrength * 0.5;
-            aH.vx = bx * strength;
-            aH.vy = by * strength;
           }
         }
       }
@@ -2034,6 +2039,98 @@ class GameState {
         createdAt: now,
       });
     });
+
+    // Decoy clones also fire Infernal Lance beams
+    for (const clone of this.decoyClones) {
+      if (!clone.alive) continue;
+      const ownerBubble = this.battleBubbles.get(clone.ownerAddress);
+      if (!ownerBubble) continue;
+      const rank = ownerBubble.talents?.orbitalLaser || 0;
+      if (rank <= 0) continue;
+
+      const interval = cfg.intervalMs[rank - 1];
+      if (!clone._lastLaser) clone._lastLaser = now - Math.random() * interval;
+      if (now - clone._lastLaser < interval) continue;
+      clone._lastLaser = now;
+
+      const dmgMult = cfg.damageMultiplier[rank - 1];
+      const beamW = cfg.beamWidth[rank - 1];
+      const range = cfg.beamRange;
+
+      const enemies = [];
+      for (const h of this.holders) {
+        if (h.address === clone.ownerAddress || h.x === undefined) continue;
+        const hb = this.battleBubbles.get(h.address);
+        if (!hb || hb.isGhost) continue;
+        const dx = h.x - clone.x;
+        const dy = h.y - clone.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= range + h.radius) {
+          enemies.push({ holder: h, battle: hb, dx, dy, dist, angle: Math.atan2(dy, dx) });
+        }
+      }
+
+      let bestAngle = Math.random() * Math.PI * 2;
+      let bestScore = -1;
+      if (enemies.length > 0) {
+        for (const candidate of enemies) {
+          let score = 0;
+          const cosA = Math.cos(candidate.angle);
+          const sinA = Math.sin(candidate.angle);
+          for (const e of enemies) {
+            const proj = e.dx * cosA + e.dy * sinA;
+            if (proj < 0) continue;
+            const perp = Math.abs(-e.dx * sinA + e.dy * cosA);
+            if (perp < beamW / 2 + e.holder.radius) score++;
+          }
+          if (score > bestScore) { bestScore = score; bestAngle = candidate.angle; }
+        }
+      }
+
+      const cosB = Math.cos(bestAngle);
+      const sinB = Math.sin(bestAngle);
+      const endX = clone.x + cosB * range;
+      const endY = clone.y + sinB * range;
+
+      for (const e of enemies) {
+        const proj = e.dx * cosB + e.dy * sinB;
+        if (proj < 0) continue;
+        const perp = Math.abs(-e.dx * sinB + e.dy * cosB);
+        if (perp >= beamW / 2 + e.holder.radius) continue;
+
+        let lanceDmg = (ownerBubble.attackPower || BATTLE_CONFIG.bulletDamage) * dmgMult;
+        const hhVal = getTalentValue('heavyHitter', ownerBubble.talents?.heavyHitter || 0);
+        if (hhVal > 0) lanceDmg *= (1 + hhVal);
+        const bersRank = ownerBubble.talents?.berserker || 0;
+        if (bersRank > 0 && ownerBubble.health < ownerBubble.maxHealth * ALL_TALENTS.berserker.hpThreshold) {
+          lanceDmg *= (1 + ALL_TALENTS.berserker.dmgBonus[bersRank - 1]);
+        }
+        const vitVal = getTalentValue('vitalityStrike', ownerBubble.talents?.vitalityStrike || 0);
+        if (vitVal > 0) lanceDmg += ownerBubble.maxHealth * vitVal;
+        lanceDmg *= 0.33;
+        const armorVal = getTalentValue('armor', e.battle.talents?.armor || 0);
+        if (armorVal > 0) lanceDmg *= (1 - armorVal);
+
+        this._applyDamage(e.battle, lanceDmg, now);
+        this.damageNumbers.push({
+          id: `dmg-${now}-${Math.random()}`,
+          x: e.holder.x + (Math.random() - 0.5) * 10,
+          y: e.holder.y - 10,
+          damage: lanceDmg, createdAt: now, alpha: 1,
+          color: '#ff4400', fontSize: 22, type: 'orbitalLaser',
+        });
+        if (this.magicBlockReady) this._queueAttack(clone.ownerAddress, e.holder.address);
+      }
+
+      this.vfx.push({
+        type: 'orbitalLaser',
+        x: clone.x, y: clone.y,
+        targetX: endX, targetY: endY,
+        beamWidth: beamW,
+        color: clone.color || '#00ffcc',
+        createdAt: now,
+      });
+    }
   }
 
   // ─── Sapper: Landmine dropping ─────────────────────────────────────
@@ -2654,12 +2751,19 @@ class GameState {
         clone.vy *= scale;
       }
 
-      // Clone shoots at nearest enemy
+      // Clone shoots with full owner talent inheritance
       const ownerBubble = this.battleBubbles.get(clone.ownerAddress);
       if (!ownerBubble) continue;
 
-      const fireRate = BATTLE_CONFIG.fireRate;
-      if (now - clone.lastShotTime < fireRate) continue;
+      const rapidFireVal = getTalentValue('rapidFire', ownerBubble.talents?.rapidFire || 0);
+      const killRushActive = ownerBubble.killRushUntil && now < ownerBubble.killRushUntil;
+      const killRushVal = killRushActive ? getTalentValue('killRush', ownerBubble.talents?.killRush || 0) : 0;
+      const berserkRank = ownerBubble.talents?.berserker || 0;
+      const berserkActive = berserkRank > 0 && ownerBubble.health < ownerBubble.maxHealth * ALL_TALENTS.berserker.hpThreshold;
+      const berserkAtkSpeed = berserkActive ? ALL_TALENTS.berserker.atkSpeedBonus[berserkRank - 1] : 0;
+      let cloneFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed);
+      cloneFireRate = Math.max(cloneFireRate, ALL_TALENTS.rapidFire.minCooldownMs || 80);
+      if (now - clone.lastShotTime < cloneFireRate) continue;
 
       let closest = null;
       let closestDist = Infinity;
@@ -2682,6 +2786,14 @@ class GameState {
         const dist = Math.sqrt(dx * dx + dy * dy);
         const curveDir = Math.random() > 0.5 ? 1 : -1;
 
+        let damage = ownerBubble.attackPower || BATTLE_CONFIG.bulletDamage;
+        const hhVal = getTalentValue('heavyHitter', ownerBubble.talents?.heavyHitter || 0);
+        if (hhVal > 0) damage *= (1 + hhVal);
+        if (berserkActive) damage *= (1 + ALL_TALENTS.berserker.dmgBonus[berserkRank - 1]);
+        const vitVal = getTalentValue('vitalityStrike', ownerBubble.talents?.vitalityStrike || 0);
+        if (vitVal > 0) damage += ownerBubble.maxHealth * vitVal;
+        damage *= 0.33;
+
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
           shooterAddress: clone.ownerAddress,
@@ -2696,10 +2808,90 @@ class GameState {
             Math.random() * (BATTLE_CONFIG.curveStrength.max - BATTLE_CONFIG.curveStrength.min),
           vx: (dx / dist) * BATTLE_CONFIG.bulletSpeed,
           vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
-          damage: clone.attackPower,
+          damage,
           createdAt: now,
           isDecoyBullet: true,
+          decoySourceX: clone.x,
+          decoySourceY: clone.y,
         });
+
+        clone.shotCounter = (clone.shotCounter || 0) + 1;
+
+        // Multi Shot
+        const multiChance = getTalentValue('multiShot', ownerBubble.talents?.multiShot || 0);
+        if (multiChance > 0 && Math.random() < multiChance) {
+          const spreadAngle = (Math.random() - 0.5) * 0.3;
+          const cos = Math.cos(spreadAngle), sin = Math.sin(spreadAngle);
+          const svx = (dx / dist) * BATTLE_CONFIG.bulletSpeed;
+          const svy = (dy / dist) * BATTLE_CONFIG.bulletSpeed;
+          this.bullets.push({
+            id: `b-${this.bulletIdCounter++}`,
+            shooterAddress: clone.ownerAddress,
+            targetAddress: closest.address,
+            shooterColor: clone.color,
+            x: clone.x, y: clone.y,
+            startX: clone.x, startY: clone.y,
+            targetX: closest.x + spreadAngle * 30, targetY: closest.y + spreadAngle * 30,
+            progress: 0,
+            curveDirection: -curveDir,
+            curveStrength: BATTLE_CONFIG.curveStrength.min,
+            vx: cos * svx - sin * svy,
+            vy: sin * svx + cos * svy,
+            damage: damage * ALL_TALENTS.multiShot.secondBulletDamage,
+            createdAt: now,
+            isDecoyBullet: true,
+            isMultiShot: true,
+            decoySourceX: clone.x,
+            decoySourceY: clone.y,
+          });
+        }
+
+        // Homing Cannon
+        const homingRank = ownerBubble.talents?.dualCannon || 0;
+        if (homingRank > 0) {
+          const freq = ALL_TALENTS.dualCannon.fireFrequency[homingRank - 1];
+          if (clone.shotCounter % freq === 0) {
+            const lastIdx = this.bullets.length - 1;
+            if (lastIdx >= 0 && this.bullets[lastIdx].shooterAddress === clone.ownerAddress) {
+              this.bullets[lastIdx].isHoming = true;
+              this.bullets[lastIdx].homingLockedTarget = true;
+              this.bullets[lastIdx].damage = damage * ALL_TALENTS.dualCannon.homingDamageMultiplier;
+            }
+          }
+        }
+
+        // Rocket
+        const rocketRank = ownerBubble.talents?.rocket || 0;
+        if (rocketRank > 0) {
+          const rocketFreq = ALL_TALENTS.rocket.fireFrequency[rocketRank - 1];
+          if (clone.shotCounter % rocketFreq === 0) {
+            const rocketSpd = ALL_TALENTS.rocket.rocketSpeed;
+            this.bullets.push({
+              id: `b-${this.bulletIdCounter++}`,
+              shooterAddress: clone.ownerAddress,
+              targetAddress: closest.address,
+              shooterColor: clone.color,
+              x: clone.x, y: clone.y,
+              startX: clone.x, startY: clone.y,
+              targetX: closest.x, targetY: closest.y,
+              progress: 0,
+              curveDirection: 0,
+              curveStrength: 0,
+              vx: (dx / dist) * rocketSpd,
+              vy: (dy / dist) * rocketSpd,
+              damage: 0,
+              createdAt: now,
+              isRocket: true,
+              rocketRank,
+              isHoming: true,
+              homingLockedTarget: true,
+              isDecoyBullet: true,
+              decoySourceX: clone.x,
+              decoySourceY: clone.y,
+            });
+          }
+        }
+
         clone.lastShotTime = now;
       }
     }

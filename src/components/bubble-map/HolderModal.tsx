@@ -47,7 +47,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
       { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
-      { id: 'relentless', name: 'Pinball', desc: 'Body Slam dashes you 50/100/150/200/250px toward nearest enemy', maxRank: 5 },
+      { id: 'relentless', name: 'Retaliate', desc: '10/20/30/40/50% chance when hit: dash toward attacker. +10/20/30/40/50% Body Slam dmg', maxRank: 5 },
       { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
       { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
     ],
@@ -59,7 +59,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'ricochet', name: 'Ricochet', desc: '11/18/25/33/40% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (222/333/444/555/666% dmg)', maxRank: 5 },
+      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (100/150/200/250/300% dmg)', maxRank: 5 },
       { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
@@ -82,10 +82,10 @@ const TALENT_TREES = {
     icon: '\u{1F47B}',
     talents: [
       { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
-      { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -5/10/15/20/25% respawn time', maxRank: 5 },
+      { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
       { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 16/14/12/10/8s', maxRank: 5 },
-      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 1.2/2.4/3.6/4.8/6% max HP AoE', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1% HP/s, +2/4/6% detonation', maxRank: 3 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],
   },
 } as const;
