@@ -120,9 +120,9 @@ const TALENT_TREES = {
     color: 'teal',
     icon: '👻',
     talents: [
-      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
       { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
-      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 16/14/12/10/8s', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
+      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
       { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
       { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],

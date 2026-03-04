@@ -349,30 +349,30 @@ const BLOOD_THIRST = {
 
 // ─── SAPPER ──────────────────────────────────────────────────────────────
 const SAPPER = {
-  decoy: {
-    id: 'decoy',
-    name: 'Decoy',
-    description: 'Spawn a decoy clone every {value}s that shoots for 5s',
-    tree: 'sapper',
-    tier: 1,
-    requires: null,
-    maxRank: MAX_RANK,
-    cooldownMs: [20000, 18000, 16000, 14000, 10000],
-    cloneHpPct: [0.30, 0.40, 0.50, 0.60, 0.70],
-    cloneDamagePct: [0.33, 0.33, 0.33, 0.33, 0.33],
-    cloneDurationMs: 5000,
-  },
   deathMirage: {
     id: 'deathMirage',
     name: 'Death Mirage',
     description: 'On death, leave a decoy behind + -{value}% respawn time',
     tree: 'sapper',
-    tier: 2,
-    requires: 'decoy',
+    tier: 1,
+    requires: null,
     maxRank: MAX_RANK,
     respawnReduction: [0.10, 0.17, 0.25, 0.33, 0.40],
     mirageHpPct: [0.40, 0.50, 0.60, 0.70, 0.80],
     mirageDurationMs: 6000,
+  },
+  decoy: {
+    id: 'decoy',
+    name: 'Decoy',
+    description: 'Spawn a decoy clone every {value}s that shoots for 5s',
+    tree: 'sapper',
+    tier: 2,
+    requires: 'deathMirage',
+    maxRank: MAX_RANK,
+    cooldownMs: [20000, 18000, 16000, 14000, 10000],
+    cloneHpPct: [0.30, 0.40, 0.50, 0.60, 0.70],
+    cloneDamagePct: [0.33, 0.33, 0.33, 0.33, 0.33],
+    cloneDurationMs: 5000,
   },
   decoyBarrage: {
     id: 'decoyBarrage',
@@ -382,7 +382,7 @@ const SAPPER = {
     tier: 3,
     requires: 'deathMirage',
     maxRank: MAX_RANK,
-    cooldownMs: [16000, 14000, 12000, 10000, 8000],
+    cooldownMs: [14000, 12000, 10000, 8000, 6000],
     barrageDurationMs: 4000,
     barrageHpPct: [0.25, 0.30, 0.35, 0.45, 0.55],
     barrageDmgPct: [0.33, 0.33, 0.33, 0.33, 0.33],
@@ -450,13 +450,13 @@ const TREE_ORDER = {
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
   massDamage:  ['ricochet', 'focusFire', 'orbitalLaser', 'rocket', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
-  sapper:      ['decoy', 'deathMirage', 'decoyBarrage', 'volatileDecoy', 'singularity'],
+  sapper:      ['deathMirage', 'decoy', 'decoyBarrage', 'volatileDecoy', 'singularity'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'decoy',
-  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'deathMirage',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'deathMirage',
+  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'decoy',
   'regeneration', 'criticalStrike', 'relentless', 'orbitalLaser', 'killRush', 'decoyBarrage',
   'lifesteal', 'multiShot', 'orbit', 'rocket', 'reaperArc', 'volatileDecoy',
   'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity',
