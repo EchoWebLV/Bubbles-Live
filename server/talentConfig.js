@@ -380,7 +380,7 @@ const SAPPER = {
     description: 'Every {value}s, launch a decoy at the nearest enemy',
     tree: 'sapper',
     tier: 3,
-    requires: 'deathMirage',
+    requires: 'decoy',
     maxRank: MAX_RANK,
     cooldownMs: [14000, 12000, 10000, 8000, 6000],
     barrageDurationMs: 4000,
