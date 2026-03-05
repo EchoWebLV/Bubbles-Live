@@ -134,6 +134,36 @@ body {
   animation: camera-shake 0.4s ease-out;
 }
 
+/* Shadow-only glow pulse (no opacity change) */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: var(--glow-shadow); }
+  50% { box-shadow: var(--glow-shadow-bright); }
+}
+
+.glow-pulse-red {
+  --glow-shadow: 0 0 10px rgba(239,68,68,0.4), 0 0 20px rgba(239,68,68,0.2);
+  --glow-shadow-bright: 0 0 18px rgba(239,68,68,0.8), 0 0 36px rgba(239,68,68,0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.glow-pulse-emerald {
+  --glow-shadow: 0 0 10px rgba(52,211,153,0.4), 0 0 20px rgba(52,211,153,0.2);
+  --glow-shadow-bright: 0 0 18px rgba(52,211,153,0.8), 0 0 36px rgba(52,211,153,0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.glow-pulse-sky {
+  --glow-shadow: 0 0 10px rgba(56,189,248,0.4), 0 0 20px rgba(56,189,248,0.2);
+  --glow-shadow-bright: 0 0 18px rgba(56,189,248,0.8), 0 0 36px rgba(56,189,248,0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.glow-pulse-rose {
+  --glow-shadow: 0 0 10px rgba(251,113,133,0.4), 0 0 20px rgba(251,113,133,0.2);
+  --glow-shadow-bright: 0 0 18px rgba(251,113,133,0.8), 0 0 36px rgba(251,113,133,0.4);
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
 /* Big kill streak text pulse + smooth fade out */
 @keyframes streak-pulse {
   0% { transform: scale(0.3); opacity: 0; filter: blur(10px); }

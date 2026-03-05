@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Swords, Zap, TrendingDown, Target, Repeat, Rocket, Ghost, Copy, Bomb, Flame, Crosshair } from "lucide-react";
+import { X, Swords, Zap, TrendingDown, Target, Repeat, Rocket, Ghost, Copy, Bomb, Flame, Crosshair, Shield, Wind } from "lucide-react";
 
 const STORAGE_KEY_DISMISSED_SEASON = "hodlwarz-changelog-dismissed-season";
 const STORAGE_KEY_EVER_SEEN = "hodlwarz-changelog-ever-seen";
@@ -14,14 +14,12 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Copy, color: "#22d3ee", title: "Echo Tree (was Sapper)", desc: "Full decoy-oriented rework — mines retired, the tree is now all about clones" },
-  { icon: Ghost, color: "#a855f7", title: "Death Mirage (T2)", desc: "When you die, leave a fighting decoy behind + reduced respawn time" },
-  { icon: Rocket, color: "#ff6600", title: "Decoy Barrage (T3)", desc: "Periodically launch a decoy toward the nearest enemy — it flies in and starts shooting" },
-  { icon: Bomb, color: "#ff3366", title: "Volatile Decoy (T4)", desc: "All decoys now explode on death for up to 6% max HP AoE damage" },
-  { icon: Target, color: "#cc44ff", title: "Singularity Rework (T5)", desc: "33% chance any decoy explosion becomes a black hole — pull, DoT, then detonate" },
-  { icon: Flame, color: "#ff4400", title: "Infernal Lance", desc: "Nova replaced with Infernal Lance — piercing beam dealing 222-666% ATK, triggers all modifiers" },
-  { icon: Repeat, color: "#00ffaa", title: "Ricochet Rebalance", desc: "Ricochet chance now scales evenly: 11/18/25/33/40% per rank" },
-  { icon: TrendingDown, color: "#00ccff", title: "Damage Tuning", desc: "Volatile Decoy and Singularity damage spread evenly to 6% cap for healthier balance" },
+  { icon: Shield, color: "#34d399", title: "Class Scaling Adjusted", desc: "Fortify, Velocity, and Impact now grant +0.5% per level (down from 1%)" },
+  { icon: Target, color: "#cc44ff", title: "Singularity Buffed", desc: "Proc chance increased to 50% (from 33%). Pull duration now scales 1/2/3s" },
+  { icon: Ghost, color: "#22d3ee", title: "Decoy Damage Buffed", desc: "All decoy clones now deal 40% of your damage (up from 33%)" },
+  { icon: Flame, color: "#ff4444", title: "Berserker Tuned Up", desc: "Below 33% HP bonus increased to 12/24/36% atk speed & damage (was 10/20/30%)" },
+  { icon: Swords, color: "#ff6600", title: "Reaper's Arc Faster", desc: "360° sweep now triggers every 10th hit (down from 15th)" },
+  { icon: Repeat, color: "#a855f7", title: "Talent Reset", desc: "Reset all talents and class once per season — use it wisely" },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
@@ -107,7 +105,7 @@ export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProp
                   transition={{ delay: 0.2 }}
                   className="text-sm text-slate-400 tracking-widest uppercase"
                 >
-                  Phantom Decoy Patch
+                  Balance Patch
                 </motion.p>
               </div>
 

@@ -111,8 +111,8 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 10th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
     ],
   },
   sapper: {
@@ -124,7 +124,7 @@ const TALENT_TREES = {
       { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
       { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
       { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],
   },
 } as const;
@@ -1452,9 +1452,9 @@ export function BubbleMapClient() {
           const resetsUsed = myBubble.talentResetsUsed ?? 0;
 
           const CLASS_OPTIONS = [
-            { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+1% max HP per level', color: 'emerald' },
-            { id: 2, name: 'Velocity', icon: '⚡', desc: '+1% fire rate per level', color: 'sky' },
-            { id: 3, name: 'Impact',   icon: '🗡️', desc: '+1% bullet damage per level', color: 'rose' },
+            { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+0.5% max HP per level', color: 'emerald' },
+            { id: 2, name: 'Velocity', icon: '⚡', desc: '+0.5% fire rate per level', color: 'sky' },
+            { id: 3, name: 'Impact',   icon: '🗡️', desc: '+0.5% bullet damage per level', color: 'rose' },
           ];
 
           const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
@@ -1489,10 +1489,14 @@ export function BubbleMapClient() {
                     <button
                       onClick={handleResetTalents}
                       disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0 || resetsUsed >= 1}
-                      className="text-[10px] text-red-400/70 hover:text-red-300 disabled:opacity-30 transition-colors px-2 py-1 rounded border border-red-500/20 hover:border-red-500/40"
+                      className={`text-[11px] font-semibold transition-colors px-2.5 py-1 rounded border ${
+                        resetsUsed === 0 && totalPointsSpentClient(talents) > 0
+                          ? 'text-white bg-red-600/30 border-red-400/70 glow-pulse-red'
+                          : 'text-red-400/70 hover:text-red-300 border-red-500/20 hover:border-red-500/40'
+                      } disabled:opacity-30`}
                       title={resetsUsed >= 1 ? 'Reset already used this season' : 'Reset all talents (1 per season)'}
                     >
-                      {resetsUsed >= 1 ? 'Reset Used' : 'Reset (1x)'}
+                      {resetsUsed >= 1 ? 'Reset Used' : 'Reset Talents (1x)'}
                     </button>
                     <button
                       onClick={() => setShowTalentTree(false)}
@@ -1504,10 +1508,21 @@ export function BubbleMapClient() {
                 </div>
 
                 {/* Class Selection Row */}
-                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 mb-3">
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mb-3">
                   {CLASS_OPTIONS.map(cls => {
                     const isSelected = currentClassId === cls.id;
                     const isLocked = currentClassId > 0 && !isSelected;
+                    const noneChosen = currentClassId === 0;
+                    const glowMap: Record<string, string> = {
+                      emerald: 'glow-pulse-emerald border-emerald-400/70 bg-emerald-900/30',
+                      sky:     'glow-pulse-sky border-sky-400/70 bg-sky-900/30',
+                      rose:    'glow-pulse-rose border-rose-400/70 bg-rose-900/30',
+                    };
+                    const glowTextMap: Record<string, string> = {
+                      emerald: 'text-emerald-300',
+                      sky:     'text-sky-300',
+                      rose:    'text-rose-300',
+                    };
                     const colorMap: Record<string, { active: string; idle: string; text: string }> = {
                       emerald: { active: 'bg-emerald-900/40 border-emerald-500/60', idle: 'bg-emerald-900/20 border-emerald-500/30 hover:border-emerald-400/50', text: 'text-emerald-400' },
                       sky:     { active: 'bg-sky-900/40 border-sky-500/60',         idle: 'bg-sky-900/20 border-sky-500/30 hover:border-sky-400/50',             text: 'text-sky-400' },
@@ -1521,11 +1536,11 @@ export function BubbleMapClient() {
                         disabled={isLocked || isSelected || allocatingTalent !== null}
                         className={`w-full rounded-lg border px-1.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[11px] font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 ${
                           isSelected ? c.active : isLocked ? 'bg-slate-800/20 border-slate-700/20 opacity-25' : `${c.idle} cursor-pointer`
-                        }`}
+                        } ${noneChosen ? glowMap[cls.color] : ''}`}
                       >
                         <span className="text-xs sm:text-sm">{cls.icon}</span>
-                        <span className={isSelected ? c.text : isLocked ? 'text-slate-500' : 'text-white'}>{cls.name}</span>
-                        <span className="text-[8px] sm:text-[9px] text-slate-500 hidden sm:inline">{cls.desc}</span>
+                        <span className={isSelected ? c.text : isLocked ? 'text-slate-500' : noneChosen ? glowTextMap[cls.color] : 'text-white'}>{cls.name}</span>
+                        <span className={`text-[8px] sm:text-[9px] hidden sm:inline ${noneChosen ? glowTextMap[cls.color] + '/70' : 'text-slate-500'}`}>{cls.desc}</span>
                         {isSelected && <span className={`text-[8px] sm:text-[9px] font-bold ${c.text}`}>✓</span>}
                       </button>
                     );

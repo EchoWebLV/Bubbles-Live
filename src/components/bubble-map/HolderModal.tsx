@@ -72,8 +72,8 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 10th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
     ],
   },
   sapper: {
@@ -85,7 +85,7 @@ const TALENT_TREES = {
       { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
       { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
       { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: '33% chance decoy explosion becomes a black hole: 1.5/2/2.5s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],
   },
 } as const;

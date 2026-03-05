@@ -23,17 +23,17 @@ const BATTLE_CONFIG = {
   curveStrength: { min: 25, max: 60 },
 };
 
-// Class system: pick one before playing, +1% per level scaling
+// Class system: pick one before playing, +0.5% per level scaling
 const CLASS_CONFIG = {
   0: { id: 0, name: 'None',     stat: null },
-  1: { id: 1, name: 'Fortify',  stat: 'hp' },       // +1% max HP per level
-  2: { id: 2, name: 'Velocity', stat: 'fireRate' },  // +1% fire rate per level
-  3: { id: 3, name: 'Impact',   stat: 'damage' },    // +1% bullet damage per level
+  1: { id: 1, name: 'Fortify',  stat: 'hp' },       // +0.5% max HP per level
+  2: { id: 2, name: 'Velocity', stat: 'fireRate' },  // +0.5% fire rate per level
+  3: { id: 3, name: 'Impact',   stat: 'damage' },    // +0.5% bullet damage per level
 };
 
 function classMultiplier(classId, level) {
   if (!classId || classId < 1 || classId > 3) return 1;
-  return 1 + (level * 0.01);
+  return 1 + (level * 0.005);
 }
 
 const PHYSICS_CONFIG = {
