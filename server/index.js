@@ -112,7 +112,11 @@ app.prepare().then(async () => {
       }
       try {
         const result = await gameState.seasonReset();
-        io.emit('seasonReset', { seasonId: gameState.seasonId });
+        io.emit('seasonReset', {
+          seasonId: gameState.seasonId,
+          seasonNumber: gameState.seasonNumber,
+          seasonEndsAt: gameState.seasonEndsAt,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {
@@ -222,6 +226,11 @@ app.prepare().then(async () => {
       zlibDeflateOptions: { level: 6 },
     },
   });
+
+  // Wire up auto-season-end callback so gameState can notify clients
+  gameState.onSeasonEnd = (payload) => {
+    io.emit('seasonReset', payload);
+  };
 
   let connectedClients = 0;
   const rateLimit = createRateLimiter();

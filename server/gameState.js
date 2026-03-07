@@ -156,6 +156,14 @@ class GameState {
     this.magicBlock = new MagicBlockService();
     this.magicBlockReady = false;
 
+    // Season auto-timer (24h default)
+    this.seasonDurationMs = parseInt(process.env.SEASON_DURATION_MS || String(24 * 60 * 60 * 1000), 10);
+    this.seasonStartedAt = Date.now();
+    this.seasonEndsAt = this.seasonStartedAt + this.seasonDurationMs;
+    this.seasonNumber = 0;
+    this.seasonTimer = null;
+    this.seasonRewardAmount = parseInt(process.env.SEASON_REWARD_AMOUNT || '0', 10);
+
     // Hit-count buffer: "attacker|victim" → { attacker, victim, hitCount }
     // Server tracks hits, ER computes damage from on-chain talent state.
     this.damageBuffer = new Map();
@@ -174,6 +182,9 @@ class GameState {
     // Talent chain sync queue: [{ wallet, chainId }]
     this.talentSyncQueue = [];
     this.isProcessingTalentSync = false;
+
+    // Callback for when a season auto-ends (set by index.js to emit socket events)
+    this.onSeasonEnd = null;
 
     // Sapper: mines on the field & decoy clones
     this.mines = [];
@@ -3214,7 +3225,139 @@ class GameState {
     return { success: true, revived };
   }
 
-  // ─── Season Reset ──────────────────────────────────────────────
+  // ─── Season Auto-Timer ─────────────────────────────────────────
+
+  async _initSeason() {
+    try {
+      const seasonPda = await this.magicBlock.initSeason(Math.floor(this.seasonDurationMs / 1000));
+      if (seasonPda) {
+        const info = this.magicBlock.getSeasonInfo();
+        this.seasonNumber = info.seasonNumber;
+        this.seasonStartedAt = info.startedAt * 1000;
+        this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
+        console.log(`Season ${this.seasonNumber} — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
+        this._startSeasonTimer();
+      }
+    } catch (err) {
+      console.error('Season init failed:', err.message);
+    }
+  }
+
+  _startSeasonTimer() {
+    if (this.seasonTimer) clearTimeout(this.seasonTimer);
+
+    const remaining = this.seasonEndsAt - Date.now();
+    const delay = Math.max(remaining, 1000);
+
+    console.log(`Season timer set: ${Math.round(delay / 1000)}s until season end`);
+
+    this.seasonTimer = setTimeout(async () => {
+      await this._endSeasonAndStartNext();
+    }, delay);
+  }
+
+  async _endSeasonAndStartNext() {
+    console.log(`SEASON ${this.seasonNumber}: Auto-ending...`);
+    this.addEventLog(`Season ${this.seasonNumber} ending — recording winners...`);
+
+    try {
+      // 1. Commit all ER state to base layer for an accurate snapshot
+      if (this.magicBlockReady) {
+        await this.magicBlock.commitState();
+        await this.magicBlock.commitAllPlayers();
+      }
+
+      // 2. Snapshot top 10
+      const top10 = this.topKillers.slice(0, 10).map(k => ({
+        address: k.address,
+        wallet: k.address,
+        kills: k.kills,
+        level: k.level,
+      }));
+
+      // 3. Finalize on devnet (writes SeasonLeaderboard PDA)
+      if (top10.length > 0) {
+        const finalizeTx = await this.magicBlock.finalizeSeason(top10);
+        if (finalizeTx) {
+          console.log(`Season ${this.seasonNumber} finalized on devnet — winners recorded on-chain`);
+          this.addEventLog(`Season ${this.seasonNumber} winners recorded on-chain — top ${top10.length}!`);
+        }
+      } else {
+        console.log(`Season ${this.seasonNumber}: No kills recorded, skipping finalization`);
+      }
+
+      // 5. Reset all players on-chain (devnet ER)
+      const result = await this.magicBlock.resetAllPlayers();
+
+      // 6. Start next season on devnet
+      await this.magicBlock.startNextSeason(0);
+
+      // 7. Reset local state
+      for (const [address, bubble] of this.battleBubbles) {
+        bubble.kills = 0;
+        bubble.deaths = 0;
+        bubble.xp = 0;
+        bubble.healthLevel = 1;
+        bubble.attackLevel = 1;
+        bubble.health = BATTLE_CONFIG.maxHealth;
+        bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+        bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+        bubble.isAlive = true;
+        bubble.isGhost = false;
+        bubble.ghostUntil = null;
+        bubble.talents = createEmptyTalents();
+        bubble.manualBuild = false;
+        bubble.lastHitTarget = null;
+        bubble.focusFireStacks = 0;
+        bubble.shotCounter = 0;
+        bubble.killRushUntil = 0;
+        bubble._lastDash = 0;
+        bubble._dashActive = 0;
+        bubble._lastDashHit = 0;
+        bubble._lastContactDmg = 0;
+        bubble._lastLaser = 0;
+        bubble.classId = 1 + Math.floor(Math.random() * 3);
+        bubble.manualClass = false;
+        bubble.talentResetsUsed = 0;
+      }
+
+      this.playerCache.clear();
+      this.killFeed = [];
+      this.topKillers = [];
+      this.damageBuffer.clear();
+
+      // 8. Update season tracking
+      const info = this.magicBlock.getSeasonInfo();
+      this.seasonNumber = info.seasonNumber;
+      this.seasonStartedAt = info.startedAt * 1000;
+      this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
+      this.seasonId = Date.now();
+
+      this.addEventLog(`Season ${this.seasonNumber} started! Good luck!`);
+      console.log(`SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
+
+      // 9. Notify server (emits socket event to clients)
+      if (this.onSeasonEnd) {
+        this.onSeasonEnd({
+          seasonId: this.seasonId,
+          seasonNumber: this.seasonNumber,
+          seasonEndsAt: this.seasonEndsAt,
+        });
+      }
+
+      // 10. Restart the timer for the next season
+      this._startSeasonTimer();
+
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('Season auto-end failed:', err.message);
+      this.addEventLog('Season transition failed — retrying in 60s...');
+      setTimeout(() => this._endSeasonAndStartNext(), 60000);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // ─── Season Reset (manual override — kept for admin API) ──────
 
   async seasonReset() {
     if (!this.magicBlockReady) {
@@ -3749,6 +3892,8 @@ class GameState {
       eventLog: this.eventLog,
       topKillers: this.topKillers,
       seasonId: this.seasonId,
+      seasonNumber: this.seasonNumber,
+      seasonEndsAt: this.seasonEndsAt,
       token: this.token,
       priceData: this.priceData,
       dimensions: this.dimensions,
@@ -3888,6 +4033,10 @@ class GameState {
 
       this._processTalentSyncQueue();
       this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
+
+      // Initialize season on devnet base layer
+      await this._initSeason();
+
     } catch (err) {
       console.warn(`MagicBlock init failed: ${err.message} — starting without chain state`);
       setTimeout(() => this._retryMagicBlockInit(), 30000);
@@ -3929,6 +4078,7 @@ class GameState {
     if (this.priceRefresh) clearInterval(this.priceRefresh);
     if (this.metadataRefresh) clearInterval(this.metadataRefresh);
     if (this.erSyncInterval) clearInterval(this.erSyncInterval);
+    if (this.seasonTimer) clearTimeout(this.seasonTimer);
 
     if (this.magicBlockReady) {
       this.magicBlock.stopCommitTimer();

@@ -31,6 +31,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
 import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
+import { useSeasonCountdown } from "@/hooks/useSeasonCountdown";
+import { useSeasonRewards } from "@/hooks/useSeasonRewards";
+import { RewardClaimPopup } from "@/components/RewardClaimPopup";
 import { getXpThresholds } from "@/lib/utils";
 
 // Kill streak announcement
@@ -789,6 +792,8 @@ export function BubbleMapClient() {
   const eventLog = useMemo(() => rawEventLog, [eventLogKey]);
   const topKillers = gameState?.topKillers || [];
   const killFeed = gameState?.killFeed || [];
+  const seasonCountdown = useSeasonCountdown(gameState?.seasonEndsAt);
+  const seasonRewards = useSeasonRewards(gameState?.seasonNumber);
 
   const topKillerAddrsKey = topKillers.map((k: { address: string }) => k.address).join(',');
   useEffect(() => {
@@ -1086,6 +1091,17 @@ export function BubbleMapClient() {
           className="absolute top-14 sm:top-20 left-2 sm:left-4 z-10 w-40 sm:w-48"
         >
           <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl border border-yellow-500/30 overflow-hidden">
+            {/* Season countdown */}
+            <div className="px-2 sm:px-3 py-1 border-b border-yellow-500/10 flex items-center justify-between">
+              <span className="text-[9px] sm:text-[10px] text-slate-400">
+                {gameState?.seasonNumber ? `S${gameState.seasonNumber}` : "Season"}
+              </span>
+              <span className={`text-[9px] sm:text-[10px] font-mono font-bold tabular-nums ${
+                seasonCountdown.isEnding ? "text-red-400 animate-pulse" : "text-emerald-400"
+              }`}>
+                {seasonCountdown.display}
+              </span>
+            </div>
             <div className="px-2 sm:px-3 py-1.5 border-b border-yellow-500/15 flex items-center justify-between">
               <span className="text-[10px] sm:text-xs text-yellow-400 font-medium">Top Killers</span>
               {followingAddress && (
@@ -1128,6 +1144,13 @@ export function BubbleMapClient() {
                 </button>
               ))}
             </div>
+            {seasonRewards.myEntry && !seasonRewards.dismissed && (
+              <div className="px-2 sm:px-3 py-1.5 border-t border-amber-500/20 bg-amber-500/5">
+                <div className="text-[10px] sm:text-xs text-amber-400 font-medium text-center animate-pulse">
+                  🏆 You placed #{seasonRewards.myEntry.place}!
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -1909,6 +1932,9 @@ export function BubbleMapClient() {
       >
         <Info className="w-4 h-4 text-purple-300" />
       </button>
+
+      {/* Season reward claim popup */}
+      <RewardClaimPopup rewards={seasonRewards} />
 
       {/* Airdrop claim notification */}
       <AirdropBanner airdropInfo={airdropInfo} />

@@ -198,6 +198,8 @@ export interface GameState {
   dimensions: { width: number; height: number };
   timestamp: number;
   seasonId?: number;
+  seasonNumber?: number;
+  seasonEndsAt?: number;
   magicBlock?: {
     ready: boolean;
     arenaPda: string | null;
@@ -501,11 +503,14 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       setGuestAddress(null);
     });
 
-    socket.on("seasonReset", (payload: { seasonId: number }) => {
-      const updated = { ...(nextStateRef.current || {}), seasonId: payload.seasonId } as GameState;
+    socket.on("seasonReset", (payload: { seasonId: number; seasonNumber?: number; seasonEndsAt?: number }) => {
+      const patch: Partial<GameState> = { seasonId: payload.seasonId };
+      if (payload.seasonNumber !== undefined) patch.seasonNumber = payload.seasonNumber;
+      if (payload.seasonEndsAt !== undefined) patch.seasonEndsAt = payload.seasonEndsAt;
+      const updated = { ...(nextStateRef.current || {}), ...patch } as GameState;
       nextStateRef.current = updated;
-      if (prevStateRef.current) prevStateRef.current = { ...prevStateRef.current, seasonId: payload.seasonId };
-      setGameState((prev) => (prev ? { ...prev, seasonId: payload.seasonId } : prev));
+      if (prevStateRef.current) prevStateRef.current = { ...prevStateRef.current, ...patch };
+      setGameState((prev) => (prev ? { ...prev, ...patch } : prev));
     });
 
     socket.on("connect_error", (error) => {
