@@ -32,8 +32,8 @@ import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
 import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
 import { useSeasonCountdown } from "@/hooks/useSeasonCountdown";
-import { useSeasonRewards } from "@/hooks/useSeasonRewards";
-import { RewardClaimPopup } from "@/components/RewardClaimPopup";
+import { useSeasonPlacement } from "@/hooks/useSeasonPlacement";
+import { SeasonPlacementPopup } from "@/components/SeasonPlacementPopup";
 import { getXpThresholds } from "@/lib/utils";
 
 // Kill streak announcement
@@ -793,7 +793,7 @@ export function BubbleMapClient() {
   const topKillers = gameState?.topKillers || [];
   const killFeed = gameState?.killFeed || [];
   const seasonCountdown = useSeasonCountdown(gameState?.seasonEndsAt);
-  const seasonRewards = useSeasonRewards(gameState?.seasonNumber);
+  const seasonPlacement = useSeasonPlacement(gameState?.seasonNumber);
 
   const topKillerAddrsKey = topKillers.map((k: { address: string }) => k.address).join(',');
   useEffect(() => {
@@ -1144,10 +1144,10 @@ export function BubbleMapClient() {
                 </button>
               ))}
             </div>
-            {seasonRewards.myEntry && !seasonRewards.dismissed && (
+            {seasonPlacement.myEntry && !seasonPlacement.dismissed && (
               <div className="px-2 sm:px-3 py-1.5 border-t border-amber-500/20 bg-amber-500/5">
                 <div className="text-[10px] sm:text-xs text-amber-400 font-medium text-center animate-pulse">
-                  🏆 You placed #{seasonRewards.myEntry.place}!
+                  🏆 You placed #{seasonPlacement.myEntry.place}!
                 </div>
               </div>
             )}
@@ -1933,8 +1933,7 @@ export function BubbleMapClient() {
         <Info className="w-4 h-4 text-purple-300" />
       </button>
 
-      {/* Season reward claim popup */}
-      <RewardClaimPopup rewards={seasonRewards} />
+      <SeasonPlacementPopup placement={seasonPlacement} />
 
       {/* Airdrop claim notification */}
       <AirdropBanner airdropInfo={airdropInfo} />

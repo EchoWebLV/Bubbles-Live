@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Trophy, X, ExternalLink } from "lucide-react";
-import type { SeasonRewardInfo } from "@/hooks/useSeasonRewards";
+import type { SeasonPlacementInfo } from "@/hooks/useSeasonPlacement";
 
 const RANK_LABELS: Record<number, { emoji: string; label: string; color: string }> = {
   1: { emoji: "🥇", label: "1st Place", color: "#facc15" },
@@ -17,12 +17,12 @@ const RANK_LABELS: Record<number, { emoji: string; label: string; color: string 
   10: { emoji: "⭐", label: "10th Place", color: "#60a5fa" },
 };
 
-interface RewardClaimPopupProps {
-  rewards: SeasonRewardInfo;
+interface SeasonPlacementPopupProps {
+  placement: SeasonPlacementInfo;
 }
 
-export function RewardClaimPopup({ rewards }: RewardClaimPopupProps) {
-  const { myEntry, dismissed, dismiss } = rewards;
+export function SeasonPlacementPopup({ placement }: SeasonPlacementPopupProps) {
+  const { myEntry, dismissed, dismiss } = placement;
 
   const show = !!myEntry && !dismissed;
   const rankInfo = myEntry
@@ -49,7 +49,6 @@ export function RewardClaimPopup({ rewards }: RewardClaimPopupProps) {
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
             <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-amber-500/40 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-amber-500/20">
-              {/* Animated glow bar */}
               <div
                 className="absolute inset-x-0 top-0 h-1"
                 style={{

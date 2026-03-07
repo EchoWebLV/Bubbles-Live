@@ -162,7 +162,6 @@ class GameState {
     this.seasonEndsAt = this.seasonStartedAt + this.seasonDurationMs;
     this.seasonNumber = 0;
     this.seasonTimer = null;
-    this.seasonRewardAmount = parseInt(process.env.SEASON_REWARD_AMOUNT || '0', 10);
 
     // Hit-count buffer: "attacker|victim" → { attacker, victim, hitCount }
     // Server tracks hits, ER computes damage from on-chain talent state.

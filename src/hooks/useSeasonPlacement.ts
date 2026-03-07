@@ -10,7 +10,7 @@ const COMBAT_PROGRAM_ID = new PublicKey(
 const DEVNET_RPC = "https://api.devnet.solana.com";
 const LEADERBOARD_SEED = Buffer.from("leaderboard");
 
-export interface SeasonRewardEntry {
+export interface PlacementEntry {
   wallet: string;
   kills: number;
   level: number;
@@ -18,9 +18,9 @@ export interface SeasonRewardEntry {
   seasonNumber: number;
 }
 
-export interface SeasonRewardInfo {
+export interface SeasonPlacementInfo {
   seasonNumber: number;
-  myEntry: SeasonRewardEntry | null;
+  myEntry: PlacementEntry | null;
   isLoading: boolean;
   error: string | null;
   dismissed: boolean;
@@ -40,7 +40,7 @@ function getLeaderboardPda(seasonNumber: number): PublicKey {
 function parseLeaderboardEntries(
   data: Buffer,
   seasonNumber: number
-): SeasonRewardEntry[] {
+): PlacementEntry[] {
   if (data.length < 21) return [];
 
   let offset = 8; // discriminator
@@ -48,7 +48,7 @@ function parseLeaderboardEntries(
   offset += 8; // finalized_at
   const entryCount = data[offset]; offset += 1;
 
-  const entries: SeasonRewardEntry[] = [];
+  const entries: PlacementEntry[] = [];
   for (let i = 0; i < entryCount && i < 10; i++) {
     const wallet = new PublicKey(data.subarray(offset, offset + 32)).toBase58();
     offset += 32;
@@ -68,9 +68,9 @@ function parseLeaderboardEntries(
  * Checks recent devnet SeasonLeaderboard PDAs to see if the connected wallet
  * placed in the top 10. Used for the congratulations popup on the game page.
  */
-export function useSeasonRewards(currentSeasonNumber: number | undefined): SeasonRewardInfo {
+export function useSeasonPlacement(currentSeasonNumber: number | undefined): SeasonPlacementInfo {
   const { publicKey } = useWallet();
-  const [myEntry, setMyEntry] = useState<SeasonRewardEntry | null>(null);
+  const [myEntry, setMyEntry] = useState<PlacementEntry | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -86,7 +86,6 @@ export function useSeasonRewards(currentSeasonNumber: number | undefined): Seaso
     try {
       const connection = new Connection(DEVNET_RPC, "confirmed");
 
-      // Check the last 2 finalized seasons
       const seasonsToCheck = [currentSeasonNumber - 1, currentSeasonNumber - 2].filter(n => n > 0);
 
       for (const sn of seasonsToCheck) {
