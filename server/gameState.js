@@ -3363,46 +3363,8 @@ class GameState {
       return { success: false, error: 'MagicBlock ER not ready' };
     }
 
-    console.log('SEASON RESET: resetting all players on-chain...');
-    const result = await this.magicBlock.resetAllPlayers();
-
-    for (const [address, bubble] of this.battleBubbles) {
-      bubble.kills = 0;
-      bubble.deaths = 0;
-      bubble.xp = 0;
-      bubble.healthLevel = 1;
-      bubble.attackLevel = 1;
-      bubble.health = BATTLE_CONFIG.maxHealth;
-      bubble.maxHealth = BATTLE_CONFIG.maxHealth;
-      bubble.attackPower = BATTLE_CONFIG.bulletDamage;
-      bubble.isAlive = true;
-      bubble.isGhost = false;
-      bubble.ghostUntil = null;
-      bubble.talents = createEmptyTalents();
-      bubble.manualBuild = false;
-      bubble.lastHitTarget = null;
-      bubble.focusFireStacks = 0;
-      bubble.shotCounter = 0;
-      bubble.killRushUntil = 0;
-      bubble._lastDash = 0;
-      bubble._dashActive = 0;
-      bubble._lastDashHit = 0;
-      bubble._lastContactDmg = 0;
-      bubble._lastLaser = 0;
-      bubble.classId = 1 + Math.floor(Math.random() * 3);
-      bubble.manualClass = false;
-      bubble.talentResetsUsed = 0;
-    }
-
-    this.playerCache.clear();
-    this.killFeed = [];
-    this.topKillers = [];
-    this.damageBuffer.clear();
-    this.addEventLog('New season started — all stats reset!');
-    this.seasonId = Date.now(); // Client shows changelog popup for new season
-
-    console.log('SEASON RESET: complete', result);
-    return { success: true, ...result };
+    console.log('SEASON RESET (manual): triggering full season end flow...');
+    return await this._endSeasonAndStartNext();
   }
 
   // ─── One-time catch-up: boost all players below median ──────────
