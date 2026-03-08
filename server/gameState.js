@@ -3275,14 +3275,12 @@ class GameState {
       }));
 
       // 3. Finalize on devnet (writes SeasonLeaderboard PDA)
-      if (top10.length > 0) {
-        const finalizeTx = await this.magicBlock.finalizeSeason(top10);
-        if (finalizeTx) {
-          console.log(`Season ${this.seasonNumber} finalized on devnet — winners recorded on-chain`);
-          this.addEventLog(`Season ${this.seasonNumber} winners recorded on-chain — top ${top10.length}!`);
-        }
+      const finalizeTx = await this.magicBlock.finalizeSeason(top10);
+      if (finalizeTx) {
+        console.log(`Season ${this.seasonNumber} finalized on devnet — ${top10.length} winners recorded on-chain`);
+        this.addEventLog(`Season ${this.seasonNumber} winners recorded on-chain — top ${top10.length}!`);
       } else {
-        console.log(`Season ${this.seasonNumber}: No kills recorded, skipping finalization`);
+        console.log(`Season ${this.seasonNumber}: finalization failed or returned null`);
       }
 
       // 5. Reset all players on-chain (devnet ER)

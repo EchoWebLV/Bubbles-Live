@@ -643,10 +643,9 @@ pub mod hodlwarz_combat {
     pub fn finalize_season(ctx: Context<FinalizeSeason>, entries: Vec<LeaderboardInput>) -> Result<()> {
         let season = &mut ctx.accounts.season;
         require!(!season.is_finalized, CombatError::SeasonAlreadyFinalized);
+        require!(entries.len() <= MAX_LEADERBOARD_ENTRIES, CombatError::TooManyEntries);
 
         let now = Clock::get()?.unix_timestamp;
-        require!(now >= season.started_at + season.duration_secs, CombatError::SeasonNotEnded);
-        require!(entries.len() <= MAX_LEADERBOARD_ENTRIES, CombatError::TooManyEntries);
 
         let leaderboard = &mut ctx.accounts.leaderboard;
         leaderboard.season_number = season.season_number;
