@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useSeasonHistory, type SeasonRecord } from "@/hooks/useSeasonHistory";
 import { Wallet } from "lucide-react";
 
-const COMBAT_PROGRAM_ID = process.env.NEXT_PUBLIC_COMBAT_PROGRAM_ID || "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi";
+const COMBAT_PROGRAM_ID = process.env.NEXT_PUBLIC_COMBAT_PROGRAM_ID || "AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw";
 
 function formatDate(unixSecs: number): string {
   if (!unixSecs) return "—";
@@ -111,7 +111,7 @@ export function RewardsPortal() {
   const { publicKey, connected } = useWallet();
   const { setVisible } = useWalletModal();
 
-  const { seasons, isLoading: isLoadingSeasons } = useSeasonHistory(200, 10);
+  const { seasons, isLoading: isLoadingSeasons, currentSeason } = useSeasonHistory(undefined, 10);
   const connectedWallet = publicKey?.toBase58() ?? null;
 
   return (
@@ -173,7 +173,9 @@ export function RewardsPortal() {
             <CardDescription>
               {isLoadingSeasons
                 ? "Loading on-chain records..."
-                : `${seasons.length} season${seasons.length !== 1 ? "s" : ""} recorded on Solana devnet`}
+                : seasons.length > 0
+                  ? `${seasons.length} season${seasons.length !== 1 ? "s" : ""} recorded on Solana devnet${currentSeason ? ` (current: S${currentSeason})` : ""}`
+                  : "No seasons finalized yet"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">

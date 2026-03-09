@@ -5,10 +5,11 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Connection } from "@solana/web3.js";
 
 const COMBAT_PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_COMBAT_PROGRAM_ID || "7aeBk4C2MhuivHdBiNS44feYjwiPsg6Aiq9SEUP99TDi"
+  process.env.NEXT_PUBLIC_COMBAT_PROGRAM_ID || "AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw"
 );
 const DEVNET_RPC = "https://api.devnet.solana.com";
 const LEADERBOARD_SEED = Buffer.from("leaderboard");
+const SEASON_SEED = Buffer.from("season");
 
 export interface PlacementEntry {
   wallet: string;
@@ -37,28 +38,47 @@ function getLeaderboardPda(seasonNumber: number): PublicKey {
   return pda;
 }
 
+function getSeasonStatePda(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [SEASON_SEED],
+    COMBAT_PROGRAM_ID
+  );
+  return pda;
+}
+
+async function fetchCurrentSeasonNumber(connection: Connection): Promise<number | null> {
+  try {
+    const pda = getSeasonStatePda();
+    const info = await connection.getAccountInfo(pda);
+    if (!info || !info.data || info.data.length < 44) return null;
+    const data = info.data as Buffer;
+    return data.readUInt32LE(40);
+  } catch {
+    return null;
+  }
+}
+
 function parseLeaderboardEntries(
   data: Buffer,
   seasonNumber: number
 ): PlacementEntry[] {
   if (data.length < 21) return [];
 
-  let offset = 8; // discriminator
+  let offset = 8;
   offset += 4; // season_number
   offset += 8; // finalized_at
   const entryCount = data[offset]; offset += 1;
 
   const entries: PlacementEntry[] = [];
   for (let i = 0; i < entryCount && i < 10; i++) {
-    const wallet = new PublicKey(data.subarray(offset, offset + 32)).toBase58();
+    const walletBytes = data.subarray(offset, offset + 32);
+    const isZero = walletBytes.every((b: number) => b === 0);
     offset += 32;
-    const kills = Number(data.readBigUInt64LE(offset));
-    offset += 8;
-    const level = data[offset];
-    offset += 1;
-    const place = data[offset];
-    offset += 1;
-    entries.push({ wallet, kills, level, place, seasonNumber });
+    const kills = Number(data.readBigUInt64LE(offset)); offset += 8;
+    const level = data[offset]; offset += 1;
+    const place = data[offset]; offset += 1;
+    if (isZero) continue;
+    entries.push({ wallet: new PublicKey(walletBytes).toBase58(), kills, level, place, seasonNumber });
   }
 
   return entries;
@@ -67,6 +87,7 @@ function parseLeaderboardEntries(
 /**
  * Checks recent devnet SeasonLeaderboard PDAs to see if the connected wallet
  * placed in the top 10. Used for the congratulations popup on the game page.
+ * Auto-discovers the current season if not provided.
  */
 export function useSeasonPlacement(currentSeasonNumber: number | undefined): SeasonPlacementInfo {
   const { publicKey } = useWallet();
@@ -78,7 +99,7 @@ export function useSeasonPlacement(currentSeasonNumber: number | undefined): Sea
   const walletAddress = publicKey?.toBase58() ?? null;
 
   const fetchMyPlacement = useCallback(async () => {
-    if (!currentSeasonNumber || currentSeasonNumber <= 1 || !walletAddress) return;
+    if (!walletAddress) return;
 
     setIsLoading(true);
     setError(null);
@@ -86,23 +107,29 @@ export function useSeasonPlacement(currentSeasonNumber: number | undefined): Sea
     try {
       const connection = new Connection(DEVNET_RPC, "confirmed");
 
-      const seasonsToCheck = [currentSeasonNumber - 1, currentSeasonNumber - 2].filter(n => n > 0);
+      let season = currentSeasonNumber;
+      if (!season || season <= 0) {
+        season = await fetchCurrentSeasonNumber(connection) ?? undefined;
+      }
+      if (!season || season <= 1) {
+        setMyEntry(null);
+        return;
+      }
 
-      for (const sn of seasonsToCheck) {
-        try {
-          const pda = getLeaderboardPda(sn);
-          const info = await connection.getAccountInfo(pda);
-          if (!info || !info.data) continue;
+      const seasonsToCheck = [season - 1, season - 2].filter(n => n > 0);
 
-          const entries = parseLeaderboardEntries(info.data as Buffer, sn);
-          const found = entries.find(e => e.wallet === walletAddress);
-          if (found) {
-            setMyEntry(found);
-            setDismissed(false);
-            return;
-          }
-        } catch {
-          // PDA doesn't exist — skip
+      const pdas = seasonsToCheck.map(sn => getLeaderboardPda(sn));
+      const accounts = await connection.getMultipleAccountsInfo(pdas);
+
+      for (let i = 0; i < accounts.length; i++) {
+        const info = accounts[i];
+        if (!info || !info.data) continue;
+        const entries = parseLeaderboardEntries(info.data as Buffer, seasonsToCheck[i]);
+        const found = entries.find(e => e.wallet === walletAddress);
+        if (found) {
+          setMyEntry(found);
+          setDismissed(false);
+          return;
         }
       }
 
