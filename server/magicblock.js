@@ -789,6 +789,11 @@ class MagicBlockService {
         decoyBarrage: account.talentDeadDrop || 0,
         volatileDecoy: account.talentDecoy || 0,
         singularity: account.talentSingularity || 0,
+        quickfire: account.talentQuickfire || 0,
+        velocityRounds: account.talentVelocityRounds || 0,
+        longShot: account.talentLongShot || 0,
+        overdrive: account.talentOverdrive || 0,
+        bulletStorm: account.talentBulletStorm || 0,
       },
       manualBuild: account.manualBuild || false,
     };

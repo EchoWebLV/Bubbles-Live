@@ -55,6 +55,12 @@ export interface TalentRanks {
   decoyBarrage: number;
   volatileDecoy: number;
   singularity: number;
+  // Swift
+  quickfire: number;
+  velocityRounds: number;
+  longShot: number;
+  overdrive: number;
+  bulletStorm: number;
   [key: string]: number;
 }
 

@@ -753,15 +753,34 @@ class GameState {
       const berserkActive = berserkRank > 0 && battleBubble.health < battleBubble.maxHealth * ALL_TALENTS.berserker.hpThreshold;
       const berserkAtkSpeed = berserkActive ? ALL_TALENTS.berserker.atkSpeedBonus[berserkRank - 1] : 0;
       const velocityMult = battleBubble.classId === 2 ? classMultiplier(2, calcLevel(battleBubble.xp)) : 1;
-      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed) / velocityMult;
+
+      // Swift T1: Quickfire flat fire rate bonus
+      const quickfireVal = getTalentValue('quickfire', battleBubble.talents?.quickfire || 0);
+
+      // Swift T4: Overdrive — timed 2x fire rate buff
+      const overdriveRank = battleBubble.talents?.overdrive || 0;
+      let overdriveMult = 1;
+      if (overdriveRank > 0) {
+        const odCooldown = ALL_TALENTS.overdrive.cooldownMs[overdriveRank - 1];
+        const odDuration = ALL_TALENTS.overdrive.durationMs;
+        if (!battleBubble._overdriveStart) battleBubble._overdriveStart = now - odCooldown;
+        const elapsed = now - battleBubble._overdriveStart;
+        if (elapsed < odDuration) {
+          overdriveMult = ALL_TALENTS.overdrive.fireRateMultiplier;
+        } else if (elapsed >= odCooldown) {
+          battleBubble._overdriveStart = now;
+          overdriveMult = ALL_TALENTS.overdrive.fireRateMultiplier;
+        }
+      }
+
+      let effectiveFireRate = BATTLE_CONFIG.fireRate * (1 - rapidFireVal) * (1 - killRushVal) * (1 - berserkAtkSpeed) * (1 - quickfireVal) / velocityMult / overdriveMult;
       effectiveFireRate = Math.max(effectiveFireRate, ALL_TALENTS.rapidFire.minCooldownMs || 80);
+
       if (now - battleBubble.lastShotTime < effectiveFireRate) return;
 
       // Find closest target
       let closest = null;
       let closestDist = Infinity;
-      let secondClosest = null;
-      let secondClosestDist = Infinity;
       this.holders.forEach(target => {
         if (target.address === holder.address || target.x === undefined) return;
         const targetBattle = this.battleBubbles.get(target.address);
@@ -771,13 +790,8 @@ class GameState {
         const dy = target.y - holder.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < closestDist) {
-          secondClosest = closest;
-          secondClosestDist = closestDist;
           closestDist = dist;
           closest = target;
-        } else if (dist < secondClosestDist) {
-          secondClosestDist = dist;
-          secondClosest = target;
         }
       });
 
@@ -807,6 +821,10 @@ class GameState {
         const vitalityVal = getTalentValue('vitalityStrike', battleBubble.talents?.vitalityStrike || 0);
         if (vitalityVal > 0) damage += battleBubble.maxHealth * vitalityVal;
 
+        // Swift T2: Velocity Rounds — faster bullet speed
+        const velRoundsVal = getTalentValue('velocityRounds', battleBubble.talents?.velocityRounds || 0);
+        const bulletSpd = BATTLE_CONFIG.bulletSpeed * (1 + velRoundsVal);
+
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
           shooterAddress: holder.address,
@@ -822,8 +840,8 @@ class GameState {
           curveDirection: curveDir,
           curveStrength: BATTLE_CONFIG.curveStrength.min + 
             Math.random() * (BATTLE_CONFIG.curveStrength.max - BATTLE_CONFIG.curveStrength.min),
-          vx: (dx / dist) * BATTLE_CONFIG.bulletSpeed,
-          vy: (dy / dist) * BATTLE_CONFIG.bulletSpeed,
+          vx: (dx / dist) * bulletSpd,
+          vy: (dy / dist) * bulletSpd,
           damage: damage,
           createdAt: now,
         });
@@ -902,6 +920,34 @@ class GameState {
           }
         }
 
+        // Swift T5: Bullet Storm — every Nth shot, fire an extra bullet at same target
+        const bsRank = battleBubble.talents?.bulletStorm || 0;
+        if (bsRank > 0) {
+          const bsFreq = ALL_TALENTS.bulletStorm.extraShotFrequency[bsRank - 1];
+          if (battleBubble.shotCounter % bsFreq === 0) {
+            const spreadAngle = (Math.random() - 0.5) * 0.2;
+            const cos = Math.cos(spreadAngle), sin = Math.sin(spreadAngle);
+            const bsvx = (dx / dist) * bulletSpd;
+            const bsvy = (dy / dist) * bulletSpd;
+            this.bullets.push({
+              id: `b-${this.bulletIdCounter++}`,
+              shooterAddress: holder.address,
+              targetAddress: closest.address,
+              shooterColor: holder.color,
+              x: holder.x, y: holder.y,
+              startX: holder.x, startY: holder.y,
+              targetX: closest.x + spreadAngle * 20, targetY: closest.y + spreadAngle * 20,
+              progress: 0,
+              curveDirection: -curveDir,
+              curveStrength: BATTLE_CONFIG.curveStrength.min + Math.random() * (BATTLE_CONFIG.curveStrength.max - BATTLE_CONFIG.curveStrength.min),
+              vx: cos * bsvx - sin * bsvy,
+              vy: sin * bsvx + cos * bsvy,
+              damage: damage,
+              createdAt: now,
+            });
+          }
+        }
+
         battleBubble.lastShotTime = now;
       }
     });
@@ -935,7 +981,7 @@ class GameState {
             const maxSpd = bullet.isRocket ? ALL_TALENTS.rocket.rocketSpeed : BATTLE_CONFIG.bulletSpeed;
             const desiredVx = (tdx / tDist) * maxSpd;
             const desiredVy = (tdy / tDist) * maxSpd;
-            const strength = ALL_TALENTS.dualCannon.homingStrength;
+            const strength = bullet.homingStrength || ALL_TALENTS.dualCannon.homingStrength;
             bullet.vx += (desiredVx - bullet.vx) * strength;
             bullet.vy += (desiredVy - bullet.vy) * strength;
             const spd = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy);
@@ -1034,7 +1080,8 @@ class GameState {
           Math.pow(bullet.targetX - bullet.startX, 2) +
           Math.pow(bullet.targetY - bullet.startY, 2)
         );
-        const progressSpeed = BATTLE_CONFIG.bulletSpeed / totalDist;
+        const actualSpeed = Math.sqrt(bullet.vx * bullet.vx + bullet.vy * bullet.vy) || BATTLE_CONFIG.bulletSpeed;
+        const progressSpeed = actualSpeed / totalDist;
         bullet.progress += progressSpeed;
 
         const t = Math.min(bullet.progress, 1);
@@ -1282,6 +1329,20 @@ class GameState {
           const executeVal = getTalentValue('execute', shooterBattle.talents?.execute || 0);
           if (executeVal > 0 && targetBattle.health / targetBattle.maxHealth <= ALL_TALENTS.execute.hpThreshold) {
             actualDmg *= (1 + executeVal);
+          }
+        }
+
+        // Swift T3: Long Shot — bonus damage based on distance traveled
+        if (shooterBattle) {
+          const longShotRank = shooterBattle.talents?.longShot || 0;
+          if (longShotRank > 0) {
+            const travelDx = bullet.x - bullet.startX;
+            const travelDy = bullet.y - bullet.startY;
+            const travelDist = Math.sqrt(travelDx * travelDx + travelDy * travelDy);
+            const maxDist = ALL_TALENTS.longShot.maxDistancePx;
+            const ratio = Math.min(travelDist / maxDist, 1);
+            const bonus = getTalentValue('longShot', longShotRank) * ratio;
+            actualDmg *= (1 + bonus);
           }
         }
 

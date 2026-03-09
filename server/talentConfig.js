@@ -1,5 +1,5 @@
 // ─── Talent Tree Configuration (v2) ──────────────────────────────────────
-// 5 trees, 5 talents each, linear chain prerequisite (tier N requires 1 rank in tier N-1).
+// 7 trees, 5 talents each, linear chain prerequisite (tier N requires 1 rank in tier N-1).
 // Tiers 1-4: max 5 ranks.  Tier 5 (capstone): max 3 ranks.
 // 1 talent point per 2 levels → 50 points at level 100 → enough for 2 full trees + 4 spare.
 
@@ -433,6 +433,63 @@ const SAPPER = {
   },
 };
 
+// ─── SWIFT ───────────────────────────────────────────────────────────────
+const SWIFT = {
+  quickfire: {
+    id: 'quickfire',
+    name: 'Quickfire',
+    description: '+{value}% fire rate',
+    tree: 'swift',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
+  },
+  velocityRounds: {
+    id: 'velocityRounds',
+    name: 'Velocity Rounds',
+    description: 'Bullets travel {value}% faster',
+    tree: 'swift',
+    tier: 2,
+    requires: 'quickfire',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+  },
+  longShot: {
+    id: 'longShot',
+    name: 'Long Shot',
+    description: 'Bullets deal up to +{value}% bonus damage based on distance traveled (max at 400px)',
+    tree: 'swift',
+    tier: 3,
+    requires: 'velocityRounds',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.60],
+    maxDistancePx: 400,
+  },
+  overdrive: {
+    id: 'overdrive',
+    name: 'Overdrive',
+    description: 'Every {value}s, double your fire rate for 2s',
+    tree: 'swift',
+    tier: 4,
+    requires: 'longShot',
+    maxRank: MAX_RANK,
+    cooldownMs: [10000, 9000, 8000, 7000, 6000],
+    durationMs: 2000,
+    fireRateMultiplier: 2,
+  },
+  bulletStorm: {
+    id: 'bulletStorm',
+    name: 'Bullet Storm',
+    description: 'Every {value} shot, fire an extra bullet at the same target',
+    tree: 'swift',
+    tier: 5,
+    requires: 'overdrive',
+    maxRank: MAX_RANK_CAPSTONE,
+    extraShotFrequency: [5, 3, 1],
+  },
+};
+
 // ─── Flat lookup ──────────────────────────────────────────────────────────
 const ALL_TALENTS = {
   ...TANK,
@@ -441,6 +498,7 @@ const ALL_TALENTS = {
   ...MASS_DAMAGE,
   ...BLOOD_THIRST,
   ...SAPPER,
+  ...SWIFT,
 };
 
 // UI order per tree
@@ -451,15 +509,16 @@ const TREE_ORDER = {
   massDamage:  ['ricochet', 'focusFire', 'orbitalLaser', 'rocket', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
   sapper:      ['deathMirage', 'decoy', 'decoyBarrage', 'volatileDecoy', 'singularity'],
+  swift:       ['quickfire', 'velocityRounds', 'longShot', 'overdrive', 'bulletStorm'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'deathMirage',
-  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'decoy',
-  'regeneration', 'criticalStrike', 'relentless', 'orbitalLaser', 'killRush', 'decoyBarrage',
-  'lifesteal', 'multiShot', 'orbit', 'rocket', 'reaperArc', 'volatileDecoy',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'deathMirage', 'quickfire',
+  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'decoy', 'velocityRounds',
+  'regeneration', 'criticalStrike', 'relentless', 'orbitalLaser', 'killRush', 'decoyBarrage', 'longShot',
+  'lifesteal', 'multiShot', 'orbit', 'rocket', 'reaperArc', 'volatileDecoy', 'overdrive',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity', 'bulletStorm',
 ];
 
 // ─── Chain-ID mapping (on-chain u8 slots 0-29) ───────────────────────────
@@ -470,6 +529,7 @@ const TALENT_NAME_TO_CHAIN_ID = {
   ricochet: 15, counterAttack: 16, chainLightning: 17, orbitalLaser: 18, focusFire: 19, rocket: 30,
   experience: 20, execute: 21, killRush: 22, reaperArc: 23, berserker: 24,
   decoy: 25, deathMirage: 26, decoyBarrage: 27, volatileDecoy: 28, singularity: 29,
+  quickfire: 31, velocityRounds: 32, longShot: 33, overdrive: 34, bulletStorm: 35,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
@@ -532,7 +592,7 @@ function pointsInTree(talents, treeName) {
   return total;
 }
 
-const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity'];
+const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity', 'bulletStorm'];
 const MAX_CAPSTONES = 2;
 
 module.exports = {
@@ -548,6 +608,7 @@ module.exports = {
   MASS_DAMAGE,
   BLOOD_THIRST,
   SAPPER,
+  SWIFT,
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,

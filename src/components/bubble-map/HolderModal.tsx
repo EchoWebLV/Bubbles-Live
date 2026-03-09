@@ -88,6 +88,18 @@ const TALENT_TREES = {
       { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],
   },
+  swift: {
+    name: 'Swift',
+    color: 'orange',
+    icon: '\u{26A1}',
+    talents: [
+      { id: 'quickfire', name: 'Quickfire', desc: '+4/8/12/16/24% fire rate', maxRank: 5 },
+      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 10/20/30/40/50% faster', maxRank: 5 },
+      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +10/20/30/40/60% bonus dmg based on distance (max at 400px)', maxRank: 5 },
+      { id: 'overdrive', name: 'Overdrive', desc: 'Every 10/9/8/7/6s, double your fire rate for 2s', maxRank: 5 },
+      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 5/3/1 shot, fire an extra bullet at the same target', maxRank: 3 },
+    ],
+  },
 } as const;
 
 interface HolderModalProps {
@@ -122,6 +134,7 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
     yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
     purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
     teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
+    orange: { bg: 'bg-orange-900/20', border: 'border-orange-500/30', text: 'text-orange-400', rankBg: 'bg-orange-900/30', rankFill: 'bg-orange-500' },
   };
 
   return (
