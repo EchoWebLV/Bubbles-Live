@@ -21,10 +21,10 @@ const TALENT_TREES = {
     color: 'green',
     icon: '\u{1F6E1}\u{FE0F}',
     talents: [
-      { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
+      { id: 'armor', name: 'Armor', desc: '-8/16/24/32/40% incoming dmg', maxRank: 5 },
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.6/1.2/1.8/2.4/3 HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 6/12/18/25/33% of dmg dealt', maxRank: 5 },
       { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
   },
@@ -94,10 +94,10 @@ const TALENT_TREES = {
     icon: '\u{26A1}',
     talents: [
       { id: 'quickfire', name: 'Quickfire', desc: '+4/8/12/16/24% fire rate', maxRank: 5 },
-      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 10/20/30/40/50% faster', maxRank: 5 },
-      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +10/20/30/40/60% bonus dmg based on distance (max at 400px)', maxRank: 5 },
+      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 15/30/45/60/75% faster', maxRank: 5 },
+      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +20/40/60/80/100% bonus dmg based on distance (max at 400px)', maxRank: 5 },
       { id: 'overdrive', name: 'Overdrive', desc: 'Every 10/9/8/7/6s, double your fire rate for 2s', maxRank: 5 },
-      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 5/3/1 shot, fire an extra bullet at the same target', maxRank: 3 },
+      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 6/4/2 shot, fire an extra bullet at the same target', maxRank: 3 },
     ],
   },
 } as const;

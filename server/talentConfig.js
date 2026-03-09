@@ -20,7 +20,7 @@ const TANK = {
     tier: 1,
     requires: null,
     maxRank: MAX_RANK,
-    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
+    perRank: [0.08, 0.16, 0.24, 0.32, 0.40],
   },
   ironSkin: {
     id: 'ironSkin',
@@ -40,9 +40,9 @@ const TANK = {
     tier: 3,
     requires: 'ironSkin',
     maxRank: MAX_RANK,
-    perRank: 0.3,
-    hardCap: 1.5,
-    healCeiling: 0.80,
+    perRank: 0.6,
+    hardCap: 3.0,
+    healCeiling: 1.0,
   },
   lifesteal: {
     id: 'lifesteal',
@@ -52,8 +52,8 @@ const TANK = {
     tier: 4,
     requires: 'regeneration',
     maxRank: MAX_RANK,
-    perRank: [0.05, 0.10, 0.15, 0.20, 0.25],
-    healCeiling: 0.80,
+    perRank: [0.06, 0.12, 0.18, 0.25, 0.33],
+    healCeiling: 1.0,
   },
   vitalityStrike: {
     id: 'vitalityStrike',
@@ -453,7 +453,7 @@ const SWIFT = {
     tier: 2,
     requires: 'quickfire',
     maxRank: MAX_RANK,
-    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+    perRank: [0.15, 0.30, 0.45, 0.60, 0.75],
   },
   longShot: {
     id: 'longShot',
@@ -463,7 +463,7 @@ const SWIFT = {
     tier: 3,
     requires: 'velocityRounds',
     maxRank: MAX_RANK,
-    perRank: [0.10, 0.20, 0.30, 0.40, 0.60],
+    perRank: [0.20, 0.40, 0.60, 0.80, 1.00],
     maxDistancePx: 400,
   },
   overdrive: {
@@ -486,7 +486,7 @@ const SWIFT = {
     tier: 5,
     requires: 'overdrive',
     maxRank: MAX_RANK_CAPSTONE,
-    extraShotFrequency: [5, 3, 1],
+    extraShotFrequency: [6, 4, 2],
   },
 };
 
