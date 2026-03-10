@@ -2644,6 +2644,7 @@ class GameState {
       color,
       health: cloneHp,
       maxHealth: cloneHp,
+      hitsRemaining: 6,
       damageMult: cloneDmgMult,
       attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
       createdAt: now,
@@ -2672,6 +2673,7 @@ class GameState {
       color: holder?.color || '#88aaff',
       health: cloneHp,
       maxHealth: cloneHp,
+      hitsRemaining: 6,
       damageMult: cloneDmgMult,
       attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
       createdAt: now,
@@ -2741,6 +2743,7 @@ class GameState {
         color: holder.color,
         health: cloneHp,
         maxHealth: cloneHp,
+        hitsRemaining: 6,
         damageMult: cloneDmgMult,
         attackPower: (bubble.attackPower || BATTLE_CONFIG.bulletDamage) * cloneDmgMult,
         createdAt: now,
@@ -2796,7 +2799,7 @@ class GameState {
 
       const elapsed = now - clone.createdAt;
       const maxDuration = clone.mirageDuration || clone.barrageDuration || ALL_TALENTS.decoy.cloneDurationMs;
-      if (elapsed >= maxDuration || clone.health <= 0) {
+      if (elapsed >= maxDuration || clone.hitsRemaining <= 0) {
         clone.alive = false;
         this._decoyDeathExplosion(clone, now);
         continue;
@@ -2863,7 +2866,7 @@ class GameState {
         if (berserkActive) damage *= (1 + ALL_TALENTS.berserker.dmgBonus[berserkRank - 1]);
         const vitVal = getTalentValue('vitalityStrike', ownerBubble.talents?.vitalityStrike || 0);
         if (vitVal > 0) damage += ownerBubble.maxHealth * vitVal;
-        damage *= 0.33;
+        damage *= 0.25;
 
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,
@@ -2980,14 +2983,14 @@ class GameState {
         const dy = bullet.y - clone.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < clone.radius + 3) {
-          clone.health -= Math.min(bullet.damage, 5);
+          clone.hitsRemaining -= 1;
           consumedBullets.add(bullet.id);
           this.damageNumbers.push({
             id: `dmg-${now}-${Math.random()}`, x: clone.x, y: clone.y - 10,
             damage: bullet.damage, createdAt: now, alpha: 1,
             color: '#aaaaaa', fontSize: 12, type: 'decoyHit',
           });
-          if (clone.health <= 0) {
+          if (clone.hitsRemaining <= 0) {
             clone.alive = false;
             this._decoyDeathExplosion(clone, now);
             break;
@@ -3903,8 +3906,8 @@ class GameState {
         y: Math.round(c.y),
         radius: c.radius,
         color: c.color,
-        health: Math.round(c.health),
-        maxHealth: Math.round(c.maxHealth),
+        health: c.hitsRemaining,
+        maxHealth: 6,
       })),
       damageNumbers: this.damageNumbers,
       vfx: this.vfx,
