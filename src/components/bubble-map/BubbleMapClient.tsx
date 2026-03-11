@@ -90,7 +90,7 @@ const TALENT_TREES = {
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
       { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
       { id: 'relentless', name: 'Retaliate', desc: '10/20/30/40/50% chance when hit: dash toward attacker. +10/20/30/40/50% Body Slam dmg', maxRank: 5 },
-      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
+      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, 0.5/0.8/1.1/1.7/2.5% max HP on contact (100ms cd)', maxRank: 5 },
       { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
     ],
   },
@@ -112,9 +112,9 @@ const TALENT_TREES = {
     icon: '🩸',
     talents: [
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
-      { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
+      { id: 'execute', name: 'Execute', desc: '+7/13/20/27/33% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 10th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
     ],
   },
@@ -136,10 +136,10 @@ const TALENT_TREES = {
     icon: '⚡',
     talents: [
       { id: 'quickfire', name: 'Quickfire', desc: '+4/8/12/16/24% fire rate', maxRank: 5 },
-      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 15/30/45/60/75% faster', maxRank: 5 },
-      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +20/40/60/80/100% bonus dmg based on distance (max at 400px)', maxRank: 5 },
+      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 9/18/27/36/45% faster', maxRank: 5 },
+      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +10/20/30/40/50% bonus dmg based on distance (max at 800px)', maxRank: 5 },
       { id: 'overdrive', name: 'Overdrive', desc: 'Every 10/9/8/7/6s, double your fire rate for 2s', maxRank: 5 },
-      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 6/4/2 shot, fire an extra bullet at the same target', maxRank: 3 },
+      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 9/6/3 shot, fire an extra bullet at the same target', maxRank: 3 },
     ],
   },
 } as const;
@@ -198,8 +198,16 @@ export function BubbleMapClient() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackIndexRef = useRef(0);
+  const playNextRef = useRef<() => void>(() => {});
   const keysPressed = useRef<Set<string>>(new Set());
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const MUSIC_TRACKS = useMemo(() => [
+    "/where-it-leads.mp3",
+    "/NASTY! (Sped Up).mp3",
+    "/VXLLAIN, iGRES, ENXK - Crystal Skies (Sped Up).mp3",
+  ], []);
 
   // Wallet connection
   const { publicKey, connected: walletConnected, disconnect: disconnectWallet } = useWallet();
@@ -227,42 +235,72 @@ export function BubbleMapClient() {
   const airdropInfo = useAirdropChecker();
   const [leaderboardAirdropAddrs, setLeaderboardAirdropAddrs] = useState<Set<string>>(new Set());
 
-  // Initialize audio element and autoplay
-  useEffect(() => {
-    const audio = new Audio("/where-it-leads.mp3");
-    audio.loop = true;
-    audio.volume = 0.4;
-    audioRef.current = audio;
-
-    // Attempt autoplay — browsers may block until user interacts
+  // Play next track in playlist (lazy load: only load when we advance)
+  const playNextTrack = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || MUSIC_TRACKS.length === 0) return;
+    trackIndexRef.current = (trackIndexRef.current + 1) % MUSIC_TRACKS.length;
+    const path = MUSIC_TRACKS[trackIndexRef.current];
+    const full = path.startsWith("/") ? path : "/" + path;
+    audio.src = encodeURI(full);
     audio.play().then(() => {
       setIsMusicPlaying(true);
       setMusicStarted(true);
-    }).catch(() => {
-      // Autoplay blocked — start on first user click anywhere
-      const startOnClick = () => {
-        audio.play().then(() => {
-          setIsMusicPlaying(true);
-          setMusicStarted(true);
-        }).catch(() => {});
-        document.removeEventListener("click", startOnClick);
-        document.removeEventListener("keydown", startOnClick);
-      };
-      document.addEventListener("click", startOnClick, { once: true });
-      document.addEventListener("keydown", startOnClick, { once: true });
-    });
+    }).catch(() => {});
+  }, [MUSIC_TRACKS]);
 
-    return () => {
-      audio.pause();
-      audio.src = "";
+  playNextRef.current = playNextTrack;
+
+  // Start or resume playback — lazy load: only load current track; start at random track
+  const startPlayback = useCallback(() => {
+    if (MUSIC_TRACKS.length === 0) return;
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.volume = 0.4;
+      audioRef.current = audio;
+      const onEnded = () => playNextRef.current();
+      (audio as HTMLAudioElement & { _endedHandler?: () => void })._endedHandler = onEnded;
+      audio.addEventListener("ended", onEnded);
+      trackIndexRef.current = Math.floor(Math.random() * MUSIC_TRACKS.length);
+    }
+    const path = MUSIC_TRACKS[trackIndexRef.current];
+    const full = path.startsWith("/") ? path : "/" + path;
+    audio.src = encodeURI(full);
+    audio.play().then(() => {
+      setIsMusicPlaying(true);
+      setMusicStarted(true);
+    }).catch(() => {});
+  }, [MUSIC_TRACKS]);
+
+  // Initialize: attempt autoplay first track (lazy — only first track loads)
+  useEffect(() => {
+    startPlayback();
+    const startOnClick = () => {
+      startPlayback();
+      document.removeEventListener("click", startOnClick);
+      document.removeEventListener("keydown", startOnClick);
     };
-  }, []);
+    document.addEventListener("click", startOnClick, { once: true });
+    document.addEventListener("keydown", startOnClick, { once: true });
+    return () => {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+        const handler = (audio as HTMLAudioElement & { _endedHandler?: () => void })._endedHandler;
+        if (handler) audio.removeEventListener("ended", handler);
+      }
+    };
+  }, [startPlayback]);
 
   // Toggle music
   const toggleMusic = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-
+    if (!audio) {
+      startPlayback();
+      return;
+    }
     if (isMusicPlaying) {
       audio.pause();
       setIsMusicPlaying(false);
@@ -271,11 +309,10 @@ export function BubbleMapClient() {
         setIsMusicPlaying(true);
         setMusicStarted(true);
       }).catch(() => {
-        // Browser blocked autoplay — user needs to click again
-        console.log("Audio play blocked by browser");
+        startPlayback();
       });
     }
-  }, [isMusicPlaying]);
+  }, [isMusicPlaying, startPlayback]);
 
   // Connect to game server
   const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
