@@ -717,13 +717,14 @@ class GameState {
       }
     });
 
-    // Regeneration talent: heal alive non-ghost bubbles each tick
+    // Regeneration talent: heal alive non-ghost bubbles each tick (% of max HP)
     const regenTickRate = deltaTime / 30;
     this.battleBubbles.forEach((bubble) => {
       if (bubble.isGhost || !bubble.isAlive) return;
       const regenRank = bubble.talents?.regeneration || 0;
       if (regenRank <= 0) return;
-      const regenPerSec = getTalentValue('regeneration', regenRank);
+      const regenPct = getTalentValue('regeneration', regenRank);
+      const regenPerSec = bubble.maxHealth * regenPct;
       const healCeiling = bubble.maxHealth * ALL_TALENTS.regeneration.healCeiling;
       if (bubble.health < healCeiling) {
         bubble.health = Math.min(bubble.health + regenPerSec * regenTickRate, healCeiling);
@@ -1112,7 +1113,7 @@ class GameState {
           bullet.y = bullet.targetY + (dy / dist) * overshoot;
         }
 
-        const maxProgress = 1 + (100 / dist);
+        const maxProgress = 1 + (150 / dist);
         if (bullet.progress >= maxProgress ||
             bullet.x < -50 || bullet.x > width + 50 ||
             bullet.y < -50 || bullet.y > height + 50) {

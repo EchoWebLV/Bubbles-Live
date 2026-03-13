@@ -14,12 +14,12 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Shield, color: "#34d399", title: "Class Scaling Adjusted", desc: "Fortify, Velocity, and Impact now grant +0.5% per level (down from 1%)" },
-  { icon: Target, color: "#cc44ff", title: "Singularity Buffed", desc: "Proc chance increased to 50% (from 33%). Pull duration now scales 1/2/3s" },
-  { icon: Ghost, color: "#22d3ee", title: "Decoy Damage Buffed", desc: "All decoy clones now deal 40% of your damage (up from 33%)" },
-  { icon: Flame, color: "#ff4444", title: "Berserker Tuned Up", desc: "Below 33% HP bonus increased to 12/24/36% atk speed & damage (was 10/20/30%)" },
-  { icon: Swords, color: "#ff6600", title: "Reaper's Arc Faster", desc: "360° sweep now triggers every 10th hit (down from 15th)" },
-  { icon: Repeat, color: "#a855f7", title: "Talent Reset", desc: "Reset all talents and class once per season — use it wisely" },
+  { icon: Zap, color: "#f97316", title: "Swift Tree Nerfs", desc: "Velocity Rounds max 45% (was 75%). Long Shot max 50% bonus, double range (800px). Bullet Storm every 9/6/3 shots (was 6/4/2). Execute max 33% (was 48%)." },
+  { icon: Target, color: "#3b82f6", title: "Orbit Buffed", desc: "Orb hit cooldown 100ms (was 375ms). Damage per rank: 0.5/0.8/1.1/1.7/2.5% max HP (50% more per level)." },
+  { icon: Swords, color: "#ff6600", title: "Reaper's Arc Tuned", desc: "Sweep every 12th hit. Cost now matches damage: 1/2/3/4/5% HP (was half)." },
+  { icon: Ghost, color: "#22d3ee", title: "Decoy Balance", desc: "Decoys take 6 hits to destroy (any damage). Clone damage 25% of yours (was 33%)." },
+  { icon: Shield, color: "#34d399", title: "Regeneration Rework", desc: "Heal 0.4/0.8/1.2/1.6/2% of max HP per second (was flat HP/sec). Scales with level." },
+  { icon: Repeat, color: "#a855f7", title: "Talent Reset", desc: "Reset all talents and class once per season — use it wisely." },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {

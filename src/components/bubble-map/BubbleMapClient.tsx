@@ -65,7 +65,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'armor', name: 'Armor', desc: '-8/16/24/32/40% incoming dmg', maxRank: 5 },
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.6/1.2/1.8/2.4/3 HP/sec', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.4/0.8/1.2/1.6/2% max HP/sec', maxRank: 5 },
       { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 6/12/18/25/33% of dmg dealt', maxRank: 5 },
       { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
@@ -114,7 +114,7 @@ const TALENT_TREES = {
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
       { id: 'execute', name: 'Execute', desc: '+7/13/20/27/33% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs same % HP', maxRank: 5 },
       { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
     ],
   },
