@@ -677,6 +677,22 @@ pub mod hodlwarz_combat {
         msg!("Season {} started ({}s duration)", season.season_number, season.duration_secs);
         Ok(())
     }
+
+    // ─── Admin overrides (authority only) ─────────────────────────────
+
+    pub fn admin_set_season(ctx: Context<AdminSetSeason>, season_number: u32) -> Result<()> {
+        let season = &mut ctx.accounts.season;
+        season.season_number = season_number;
+        season.started_at = Clock::get()?.unix_timestamp;
+        season.is_finalized = false;
+        msg!("Admin: season number set to {}", season_number);
+        Ok(())
+    }
+
+    pub fn admin_close_leaderboard(ctx: Context<AdminCloseLeaderboard>, _season_number: u32) -> Result<()> {
+        msg!("Admin: leaderboard for season {} closed", ctx.accounts.leaderboard.season_number);
+        Ok(())
+    }
 }
 
 // ─── Talent prerequisite chain ───────────────────────────────────────────────
@@ -1076,6 +1092,41 @@ pub struct StartNextSeason<'info> {
         has_one = authority,
     )]
     pub season: Account<'info, SeasonState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+// ─── Admin Instruction Contexts ──────────────────────────────────────────────
+
+#[derive(Accounts)]
+pub struct AdminSetSeason<'info> {
+    #[account(
+        mut,
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(season_number: u32)]
+pub struct AdminCloseLeaderboard<'info> {
+    #[account(
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(
+        mut,
+        close = authority,
+        seeds = [LEADERBOARD_SEED, &season_number.to_le_bytes()],
+        bump,
+    )]
+    pub leaderboard: Account<'info, SeasonLeaderboard>,
     #[account(mut)]
     pub authority: Signer<'info>,
 }

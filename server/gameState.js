@@ -111,7 +111,9 @@ function autoAllocateTalents(bubble) {
       bubble.talents[id] < ALL_TALENTS[id].maxRank
     );
     if (candidates.length === 0) break;
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const maxTier = Math.max(...candidates.map(id => ALL_TALENTS[id].tier));
+    const topCandidates = candidates.filter(id => ALL_TALENTS[id].tier === maxTier);
+    const pick = topCandidates[Math.floor(Math.random() * topCandidates.length)];
     bubble.talents[pick]++;
     allocated.push(pick);
   }
@@ -2459,7 +2461,28 @@ class GameState {
 
     const singularityRank = ownerBubble.talents?.singularity || 0;
 
-    // Singularity: 33% chance the explosion becomes a black hole instead
+    // Always apply volatile explosion AoE first (decoy explodes even when black hole triggers)
+    const explosionDmg = ownerBubble.maxHealth * ALL_TALENTS.volatileDecoy.explosionDmgPct[volatileRank - 1];
+    const blastRadius = ALL_TALENTS.volatileDecoy.explosionRadius[volatileRank - 1];
+    for (const h of this.holders) {
+      if (h.address === clone.ownerAddress || h.x === undefined) continue;
+      const hb = this.battleBubbles.get(h.address);
+      if (!hb || hb.isGhost) continue;
+      const dx = h.x - clone.x;
+      const dy = h.y - clone.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > blastRadius + h.radius) continue;
+      this._applyDamage(hb, explosionDmg, now);
+      this.damageNumbers.push({
+        id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 20,
+        damage: explosionDmg, createdAt: now, alpha: 1,
+        color: '#ff6600', fontSize: 18, type: 'decoyExplosion',
+      });
+      if (this.magicBlockReady) this._queueAttack(clone.ownerAddress, h.address);
+      if (hb.health <= 0) this._handleMineDeath(clone.ownerAddress, h.address, now);
+    }
+
+    // Singularity: 50% chance the explosion also spawns a black hole (decoy already exploded above)
     if (singularityRank > 0 && Math.random() < ALL_TALENTS.singularity.procChance) {
       const pullRadius = ALL_TALENTS.singularity.pullRadius[singularityRank - 1];
 
@@ -2514,33 +2537,6 @@ class GameState {
 
       this.vfx.push({ type: 'singularityStart', x: clone.x, y: clone.y, radius: pullRadius, color: clone.color || '#9900ff', createdAt: now });
       return;
-    }
-
-    // Volatile Decoy: AoE explosion on death
-    const explosionDmg = ownerBubble.maxHealth * ALL_TALENTS.volatileDecoy.explosionDmgPct[volatileRank - 1];
-    const blastRadius = ALL_TALENTS.volatileDecoy.explosionRadius[volatileRank - 1];
-
-    for (const h of this.holders) {
-      if (h.address === clone.ownerAddress || h.x === undefined) continue;
-      const hb = this.battleBubbles.get(h.address);
-      if (!hb || hb.isGhost) continue;
-
-      const dx = h.x - clone.x;
-      const dy = h.y - clone.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > blastRadius + h.radius) continue;
-
-      this._applyDamage(hb, explosionDmg, now);
-      this.damageNumbers.push({
-        id: `dmg-${now}-${Math.random()}`, x: h.x, y: h.y - 20,
-        damage: explosionDmg, createdAt: now, alpha: 1,
-        color: '#ff6600', fontSize: 18, type: 'decoyExplosion',
-      });
-      if (this.magicBlockReady) this._queueAttack(clone.ownerAddress, h.address);
-
-      if (hb.health <= 0) {
-        this._handleMineDeath(clone.ownerAddress, h.address, now);
-      }
     }
 
     this.vfx.push({ type: 'mineExplode', x: clone.x, y: clone.y, radius: blastRadius, color: clone.color || '#ffaa00', createdAt: now });
@@ -2867,7 +2863,7 @@ class GameState {
         if (berserkActive) damage *= (1 + ALL_TALENTS.berserker.dmgBonus[berserkRank - 1]);
         const vitVal = getTalentValue('vitalityStrike', ownerBubble.talents?.vitalityStrike || 0);
         if (vitVal > 0) damage += ownerBubble.maxHealth * vitVal;
-        damage *= 0.25;
+        damage *= 0.50;
 
         this.bullets.push({
           id: `b-${this.bulletIdCounter++}`,

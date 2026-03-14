@@ -65,7 +65,7 @@ const TALENT_TREES = {
     talents: [
       { id: 'armor', name: 'Armor', desc: '-8/16/24/32/40% incoming dmg', maxRank: 5 },
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.4/0.8/1.2/1.6/2% max HP/sec', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.12/0.24/0.36/0.48/0.6% max HP/sec', maxRank: 5 },
       { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 6/12/18/25/33% of dmg dealt', maxRank: 5 },
       { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
@@ -79,7 +79,7 @@ const TALENT_TREES = {
       { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
       { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
       { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (333% dmg)', maxRank: 3 },
     ],
   },
   brawler: {
@@ -99,11 +99,11 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '💥',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/18/25/33/40% chance homing bounce', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '10/20/30/40/50% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
       { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (100/150/200/250/300% dmg)', maxRank: 5 },
       { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '10/15/20% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -124,10 +124,10 @@ const TALENT_TREES = {
     icon: '👻',
     talents: [
       { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
-      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
-      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
-      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
+      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s (50% dmg)', maxRank: 5 },
+      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s (50% dmg)', maxRank: 5 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death/kill/black hole for 2/4/6/8/10% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion also spawns black hole: 1.5/3/4.5s pull, 2.25% HP/s, +4/8/12% detonation', maxRank: 3 },
     ],
   },
   swift: {
@@ -314,8 +314,8 @@ export function BubbleMapClient() {
     }
   }, [isMusicPlaying, startPlayback]);
 
-  // Connect to game server
-  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
+  // Connect to game server (gameStateRef has latest interpolated state every frame for canvas)
+  const { connected, gameState, gameStateRef, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
   const effectiveAddress = guestAddress || connectedWalletAddress;
   const isGuest = !!guestAddress;
 
@@ -1782,6 +1782,8 @@ export function BubbleMapClient() {
       {/* Bubble Canvas */}
       {dimensions.width > 0 && dimensions.height > 0 && holders.length > 0 && (
         <BubbleCanvas
+          gameStateRef={gameStateRef}
+          playerPhotos={playerPhotos}
           holders={holders}
           width={dimensions.width}
           height={dimensions.height}

@@ -14,12 +14,11 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Zap, color: "#f97316", title: "Swift Tree Nerfs", desc: "Velocity Rounds max 45% (was 75%). Long Shot max 50% bonus, double range (800px). Bullet Storm every 9/6/3 shots (was 6/4/2). Execute max 33% (was 48%)." },
-  { icon: Target, color: "#3b82f6", title: "Orbit Buffed", desc: "Orb hit cooldown 100ms (was 375ms). Damage per rank: 0.5/0.8/1.1/1.7/2.5% max HP (50% more per level)." },
-  { icon: Swords, color: "#ff6600", title: "Reaper's Arc Tuned", desc: "Sweep every 12th hit. Cost now matches damage: 1/2/3/4/5% HP (was half)." },
-  { icon: Ghost, color: "#22d3ee", title: "Decoy Balance", desc: "Decoys take 6 hits to destroy (any damage). Clone damage 25% of yours (was 33%)." },
-  { icon: Shield, color: "#34d399", title: "Regeneration Rework", desc: "Heal 0.4/0.8/1.2/1.6/2% of max HP per second (was flat HP/sec). Scales with level." },
-  { icon: Repeat, color: "#a855f7", title: "Talent Reset", desc: "Reset all talents and class once per season — use it wisely." },
+  { icon: Shield, color: "#34d399", title: "Regeneration Tuned", desc: "Heal 0.12 / 0.24 / 0.36 / 0.48 / 0.6% max HP per second (scaled down for balance)." },
+  { icon: Crosshair, color: "#3b82f6", title: "Homing Cannon Buff", desc: "Homing shots now deal 333% damage (up from 200%)." },
+  { icon: Repeat, color: "#a855f7", title: "Ricochet & Chain Lightning", desc: "Ricochet: 10 / 20 / 30 / 40 / 50% bounce chance. Chain Lightning: 10 / 15 / 20% proc chance to arc to nearby enemies." },
+  { icon: Bomb, color: "#22d3ee", title: "Echo — Decoys & Black Hole", desc: "Decoys deal 50% of your damage. Volatile explosion: 2 / 4 / 6 / 8 / 10% max HP AoE. Always explode on death (even when Singularity triggers). Black hole: 1.5 / 3 / 4.5s pull, 2.25% HP/s DoT, +4 / 8 / 12% detonation." },
+  { icon: Zap, color: "#fbbf24", title: "Performance & Stability", desc: "Smoother game loop, less browser strain: canvas on its own frame loop, fewer re-renders, viewport culling, cheaper VFX. Better on mobile." },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
@@ -105,7 +104,7 @@ export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProp
                   transition={{ delay: 0.2 }}
                   className="text-sm text-slate-400 tracking-widest uppercase"
                 >
-                  Balance Patch
+                  Balance & performance
                 </motion.p>
               </div>
 

@@ -269,6 +269,7 @@ interface UseGameSocketOptions {
 }
 
 const SERVER_TICK_MS = 100; // 10fps server broadcast
+const STATE_UPDATE_THROTTLE_MS = 50; // Throttle React setState to reduce re-renders; canvas uses ref for smooth 60fps
 
 function lerpPositions(prev: GameState | null, next: GameState, t: number): GameState {
   if (!prev || t >= 1) return next;
@@ -309,6 +310,9 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   const lastServerTime = useRef(0);
   const rafRef = useRef<number>(0);
   const lastRafUpdate = useRef(0);
+  const lastSetStateTime = useRef(0);
+  /** Latest interpolated state, updated every frame. Use this in canvas rAF for 60fps without triggering React. */
+  const gameStateRef = useRef<GameState | null>(null);
 
   // Send dimensions to server
   const setDimensions = useCallback((width: number, height: number) => {
@@ -490,6 +494,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       prevStateRef.current = nextStateRef.current;
       nextStateRef.current = state;
       lastServerTime.current = performance.now();
+      gameStateRef.current = state;
       if (!prevStateRef.current) {
         setGameState(state);
       }
@@ -524,11 +529,16 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
 
     const interpolate = (now: number) => {
-      if (nextStateRef.current && now - lastRafUpdate.current >= 33) {
-        lastRafUpdate.current = now;
+      if (nextStateRef.current) {
         const elapsed = performance.now() - lastServerTime.current;
         const t = Math.min(elapsed / SERVER_TICK_MS, 1);
-        setGameState(lerpPositions(prevStateRef.current, nextStateRef.current, t));
+        const lerped = lerpPositions(prevStateRef.current, nextStateRef.current, t);
+        gameStateRef.current = lerped;
+        // Throttle React setState to reduce re-renders; canvas reads gameStateRef for smooth 60fps
+        if (now - lastSetStateTime.current >= STATE_UPDATE_THROTTLE_MS) {
+          lastSetStateTime.current = now;
+          setGameState(lerped);
+        }
       }
       rafRef.current = requestAnimationFrame(interpolate);
     };
@@ -543,6 +553,7 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   return {
     connected,
     gameState,
+    gameStateRef,
     playerPhotos,
     guestAddress,
     setDimensions,
