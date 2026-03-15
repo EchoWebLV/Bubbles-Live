@@ -111,9 +111,9 @@ function autoAllocateTalents(bubble) {
       bubble.talents[id] < ALL_TALENTS[id].maxRank
     );
     if (candidates.length === 0) break;
-    const maxTier = Math.max(...candidates.map(id => ALL_TALENTS[id].tier));
-    const topCandidates = candidates.filter(id => ALL_TALENTS[id].tier === maxTier);
-    const pick = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+    // const maxTier = Math.max(...candidates.map(id => ALL_TALENTS[id].tier));
+    // const topCandidates = candidates.filter(id => ALL_TALENTS[id].tier === maxTier);
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
     bubble.talents[pick]++;
     allocated.push(pick);
   }
@@ -3554,7 +3554,6 @@ class GameState {
     if (classId < 1 || classId > 3) return { success: false, error: 'Invalid class' };
     bubble.classId = classId;
     bubble.manualClass = true;
-    bubble.manualBuild = true;
     const level = calcLevel(bubble.xp);
     const baseMax = calcMaxHealth(bubble.healthLevel);
     const ironSkinVal = getTalentValue('ironSkin', bubble.talents?.ironSkin || 0);

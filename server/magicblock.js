@@ -793,7 +793,7 @@ class MagicBlockService {
         overdrive: account.talentOverdrive || 0,
         bulletStorm: account.talentBulletStorm || 0,
       },
-      manualBuild: account.manualBuild || false,
+      manualBuild: false,
     };
   }
 
