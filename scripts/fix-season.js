@@ -18,8 +18,9 @@ const RPC = process.env.SOLANA_BASE_RPC || 'https://api.devnet.solana.com';
 const SEASON_SEED = Buffer.from('season');
 const LEADERBOARD_SEED = Buffer.from('leaderboard');
 
-const TARGET_SEASON = 9;
-const SEASONS_TO_CLOSE = [9, 10];
+const TARGET_SEASON = parseInt(process.env.TARGET_SEASON || '10', 10);
+const SKIP_SET_SEASON = process.env.SKIP_SET_SEASON === '1';
+const SEASONS_TO_CLOSE = process.env.SEASONS_TO_CLOSE ? process.env.SEASONS_TO_CLOSE.split(',').map(s => parseInt(s.trim(), 10)) : [11];
 
 function loadKeypair() {
   const keypairPath = process.env.ANCHOR_WALLET ||
@@ -89,20 +90,24 @@ async function main() {
     }
   }
 
-  // Step 2: Set season number to target
-  console.log(`\nSetting season number to ${TARGET_SEASON}...`);
-  try {
-    const tx = await program.methods
-      .adminSetSeason(TARGET_SEASON)
-      .accounts({
-        season: seasonPda,
-        authority: keypair.publicKey,
-      })
-      .rpc();
-    console.log(`  Season set to ${TARGET_SEASON}, tx: ${tx}`);
-  } catch (err) {
-    console.error('  Failed to set season:', err.message);
-    process.exit(1);
+  // Step 2: Set season number to target (skip with SKIP_SET_SEASON=1)
+  if (SKIP_SET_SEASON) {
+    console.log(`\nSkipping adminSetSeason (SKIP_SET_SEASON=1)`);
+  } else {
+    console.log(`\nSetting season number to ${TARGET_SEASON}...`);
+    try {
+      const tx = await program.methods
+        .adminSetSeason(TARGET_SEASON)
+        .accounts({
+          season: seasonPda,
+          authority: keypair.publicKey,
+        })
+        .rpc();
+      console.log(`  Season set to ${TARGET_SEASON}, tx: ${tx}`);
+    } catch (err) {
+      console.error('  Failed to set season:', err.message);
+      process.exit(1);
+    }
   }
 
   // Verify

@@ -3348,7 +3348,14 @@ class GameState {
         console.log(`Season ${this.seasonNumber} finalized on devnet — ${top10.length} winners recorded on-chain`);
         this.addEventLog(`Season ${this.seasonNumber} winners recorded on-chain — top ${top10.length}!`);
       } else {
-        console.log(`Season ${this.seasonNumber}: finalization failed or returned null`);
+        // Finalization failed — could be leaderboard PDA already exists from a
+        // previous partial attempt. Read fresh on-chain state to check.
+        const freshInfo = await this.magicBlock.refreshSeasonFromChain();
+        if (freshInfo && freshInfo.isFinalized) {
+          console.log(`Season ${this.seasonNumber}: finalize tx failed but on-chain state shows finalized — proceeding`);
+        } else {
+          throw new Error(`finalizeSeason failed and season is not finalized on-chain — cannot advance`);
+        }
       }
 
       // 5. Reset all players on-chain (devnet ER)

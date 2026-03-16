@@ -1130,6 +1130,23 @@ class MagicBlockService {
     };
   }
 
+  async refreshSeasonFromChain() {
+    if (!this.seasonPda) return null;
+    try {
+      const acct = await this.baseConnection.getAccountInfo(this.seasonPda);
+      if (!acct) return null;
+      const data = acct.data;
+      this.currentSeasonNumber = data.readUInt32LE(40);
+      this.seasonStartedAt = Number(data.readBigInt64LE(44));
+      this.seasonDurationSecs = Number(data.readBigInt64LE(52));
+      this.seasonFinalized = data[60] === 1;
+      return this.getSeasonInfo();
+    } catch (err) {
+      console.error('MagicBlock: refreshSeasonFromChain failed:', err.message);
+      return null;
+    }
+  }
+
   // ─── Status ──────────────────────────────────────────────────────
 
   getStatus() {
