@@ -3307,6 +3307,13 @@ class GameState {
     if (this.seasonTimer) clearTimeout(this.seasonTimer);
 
     const remaining = this.seasonEndsAt - Date.now();
+
+    if (remaining < -5000) {
+      console.warn(`Season already expired ${Math.round(-remaining / 1000)}s ago — running transition once`);
+      this._endSeasonAndStartNext();
+      return;
+    }
+
     const delay = Math.max(remaining, 1000);
 
     console.log(`Season timer set: ${Math.round(delay / 1000)}s until season end`);
@@ -3347,8 +3354,11 @@ class GameState {
       // 5. Reset all players on-chain (devnet ER)
       const result = await this.magicBlock.resetAllPlayers();
 
-      // 6. Start next season on devnet
-      await this.magicBlock.startNextSeason(0);
+      // 6. Start next season on devnet — MUST succeed before wiping local state
+      const nextSeasonTx = await this.magicBlock.startNextSeason(0);
+      if (!nextSeasonTx) {
+        throw new Error('startNextSeason returned null — on-chain season not advanced');
+      }
 
       // 7. Reset local state
       for (const [address, bubble] of this.battleBubbles) {
