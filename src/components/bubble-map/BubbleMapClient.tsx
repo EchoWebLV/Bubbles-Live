@@ -362,7 +362,7 @@ export function BubbleMapClient() {
   const [upgrading, setUpgrading] = useState<number | null>(null);
   const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
-  const [showOnchainPanel, setShowOnchainPanel] = useState(true);
+  const [showOnchainPanel, setShowOnchainPanel] = useState(false);
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
   const [selectedTalentTree, setSelectedTalentTree] = useState<string>('tank');
@@ -1031,13 +1031,13 @@ export function BubbleMapClient() {
             )}
           </div>
 
-          {/* Helius WebSocket — hidden on mobile */}
-          {txWsConnected && (
+          {/* Helius WebSocket — commented out for now */}
+          {/* {txWsConnected && (
             <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-blue-500/30 items-center gap-1.5 hidden sm:flex">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
               <span className="text-xs text-blue-400">TXs: {transactionCount}</span>
             </div>
-          )}
+          )} */}
 
           {/* On-chain records toggle */}
           {gameState?.magicBlock?.ready && (
@@ -1953,23 +1953,7 @@ export function BubbleMapClient() {
         onClose={() => setSelectedHolder(null)}
       />
 
-      {/* Live Feed */}
-      {eventLog.length > 0 && (
-        <div className="absolute bottom-12 sm:bottom-4 right-2 sm:right-4 bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl p-2 sm:p-3 border border-slate-700/50 z-10 w-48 sm:w-64">
-          <div className="text-xs text-slate-400 mb-2 font-medium">📊 Live Feed</div>
-          <div className="space-y-1">
-            {eventLog.slice(0, 8).map((event, i) => (
-              <div
-                key={`ev-${i}`}
-                className="text-xs text-slate-300 font-mono truncate"
-                style={{ opacity: Math.max(0.3, 1 - i * 0.1) }}
-              >
-                {event}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Live Feed — removed */}
 
       {/* Info button — bottom left */}
       <button

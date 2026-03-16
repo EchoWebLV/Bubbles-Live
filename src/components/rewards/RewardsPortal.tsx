@@ -119,7 +119,7 @@ export function RewardsPortal() {
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <a href="/" className="text-slate-400 hover:text-white transition-colors">
+          <a href="/arena" className="text-slate-400 hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </a>
           <div>

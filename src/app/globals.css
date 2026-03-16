@@ -36,9 +36,6 @@ body {
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
 }
 
 
