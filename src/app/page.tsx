@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import {
   Swords,
@@ -15,8 +15,14 @@ import {
   Trophy,
   ChevronDown,
   Flame,
+  ExternalLink,
+  Copy,
 } from "lucide-react";
 import { MiniGame } from "@/components/MiniGame";
+
+const TOKEN_CA = "G5bFDuFW7D2euHbvu6kfgRTZZtGTe6MAHqn5gXRxpump";
+const PUMP_LIVE_STREAM = "https://pump.fun/coin/G5bFDuFW7D2euHbvu6kfgRTZZtGTe6MAHqn5gXRxpump";
+const DEX_SCREENER = "https://dexscreener.com/solana/51k8ffu1rm9sq6o8gkpnrqnth5sdxv4pln7ajubxzaw9";
 
 const TALENT_TREES = [
   { icon: "🛡️", name: "Tank", desc: "Armor, Regeneration, Lifesteal", color: "#22c55e" },
@@ -66,6 +72,74 @@ const RULES = [
     desc: "Compete for the top killer spot each season. Leaderboard resets periodically — prove yourself every season.",
   },
 ];
+
+function TokenLinks() {
+  const [copied, setCopied] = useState(false);
+  const copyCa = useCallback(() => {
+    navigator.clipboard.writeText(TOKEN_CA).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, []);
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+      {/* CA */}
+      <button
+        type="button"
+        onClick={copyCa}
+        className="group flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
+        style={{
+          background: "rgba(167,139,250,0.08)",
+          border: "1px solid rgba(167,139,250,0.2)",
+        }}
+        title="Copy contract address"
+      >
+        <Diamond className="w-3.5 h-3.5 text-purple-400" />
+        <span className="text-slate-400 font-medium">CA</span>
+        <span className="font-mono text-slate-200 group-hover:text-white transition-colors">
+          {TOKEN_CA.slice(0, 4)}...{TOKEN_CA.slice(-4)}
+        </span>
+        {copied ? (
+          <span className="text-green-400 text-[10px] font-bold tracking-wide">COPIED</span>
+        ) : (
+          <Copy className="w-3 h-3 text-slate-500 group-hover:text-purple-400 transition-colors" />
+        )}
+      </button>
+
+      {/* Pump.fun */}
+      <a
+        href={PUMP_LIVE_STREAM}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
+        style={{
+          background: "rgba(255,0,255,0.06)",
+          border: "1px solid rgba(255,0,255,0.2)",
+        }}
+      >
+        <Flame className="w-3.5 h-3.5 text-pink-400" />
+        <span className="text-slate-200 font-medium">Pump.fun</span>
+        <ExternalLink className="w-3 h-3 text-slate-500" />
+      </a>
+
+      {/* DexScreener */}
+      <a
+        href={DEX_SCREENER}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
+        style={{
+          background: "rgba(0,255,255,0.05)",
+          border: "1px solid rgba(0,255,255,0.2)",
+        }}
+      >
+        <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+        <span className="text-slate-200 font-medium">DexScreener</span>
+        <ExternalLink className="w-3 h-3 text-slate-500" />
+      </a>
+    </div>
+  );
+}
 
 function FloatingOrb({ className, delay = 0 }: { className: string; delay?: number }) {
   return (
@@ -237,6 +311,39 @@ export default function LandingPage() {
           <ChevronDown className="w-6 h-6 text-slate-500" />
         </motion.div>
       </motion.section>
+
+      {/* ─── TOKEN BAR ─── */}
+      <section className="relative py-6 px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.5 }}
+          className="max-w-2xl mx-auto"
+        >
+          <div
+            className="relative rounded-2xl px-5 py-4 sm:px-8 sm:py-5 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6"
+            style={{
+              background: "linear-gradient(135deg, rgba(15,8,30,0.8), rgba(20,10,40,0.8))",
+              border: "1px solid rgba(167,139,250,0.2)",
+              backdropFilter: "blur(16px)",
+              boxShadow: "0 0 40px rgba(167,139,250,0.06), inset 0 1px 0 rgba(255,255,255,0.05)",
+            }}
+          >
+            <div
+              className="absolute top-0 left-0 right-0 h-[1px]"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(255,0,255,0.3), rgba(0,255,255,0.3), transparent)" }}
+            />
+
+            <TokenLinks />
+
+            <div
+              className="absolute bottom-0 left-0 right-0 h-[1px]"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(0,255,255,0.2), rgba(255,0,255,0.2), transparent)" }}
+            />
+          </div>
+        </motion.div>
+      </section>
 
       {/* ─── MINI GAME DEMO ─── */}
       <section className="relative py-16 sm:py-24 px-4">

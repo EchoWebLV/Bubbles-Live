@@ -46,10 +46,10 @@ const TALENT_TREES = {
     icon: '\u{1F4A8}',
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
-      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1/2/3/4/5% max HP dmg (1.5s cd)', maxRank: 5 },
       { id: 'relentless', name: 'Retaliate', desc: '10/20/30/40/50% chance when hit: dash toward attacker. +10/20/30/40/50% Body Slam dmg', maxRank: 5 },
       { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, 0.5/0.8/1.1/1.7/2.5% max HP on contact (100ms cd)', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -84,8 +84,8 @@ const TALENT_TREES = {
       { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
       { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
       { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
-      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 2.4/4.8/7.2/9.6/12% max HP AoE', maxRank: 5 },
-      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 1.5% HP/s, +3/6/9% detonation', maxRank: 3 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 1.5/3/4.5/6/7.5% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 2.25% HP/s, +3/6/9% detonation', maxRank: 3 },
     ],
   },
   swift: {

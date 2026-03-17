@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Swords, Zap, TrendingDown, Target, Repeat, Rocket, Ghost, Copy, Bomb, Flame, Crosshair, Shield, Wind } from "lucide-react";
+import { X, Swords, Target, Wind } from "lucide-react";
 
 const STORAGE_KEY_DISMISSED_SEASON = "hodlwarz-changelog-dismissed-season";
 const STORAGE_KEY_EVER_SEEN = "hodlwarz-changelog-ever-seen";
@@ -14,11 +14,9 @@ interface ChangelogModalProps {
 }
 
 const CHANGELOG_ITEMS = [
-  { icon: Shield, color: "#34d399", title: "Regeneration Tuned", desc: "Heal 0.12 / 0.24 / 0.36 / 0.48 / 0.6% max HP per second (scaled down for balance)." },
-  { icon: Crosshair, color: "#3b82f6", title: "Homing Cannon Buff", desc: "Homing shots now deal 333% damage (up from 200%)." },
-  { icon: Repeat, color: "#a855f7", title: "Ricochet & Chain Lightning", desc: "Ricochet: 10 / 20 / 30 / 40 / 50% bounce chance. Chain Lightning: 10 / 15 / 20% proc chance to arc to nearby enemies." },
-  { icon: Bomb, color: "#22d3ee", title: "Echo — Decoys & Black Hole", desc: "Decoys deal 50% of your damage. Volatile explosion: 2 / 4 / 6 / 8 / 10% max HP AoE. Always explode on death (even when Singularity triggers). Black hole: 1.5 / 3 / 4.5s pull, 2.25% HP/s DoT, +4 / 8 / 12% detonation." },
-  { icon: Zap, color: "#fbbf24", title: "Performance & Stability", desc: "Smoother game loop, less browser strain: canvas on its own frame loop, fewer re-renders, viewport culling, cheaper VFX. Better on mobile." },
+  { icon: Swords, color: "#a78bfa", title: "Landing page & Arena", desc: "New landing at / with hero, how-it-works, talent showcase, and Try It Out mini-game. Main game at /arena. Live preview at /preview for background iframe." },
+  { icon: Target, color: "#f59e0b", title: "Talent balance", desc: "Singularity: 1/2/3s pull, +3/6/9% detonation. Volatile Decoy: 1.5/3/4.5/6/7.5% death explosion. Body Slam: 1/2/3/4/5% max HP. Shockwave: 3/5/7% AoE." },
+  { icon: Wind, color: "#64748b", title: "Arena UI", desc: "Live Feed removed. ER panel closed by default. TXs indicator hidden. Hero and footer text brightened." },
 ];
 
 export function ChangelogModal({ seasonId, isOpen, onClose }: ChangelogModalProps) {
