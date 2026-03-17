@@ -3502,7 +3502,7 @@ class GameState {
       });
     }
 
-    this._scheduleSeasonEnd();
+    this._startSeasonTimer();
     return { success: true, season: this.seasonNumber };
   }
 
