@@ -3426,8 +3426,15 @@ class GameState {
       return { success: true, ...result };
     } catch (err) {
       console.error('Season auto-end failed:', err.message);
-      this.addEventLog('Season transition failed — retrying in 60s...');
-      setTimeout(() => this._endSeasonAndStartNext(), 60000);
+      this._seasonRetryCount = (this._seasonRetryCount || 0) + 1;
+      if (this._seasonRetryCount >= 5) {
+        console.error('Season auto-end: max retries reached — giving up (use force-season-reset)');
+        this.addEventLog('Season transition failed after 5 retries — admin reset required.');
+        this._seasonRetryCount = 0;
+        return { success: false, error: err.message };
+      }
+      this.addEventLog(`Season transition failed — retry ${this._seasonRetryCount}/5 in 60s...`);
+      this._seasonRetryTimer = setTimeout(() => this._endSeasonAndStartNext(), 60000);
       return { success: false, error: err.message };
     }
   }
@@ -3446,14 +3453,24 @@ class GameState {
   async forceSeasonReset() {
     console.log('FORCE SEASON RESET: skipping on-chain finalize, resetting local state...');
 
-    // Try on-chain steps but don't block on failure
+    const raceTimeout = (promise, ms) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms)),
+    ]);
+
     if (this.magicBlockReady) {
-      try { await this.magicBlock.finalizeSeason(this.topKillers.slice(0, 10).map(k => ({ address: k.address, wallet: k.address, kills: k.kills, level: k.level }))); } catch (e) { console.warn('Force reset: finalize skipped —', e.message); }
-      try { await this.magicBlock.resetAllPlayers(); } catch (e) { console.warn('Force reset: resetAllPlayers skipped —', e.message); }
-      try { await this.magicBlock.startNextSeason(0); } catch (e) { console.warn('Force reset: startNextSeason skipped —', e.message); }
+      const top10 = this.topKillers.slice(0, 10).map(k => ({ address: k.address, wallet: k.address, kills: k.kills, level: k.level }));
+      try { await raceTimeout(this.magicBlock.finalizeSeason(top10), 8000); } catch (e) { console.warn('Force reset: finalize skipped —', e.message); }
+      try { await raceTimeout(this.magicBlock.resetAllPlayers(), 8000); } catch (e) { console.warn('Force reset: resetAllPlayers skipped —', e.message); }
+      try { await raceTimeout(this.magicBlock.startNextSeason(0), 8000); } catch (e) { console.warn('Force reset: startNextSeason skipped —', e.message); }
     }
 
-    // Reset all local state regardless
+    // Cancel any lingering retry timers from _endSeasonAndStartNext
+    if (this._seasonRetryTimer) {
+      clearTimeout(this._seasonRetryTimer);
+      this._seasonRetryTimer = null;
+    }
+
     for (const [address, bubble] of this.battleBubbles) {
       bubble.kills = 0;
       bubble.deaths = 0;
@@ -3489,10 +3506,10 @@ class GameState {
     this.seasonId = Date.now();
     this.seasonNumber = (this.seasonNumber || 0) + 1;
     this.seasonStartedAt = Date.now();
-    this.seasonEndsAt = this.seasonStartedAt + 86400000;
+    this.seasonEndsAt = this.seasonStartedAt + this.seasonDurationMs;
 
     this.addEventLog(`Season ${this.seasonNumber} force-started! Good luck!`);
-    console.log(`FORCE SEASON ${this.seasonNumber}: Started`);
+    console.log(`FORCE SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
 
     if (this.onSeasonEnd) {
       this.onSeasonEnd({
