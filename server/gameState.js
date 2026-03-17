@@ -3443,6 +3443,69 @@ class GameState {
     return await this._endSeasonAndStartNext();
   }
 
+  async forceSeasonReset() {
+    console.log('FORCE SEASON RESET: skipping on-chain finalize, resetting local state...');
+
+    // Try on-chain steps but don't block on failure
+    if (this.magicBlockReady) {
+      try { await this.magicBlock.finalizeSeason(this.topKillers.slice(0, 10).map(k => ({ address: k.address, wallet: k.address, kills: k.kills, level: k.level }))); } catch (e) { console.warn('Force reset: finalize skipped —', e.message); }
+      try { await this.magicBlock.resetAllPlayers(); } catch (e) { console.warn('Force reset: resetAllPlayers skipped —', e.message); }
+      try { await this.magicBlock.startNextSeason(0); } catch (e) { console.warn('Force reset: startNextSeason skipped —', e.message); }
+    }
+
+    // Reset all local state regardless
+    for (const [address, bubble] of this.battleBubbles) {
+      bubble.kills = 0;
+      bubble.deaths = 0;
+      bubble.xp = 0;
+      bubble.healthLevel = 1;
+      bubble.attackLevel = 1;
+      bubble.health = BATTLE_CONFIG.maxHealth;
+      bubble.maxHealth = BATTLE_CONFIG.maxHealth;
+      bubble.attackPower = BATTLE_CONFIG.bulletDamage;
+      bubble.isAlive = true;
+      bubble.isGhost = false;
+      bubble.ghostUntil = null;
+      bubble.talents = createEmptyTalents();
+      bubble.manualBuild = false;
+      bubble.lastHitTarget = null;
+      bubble.focusFireStacks = 0;
+      bubble.shotCounter = 0;
+      bubble.killRushUntil = 0;
+      bubble._lastDash = 0;
+      bubble._dashActive = 0;
+      bubble._lastDashHit = 0;
+      bubble._lastContactDmg = 0;
+      bubble._lastLaser = 0;
+      bubble.classId = 1 + Math.floor(Math.random() * 3);
+      bubble.manualClass = false;
+      bubble.talentResetsUsed = 0;
+    }
+
+    this.playerCache.clear();
+    this.killFeed = [];
+    this.topKillers = [];
+    this.damageBuffer.clear();
+    this.seasonId = Date.now();
+    this.seasonNumber = (this.seasonNumber || 0) + 1;
+    this.seasonStartedAt = Date.now();
+    this.seasonEndsAt = this.seasonStartedAt + 86400000;
+
+    this.addEventLog(`Season ${this.seasonNumber} force-started! Good luck!`);
+    console.log(`FORCE SEASON ${this.seasonNumber}: Started`);
+
+    if (this.onSeasonEnd) {
+      this.onSeasonEnd({
+        seasonId: this.seasonId,
+        seasonNumber: this.seasonNumber,
+        seasonEndsAt: this.seasonEndsAt,
+      });
+    }
+
+    this._scheduleSeasonEnd();
+    return { success: true, season: this.seasonNumber };
+  }
+
   // ─── One-time catch-up: boost all players below median ──────────
 
   catchUpLowLevelPlayers() {

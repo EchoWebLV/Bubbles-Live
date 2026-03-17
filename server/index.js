@@ -144,6 +144,29 @@ app.prepare().then(async () => {
       return;
     }
 
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/force-season-reset') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      try {
+        const result = await gameState.forceSeasonReset();
+        io.emit('seasonReset', {
+          seasonId: gameState.seasonId,
+          seasonNumber: gameState.seasonNumber,
+          seasonEndsAt: gameState.seasonEndsAt,
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/force-respawn') {
       const authHeader = req.headers['authorization'] || '';
       if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
