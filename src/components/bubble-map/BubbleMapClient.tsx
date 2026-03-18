@@ -805,6 +805,7 @@ export function BubbleMapClient() {
         manualBuild: b.manualBuild ?? false,
         classId: b.classId ?? 0,
         talentResetsUsed: b.talentResetsUsed ?? 0,
+        allowedTrees: b.allowedTrees ?? undefined,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -1532,6 +1533,8 @@ export function BubbleMapClient() {
           const tp = myBubble.talentPoints ?? 0;
           const currentClassId = myBubble.classId ?? 0;
           const resetsUsed = myBubble.talentResetsUsed ?? 0;
+          const allowedTrees = myBubble.allowedTrees ?? Object.keys(TALENT_TREES);
+          const isTreeAllowed = (treeKey: string) => allowedTrees.includes(treeKey);
 
           const CLASS_OPTIONS = [
             { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+0.5% max HP per level', color: 'emerald' },
@@ -1566,6 +1569,9 @@ export function BubbleMapClient() {
                     </span>
                     <span className="text-[10px] font-mono text-purple-400/80">
                       Ults: {capstonesChosen(talents)}/{MAX_CAPSTONES}
+                    </span>
+                    <span className="text-[9px] text-slate-500">
+                      Trees: {allowedTrees.map(t => (TALENT_TREES as Record<string, { icon: string }>)[t]?.icon || '?').join(' ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1636,19 +1642,23 @@ export function BubbleMapClient() {
                     const colors = treeColorMap[tree.color];
                     const treePoints = tree.talents.reduce((s, t) => s + ((talents as Record<string, number>)[t.id] || 0), 0);
                     const isActive = selectedTalentTree === treeKey;
+                    const allowed = isTreeAllowed(treeKey);
                     return (
                       <button
                         key={treeKey}
-                        onClick={() => setSelectedTalentTree(treeKey)}
+                        onClick={() => allowed && setSelectedTalentTree(treeKey)}
+                        disabled={!allowed}
                         className={`rounded-lg border px-1 sm:px-2 py-1.5 sm:py-2 text-center transition-all ${
-                          isActive
-                            ? `${colors.bg} ${colors.border}`
-                            : 'bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50'
+                          !allowed
+                            ? 'bg-slate-800/10 border-slate-700/10 opacity-25 cursor-not-allowed'
+                            : isActive
+                              ? `${colors.bg} ${colors.border}`
+                              : 'bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50'
                         }`}
                       >
-                        <div className="text-sm sm:text-base leading-none mb-0.5">{tree.icon}</div>
-                        <div className={`text-[8px] sm:text-[10px] font-medium truncate ${isActive ? colors.text : 'text-slate-400'}`}>{tree.name}</div>
-                        {treePoints > 0 && (
+                        <div className="text-sm sm:text-base leading-none mb-0.5">{allowed ? tree.icon : '🔒'}</div>
+                        <div className={`text-[8px] sm:text-[10px] font-medium truncate ${!allowed ? 'text-slate-600' : isActive ? colors.text : 'text-slate-400'}`}>{tree.name}</div>
+                        {allowed && treePoints > 0 && (
                           <div className={`text-[7px] sm:text-[8px] mt-0.5 ${isActive ? colors.text : 'text-slate-500'} opacity-70`}>{treePoints}pt</div>
                         )}
                       </button>
@@ -1658,7 +1668,8 @@ export function BubbleMapClient() {
 
                 {/* Active Tree Talents */}
                 {(() => {
-                  const activeTreeEntry = Object.entries(TALENT_TREES).find(([k]) => k === selectedTalentTree);
+                  const effectiveTree = isTreeAllowed(selectedTalentTree) ? selectedTalentTree : allowedTrees[0];
+                  const activeTreeEntry = Object.entries(TALENT_TREES).find(([k]) => k === effectiveTree);
                   if (!activeTreeEntry) return null;
                   const [, activeTree] = activeTreeEntry;
                   const colors = treeColorMap[activeTree.color];

@@ -20,6 +20,7 @@ export interface BattleBubble {
   manualBuild?: boolean;
   classId?: number;
   talentResetsUsed?: number;
+  allowedTrees?: string[];
 }
 
 export interface Bullet {

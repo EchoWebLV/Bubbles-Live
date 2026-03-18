@@ -23,6 +23,18 @@ const BATTLE_CONFIG = {
   curveStrength: { min: 25, max: 60 },
 };
 
+const TREE_KEYS = Object.keys(TREE_ORDER); // ['tank','firepower','brawler','massDamage','bloodThirst','sapper','swift']
+const ALLOWED_TREES_COUNT = 3;
+
+function randomAllowedTrees() {
+  const shuffled = [...TREE_KEYS];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, ALLOWED_TREES_COUNT);
+}
+
 // Class system: pick one before playing, +0.5% per level scaling
 const CLASS_CONFIG = {
   0: { id: 0, name: 'None',     stat: null },
@@ -104,15 +116,15 @@ function calcTalentPoints(level) {
 function autoAllocateTalents(bubble) {
   const available = calcTalentPoints(calcLevel(bubble.xp)) - totalPointsSpent(bubble.talents);
   if (available <= 0) return [];
+  const allowed = bubble.allowedTrees;
   const allocated = [];
   for (let i = 0; i < available; i++) {
     const candidates = AUTO_ALLOCATE_ORDER.filter(id =>
       canAllocate(id, bubble.talents) &&
-      bubble.talents[id] < ALL_TALENTS[id].maxRank
+      bubble.talents[id] < ALL_TALENTS[id].maxRank &&
+      (!allowed || allowed.includes(ALL_TALENTS[id].tree))
     );
     if (candidates.length === 0) break;
-    // const maxTier = Math.max(...candidates.map(id => ALL_TALENTS[id].tier));
-    // const topCandidates = candidates.filter(id => ALL_TALENTS[id].tier === maxTier);
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     bubble.talents[pick]++;
     allocated.push(pick);
@@ -512,6 +524,7 @@ class GameState {
           classId: (cached && cached.classId > 0) ? cached.classId : (1 + Math.floor(Math.random() * 3)),
           manualClass: cached ? (cached.manualClass || false) : false,
           talentResetsUsed: cached ? (cached.talentResetsUsed || 0) : 0,
+          allowedTrees: (cached && cached.allowedTrees) || randomAllowedTrees(),
           // Brawler state
           _lastDash: 0,
           _lastDashHit: 0,
@@ -3394,6 +3407,7 @@ class GameState {
         bubble.classId = 1 + Math.floor(Math.random() * 3);
         bubble.manualClass = false;
         bubble.talentResetsUsed = 0;
+        bubble.allowedTrees = randomAllowedTrees();
       }
 
       this.playerCache.clear();
@@ -3497,6 +3511,7 @@ class GameState {
       bubble.classId = 1 + Math.floor(Math.random() * 3);
       bubble.manualClass = false;
       bubble.talentResetsUsed = 0;
+      bubble.allowedTrees = randomAllowedTrees();
     }
 
     this.playerCache.clear();
@@ -3590,6 +3605,7 @@ class GameState {
         manualBuild: false,
         classId: autoClass,
         manualClass: false,
+        allowedTrees: randomAllowedTrees(),
       });
 
       if (medianLevel > 1) {
@@ -3609,6 +3625,9 @@ class GameState {
     if (!bubble) return { success: false, error: 'Not in game' };
     const talent = ALL_TALENTS[talentId];
     if (!talent) return { success: false, error: 'Unknown talent' };
+    if (bubble.allowedTrees && !bubble.allowedTrees.includes(talent.tree)) {
+      return { success: false, error: 'Tree not available this season' };
+    }
     if (!canAllocate(talentId, bubble.talents)) {
       if (CAPSTONE_TALENTS.includes(talentId) && (bubble.talents[talentId] || 0) === 0) {
         const chosen = CAPSTONE_TALENTS.filter(id => (bubble.talents[id] || 0) > 0).length;
@@ -3885,6 +3904,7 @@ class GameState {
       classId: 1 + Math.floor(Math.random() * 3),
       manualClass: false,
       talentResetsUsed: 0,
+      allowedTrees: randomAllowedTrees(),
       _lastDash: 0,
       _lastDashHit: 0,
       _lastContactDmg: 0,
@@ -3954,6 +3974,7 @@ class GameState {
         manualBuild: b.manualBuild || false,
         classId: b.classId || 0,
         talentResetsUsed: b.talentResetsUsed || 0,
+        allowedTrees: b.allowedTrees || null,
       })),
       bullets: this.bullets.map(b => ({
         id: b.id,

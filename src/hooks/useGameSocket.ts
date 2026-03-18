@@ -83,6 +83,7 @@ export interface GameBattleBubble {
   manualBuild: boolean;
   classId: number;
   talentResetsUsed: number;
+  allowedTrees?: string[];
 }
 
 export interface GameBullet {

@@ -55,6 +55,7 @@ function buildDisplayFromGameState(
         manualBuild: b.manualBuild ?? false,
         classId: b.classId ?? 0,
         talentResetsUsed: b.talentResetsUsed ?? 0,
+        allowedTrees: b.allowedTrees ?? undefined,
       }])
     ),
     bullets: gameState.bullets.map(b => ({
