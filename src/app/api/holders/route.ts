@@ -4,6 +4,9 @@ import { calculateRadius, getHolderColor, type Holder, type HoldersResponse, typ
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const MAX_HOLDERS = parseInt(process.env.MAX_HOLDERS_DISPLAY || "100", 10);
 
+const CACHE_TTL_MS = 120_000; // 2 minutes
+let cachedResponse: { data: HoldersResponse; token: string; expiresAt: number } | null = null;
+
 interface HeliusTokenAccount {
   address: string;
   mint: string;
@@ -200,6 +203,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (cachedResponse && cachedResponse.token === tokenAddress && Date.now() < cachedResponse.expiresAt) {
+    return NextResponse.json(cachedResponse.data);
+  }
+
   try {
     // Fetch token metadata and holders in parallel
     const [tokenInfo, rawHolders] = await Promise.all([
@@ -234,6 +241,7 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     };
 
+    cachedResponse = { data: response, token: tokenAddress, expiresAt: Date.now() + CACHE_TTL_MS };
     return NextResponse.json(response);
   } catch (error) {
     console.error("Error in holders API:", error);

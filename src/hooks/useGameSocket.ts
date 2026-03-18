@@ -271,21 +271,27 @@ interface UseGameSocketOptions {
 const SERVER_TICK_MS = 100; // 10fps server broadcast
 const STATE_UPDATE_THROTTLE_MS = 50; // Throttle React setState to reduce re-renders; canvas uses ref for smooth 60fps
 
+const _prevHolderMap = new Map<string, GameHolder>();
+const _prevBulletMap = new Map<string, GameState['bullets'][number]>();
+
 function lerpPositions(prev: GameState | null, next: GameState, t: number): GameState {
   if (!prev || t >= 1) return next;
 
-  const prevHolderMap = new Map(prev.holders.map(h => [h.address, h]));
-  const prevBulletMap = new Map(prev.bullets.map(b => [b.id, b]));
+  _prevHolderMap.clear();
+  for (const h of prev.holders) _prevHolderMap.set(h.address, h);
+
+  _prevBulletMap.clear();
+  for (const b of prev.bullets) _prevBulletMap.set(b.id, b);
 
   return {
     ...next,
     holders: next.holders.map(h => {
-      const p = prevHolderMap.get(h.address);
+      const p = _prevHolderMap.get(h.address);
       if (!p || p.x === undefined || h.x === undefined) return h;
       return { ...h, x: p.x + (h.x - p.x) * t, y: p.y! + (h.y! - p.y!) * t };
     }),
     bullets: next.bullets.map(b => {
-      const p = prevBulletMap.get(b.id);
+      const p = _prevBulletMap.get(b.id);
       if (!p) return b;
       return {
         ...b,
@@ -498,6 +504,40 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       if (!prevStateRef.current) {
         setGameState(state);
       }
+    });
+
+    socket.on("gameStateUpdate", (update: Partial<GameState>) => {
+      if (!nextStateRef.current) return;
+      const base = nextStateRef.current;
+      const merged: GameState = {
+        ...base,
+        bullets: update.bullets ?? base.bullets,
+        damageNumbers: update.damageNumbers ?? base.damageNumbers,
+        vfx: update.vfx ?? base.vfx,
+        killFeed: update.killFeed ?? base.killFeed,
+        popEffects: update.popEffects ?? base.popEffects,
+        mines: update.mines ?? base.mines,
+        decoyClones: update.decoyClones ?? base.decoyClones,
+        timestamp: update.timestamp ?? base.timestamp,
+      };
+      if (update.holders) {
+        const posMap = new Map(update.holders.map(h => [h.address, h]));
+        merged.holders = base.holders.map(h => {
+          const pos = posMap.get(h.address);
+          return pos ? { ...h, x: pos.x, y: pos.y } : h;
+        });
+      }
+      if (update.battleBubbles) {
+        const bbMap = new Map(update.battleBubbles.map(b => [b.address, b]));
+        merged.battleBubbles = base.battleBubbles.map(b => {
+          const u = bbMap.get(b.address);
+          return u ? { ...b, health: u.health, maxHealth: u.maxHealth, isGhost: u.isGhost, isAlive: u.isAlive } : b;
+        });
+      }
+      prevStateRef.current = nextStateRef.current;
+      nextStateRef.current = merged;
+      lastServerTime.current = performance.now();
+      gameStateRef.current = merged;
     });
 
     socket.on("playerPhotos", (photos: Record<string, string>) => {

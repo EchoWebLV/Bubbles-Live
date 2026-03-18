@@ -464,10 +464,18 @@ app.prepare().then(async () => {
     });
   });
 
-  // Broadcast game state to all clients at 10fps (perMessageDeflate compresses the JSON)
+  // Lightweight position updates at 10fps; full state every 2s
+  let lastFullBroadcast = 0;
+  const FULL_STATE_INTERVAL = 2000;
   const broadcastInterval = setInterval(() => {
     if (connectedClients > 0) {
-      io.emit('gameState', gameState.getState());
+      const now = Date.now();
+      if (now - lastFullBroadcast >= FULL_STATE_INTERVAL) {
+        lastFullBroadcast = now;
+        io.emit('gameState', gameState.getState());
+      } else {
+        io.emit('gameStateUpdate', gameState.getPositionUpdate());
+      }
     }
   }, 100);
 

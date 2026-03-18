@@ -4029,6 +4029,79 @@ class GameState {
     };
   }
 
+  getPositionUpdate() {
+    const now = Date.now();
+    return {
+      holders: this.holders.map(h => ({
+        address: h.address,
+        x: Math.round(h.x),
+        y: Math.round(h.y),
+      })),
+      battleBubbles: Array.from(this.battleBubbles.entries()).map(([addr, b]) => ({
+        address: addr,
+        health: Math.round(b.health),
+        maxHealth: Math.round(b.maxHealth),
+        isGhost: b.isGhost,
+        isAlive: b.isAlive !== false,
+      })),
+      bullets: this.bullets.map(b => ({
+        id: b.id,
+        shooterAddress: b.shooterAddress,
+        shooterColor: b.shooterColor,
+        x: Math.round(b.x),
+        y: Math.round(b.y),
+        startX: Math.round(b.startX),
+        startY: Math.round(b.startY),
+        targetX: Math.round(b.targetX),
+        targetY: Math.round(b.targetY),
+        progress: Math.round(b.progress * 1000) / 1000,
+        curveDirection: b.curveDirection,
+        curveStrength: b.curveStrength,
+        isBloodBolt: b.isBloodBolt || false,
+        isLifeTap: b.isLifeTap || false,
+        isBloodWave: b.isBloodWave || false,
+        isRocket: b.isRocket || false,
+        vx: b.vx,
+        vy: b.vy,
+      })),
+      mines: this.mines.map(m => ({
+        id: m.id,
+        ownerAddress: m.ownerAddress,
+        x: Math.round(m.x),
+        y: Math.round(m.y),
+        radius: m.radius,
+        isMegaMine: m.isMegaMine,
+        isDetonating: m.isDetonating,
+        singularityRank: m.singularityRank,
+        createdAt: m.createdAt,
+        durationMs: m.isMegaMine ? 30000 : (ALL_TALENTS.landmine?.mineDurationMs ?? 10000),
+        singularityState: m.singularityState ? {
+          rank: m.singularityState.rank,
+          startTime: m.singularityState.startTime,
+          pullRadius: (ALL_TALENTS.singularity?.pullRadius ?? [])[m.singularityState.rank - 1] ?? 200,
+        } : null,
+      })),
+      decoyClones: this.decoyClones.filter(c => c.alive).map(c => ({
+        id: c.id,
+        ownerAddress: c.ownerAddress,
+        x: Math.round(c.x),
+        y: Math.round(c.y),
+        radius: c.radius,
+        color: c.color,
+        health: c.hitsRemaining,
+        maxHealth: 6,
+      })),
+      damageNumbers: this.damageNumbers,
+      vfx: this.vfx,
+      killFeed: this.killFeed,
+      popEffects: this.popEffects.map(p => ({
+        ...p,
+        progress: Math.min(1, (now - p.time) / 1000),
+      })),
+      timestamp: now,
+    };
+  }
+
   // ─── Lifecycle ───────────────────────────────────────────────────
 
   async start() {

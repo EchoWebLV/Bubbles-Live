@@ -188,7 +188,7 @@ export function BubbleMapClient() {
   const [selectedHolder, setSelectedHolder] = useState<Holder | null>(null);
   const [hoveredHolder, setHoveredHolder] = useState<Holder | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [effectsState, setEffectsState] = useState<EffectsState>(createInitialEffectsState());
+  const effectsRef = useRef<EffectsState>(createInitialEffectsState());
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
@@ -712,7 +712,7 @@ export function BubbleMapClient() {
     let animationId: number;
     
     const animate = () => {
-      setEffectsState(prev => updateEffects(prev));
+      effectsRef.current = updateEffects(effectsRef.current);
       
       // Handle continuous key presses for smooth camera movement
       const keys = keysPressed.current;
@@ -890,10 +890,10 @@ export function BubbleMapClient() {
       }
     }
     if (newEffects.length > 0) {
-      setEffectsState(prev => ({
-        ...prev,
-        explosions: [...prev.explosions, ...newEffects],
-      }));
+      effectsRef.current = {
+        ...effectsRef.current,
+        explosions: [...effectsRef.current.explosions, ...newEffects],
+      };
     }
     if (newArcs.length > 0) {
       setLightningArcs(prev => [...prev, ...newArcs].filter(a => Date.now() - a.createdAt < a.duration));
@@ -910,12 +910,22 @@ export function BubbleMapClient() {
     }
   }, [vfxList]);
 
-  // Clean up expired VFX arcs
+  // Clean up expired VFX arcs (only setState when something actually expired)
   useEffect(() => {
     const interval = setInterval(() => {
-      setLightningArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
-      setReaperArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
-      setLaserBeams(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
+      const now = Date.now();
+      setLightningArcs(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
+      setReaperArcs(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
+      setLaserBeams(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
     }, 100);
     return () => clearInterval(interval);
   }, []);
@@ -1790,7 +1800,7 @@ export function BubbleMapClient() {
           worldWidth={gameState?.dimensions?.width || 3840}
           worldHeight={gameState?.dimensions?.height || 2160}
           hoveredHolder={hoveredHolder}
-          effectsState={effectsState}
+          effectsStateRef={effectsRef}
           battleState={battleState}
           popEffects={popEffects}
           camera={camera}

@@ -95,7 +95,8 @@ interface BubbleCanvasProps {
   worldWidth?: number;
   worldHeight?: number;
   hoveredHolder: Holder | null;
-  effectsState: EffectsState;
+  effectsState?: EffectsState;
+  effectsStateRef?: React.RefObject<EffectsState>;
   battleState: BattleState;
   popEffects: PopEffect[];
   camera?: Camera;
@@ -128,6 +129,7 @@ export function BubbleCanvas({
   worldHeight = 2160,
   hoveredHolder,
   effectsState,
+  effectsStateRef: effectsStateRefProp,
   battleState,
   popEffects,
   camera = DEFAULT_CAMERA,
@@ -152,7 +154,8 @@ export function BubbleCanvas({
   const worldWidthRef = useRef(worldWidth);
   const worldHeightRef = useRef(worldHeight);
   const hoveredHolderRef = useRef(hoveredHolder);
-  const effectsStateRef = useRef(effectsState);
+  const _internalEffectsRef = useRef(effectsState ?? ({} as EffectsState));
+  const effectsStateRef = effectsStateRefProp ?? _internalEffectsRef;
   const battleStateRef = useRef(battleState);
   const popEffectsRef = useRef(popEffects);
   const cameraRef = useRef(camera);
@@ -166,7 +169,7 @@ export function BubbleCanvas({
   worldWidthRef.current = worldWidth;
   worldHeightRef.current = worldHeight;
   hoveredHolderRef.current = hoveredHolder;
-  effectsStateRef.current = effectsState;
+  if (!effectsStateRefProp && effectsState) _internalEffectsRef.current = effectsState;
   battleStateRef.current = battleState;
   popEffectsRef.current = popEffects;
   cameraRef.current = camera;
