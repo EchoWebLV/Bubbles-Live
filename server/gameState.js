@@ -3308,7 +3308,8 @@ class GameState {
         this.seasonNumber = info.seasonNumber;
         this.seasonStartedAt = info.startedAt * 1000;
         this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
-        setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
+        setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season:', e.message));
+        setConfig('seasonEndsAt', this.seasonEndsAt).catch(e => console.warn('Failed to persist seasonEndsAt:', e.message));
         console.log(`Season ${this.seasonNumber} — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
         this._startSeasonTimer();
       }
@@ -3422,7 +3423,8 @@ class GameState {
       this.seasonStartedAt = info.startedAt * 1000;
       this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
       this.seasonId = Date.now();
-      setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
+      setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season:', e.message));
+      setConfig('seasonEndsAt', this.seasonEndsAt).catch(e => console.warn('Failed to persist seasonEndsAt:', e.message));
 
       this.addEventLog(`Season ${this.seasonNumber} started! Good luck!`);
       console.log(`SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
@@ -3524,7 +3526,8 @@ class GameState {
     this.seasonNumber = explicitSeasonNumber != null ? explicitSeasonNumber : (this.seasonNumber || 0) + 1;
     this.seasonStartedAt = Date.now();
     this.seasonEndsAt = this.seasonStartedAt + this.seasonDurationMs;
-    setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
+    setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season:', e.message));
+    setConfig('seasonEndsAt', this.seasonEndsAt).catch(e => console.warn('Failed to persist seasonEndsAt:', e.message));
 
     this.addEventLog(`Season ${this.seasonNumber} force-started! Good luck!`);
     console.log(`FORCE SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
@@ -4153,12 +4156,19 @@ class GameState {
     }
     try {
       const savedSeason = await getConfig('seasonNumber');
+      const savedEndsAt = await getConfig('seasonEndsAt');
       if (savedSeason) {
         this.seasonNumber = parseInt(savedSeason, 10);
         console.log(`Restored season number from DB: ${this.seasonNumber}`);
       }
+      if (savedEndsAt) {
+        this.seasonEndsAt = parseInt(savedEndsAt, 10);
+        this.seasonStartedAt = this.seasonEndsAt - this.seasonDurationMs;
+        const remaining = this.seasonEndsAt - Date.now();
+        console.log(`Restored season timer from DB: ${Math.round(remaining / 1000)}s remaining`);
+      }
     } catch (err) {
-      console.warn('Failed to load season number from DB:', err.message);
+      console.warn('Failed to load season state from DB:', err.message);
     }
 
     // 3. Initialize MagicBlock and restore state from chain BEFORE creating
