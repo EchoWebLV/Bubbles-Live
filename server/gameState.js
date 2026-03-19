@@ -3442,10 +3442,10 @@ class GameState {
       console.error('Season auto-end failed:', err.message);
       this._seasonRetryCount = (this._seasonRetryCount || 0) + 1;
       if (this._seasonRetryCount >= 5) {
-        console.error('Season auto-end: max retries reached — giving up (use force-season-reset)');
-        this.addEventLog('Season transition failed after 5 retries — admin reset required.');
+        console.error('Season auto-end: max retries reached — falling back to force reset');
+        this.addEventLog('On-chain season transition failed — force-resetting locally.');
         this._seasonRetryCount = 0;
-        return { success: false, error: err.message };
+        return await this.forceSeasonReset();
       }
       this.addEventLog(`Season transition failed — retry ${this._seasonRetryCount}/5 in 60s...`);
       this._seasonRetryTimer = setTimeout(() => this._endSeasonAndStartNext(), 60000);
@@ -4196,6 +4196,13 @@ class GameState {
     this.metadataRefresh = setInterval(async () => {
       await this.fetchTokenMetadata();
     }, 60000);
+
+    // Guarantee season timer runs even if MagicBlock failed to init.
+    // _initSeason sets it when ER is available; this is the fallback.
+    if (!this.seasonTimer) {
+      console.log('Season timer not set by MagicBlock — starting local fallback timer');
+      this._startSeasonTimer();
+    }
   }
 
   // Initialize MagicBlock and restore all player state from the Ephemeral Rollup
@@ -4274,6 +4281,7 @@ class GameState {
       }
       this._processTalentSyncQueue();
       this.erSyncInterval = setInterval(() => this.syncFromER(), 10000);
+      await this._initSeason();
       console.log('MagicBlock initialized on background retry');
     } catch (err) {
       console.warn('MagicBlock background retry failed:', err.message);
