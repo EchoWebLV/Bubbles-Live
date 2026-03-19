@@ -151,19 +151,25 @@ app.prepare().then(async () => {
         res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
       }
-      try {
-        const result = await gameState.forceSeasonReset();
-        io.emit('seasonReset', {
-          seasonId: gameState.seasonId,
-          seasonNumber: gameState.seasonNumber,
-          seasonEndsAt: gameState.seasonEndsAt,
-        });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
-      }
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          let seasonNum;
+          try { seasonNum = body ? JSON.parse(body).season : undefined; } catch (_) {}
+          const result = await gameState.forceSeasonReset(seasonNum);
+          io.emit('seasonReset', {
+            seasonId: gameState.seasonId,
+            seasonNumber: gameState.seasonNumber,
+            seasonEndsAt: gameState.seasonEndsAt,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
       return;
     }
 

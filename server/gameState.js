@@ -3,7 +3,7 @@
 // Combat resolution (damage, kills, XP) runs on MagicBlock Ephemeral Rollup
 
 const { MagicBlockService } = require('./magicblock');
-const { loadAllPhotos, savePhoto, deletePhoto } = require('./playerStore');
+const { loadAllPhotos, savePhoto, deletePhoto, getConfig, setConfig } = require('./playerStore');
 const {
   MAX_LEVEL, LEVEL_SCALE_EARLY, LEVEL_SCALE, LEVEL_SCALE_50PLUS, MAX_RANK,
   ALL_TALENTS, TREE_ORDER, AUTO_ALLOCATE_ORDER,
@@ -3308,6 +3308,7 @@ class GameState {
         this.seasonNumber = info.seasonNumber;
         this.seasonStartedAt = info.startedAt * 1000;
         this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
+        setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
         console.log(`Season ${this.seasonNumber} — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
         this._startSeasonTimer();
       }
@@ -3421,6 +3422,7 @@ class GameState {
       this.seasonStartedAt = info.startedAt * 1000;
       this.seasonEndsAt = this.seasonStartedAt + (info.durationSecs * 1000);
       this.seasonId = Date.now();
+      setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
 
       this.addEventLog(`Season ${this.seasonNumber} started! Good luck!`);
       console.log(`SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
@@ -3464,7 +3466,7 @@ class GameState {
     return await this._endSeasonAndStartNext();
   }
 
-  async forceSeasonReset() {
+  async forceSeasonReset(explicitSeasonNumber) {
     console.log('FORCE SEASON RESET: skipping on-chain finalize, resetting local state...');
 
     const raceTimeout = (promise, ms) => Promise.race([
@@ -3519,9 +3521,10 @@ class GameState {
     this.topKillers = [];
     this.damageBuffer.clear();
     this.seasonId = Date.now();
-    this.seasonNumber = (this.seasonNumber || 0) + 1;
+    this.seasonNumber = explicitSeasonNumber != null ? explicitSeasonNumber : (this.seasonNumber || 0) + 1;
     this.seasonStartedAt = Date.now();
     this.seasonEndsAt = this.seasonStartedAt + this.seasonDurationMs;
+    setConfig('seasonNumber', this.seasonNumber).catch(e => console.warn('Failed to persist season number:', e.message));
 
     this.addEventLog(`Season ${this.seasonNumber} force-started! Good luck!`);
     console.log(`FORCE SEASON ${this.seasonNumber}: Started — ends at ${new Date(this.seasonEndsAt).toISOString()}`);
@@ -4136,7 +4139,7 @@ class GameState {
     this.holders = await this.fetchHolders();
     console.log(`Loaded ${this.holders.length} holders`);
 
-    // 2. Load photos from DB
+    // 2. Load photos + persisted season number from DB
     try {
       const dbPhotos = await loadAllPhotos();
       if (dbPhotos.size > 0) {
@@ -4147,6 +4150,15 @@ class GameState {
       }
     } catch (err) {
       console.warn('Failed to load photos from DB:', err.message);
+    }
+    try {
+      const savedSeason = await getConfig('seasonNumber');
+      if (savedSeason) {
+        this.seasonNumber = parseInt(savedSeason, 10);
+        console.log(`Restored season number from DB: ${this.seasonNumber}`);
+      }
+    } catch (err) {
+      console.warn('Failed to load season number from DB:', err.message);
     }
 
     // 3. Initialize MagicBlock and restore state from chain BEFORE creating

@@ -27,8 +27,26 @@ async function deletePhoto(walletAddress) {
   return db.query('DELETE FROM player_photos WHERE wallet_address = $1', [walletAddress]);
 }
 
+// ─── Game Config (key-value persistence) ─────────────────────────
+
+async function getConfig(key) {
+  const result = await db.query('SELECT value FROM game_config WHERE key = $1', [key]);
+  if (!result || result.rows.length === 0) return null;
+  return result.rows[0].value;
+}
+
+async function setConfig(key, value) {
+  return db.query(`
+    INSERT INTO game_config (key, value)
+    VALUES ($1, $2)
+    ON CONFLICT (key) DO UPDATE SET value = $2
+  `, [key, String(value)]);
+}
+
 module.exports = {
   loadAllPhotos,
   savePhoto,
   deletePhoto,
+  getConfig,
+  setConfig,
 };
