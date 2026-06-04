@@ -1,10 +1,12 @@
 // ─── Talent Tree Configuration (v2) ──────────────────────────────────────
-// 5 trees, 5 talents each, linear chain prerequisite (tier N requires 1 rank in tier N-1).
+// 7 trees, 5 talents each, linear chain prerequisite (tier N requires 1 rank in tier N-1).
 // Tiers 1-4: max 5 ranks.  Tier 5 (capstone): max 3 ranks.
 // 1 talent point per 2 levels → 50 points at level 100 → enough for 2 full trees + 4 spare.
 
 const MAX_LEVEL = 100;
-const LEVEL_SCALE = 10;
+const LEVEL_SCALE_EARLY = 10;  // levels 1-25: easier to reach
+const LEVEL_SCALE = 22;        // levels 26-50
+const LEVEL_SCALE_50PLUS = 25; // levels 51-100: scales to ~450k total at 100
 const MAX_RANK = 5;
 const MAX_RANK_CAPSTONE = 3;
 
@@ -18,7 +20,7 @@ const TANK = {
     tier: 1,
     requires: null,
     maxRank: MAX_RANK,
-    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
+    perRank: [0.08, 0.16, 0.24, 0.32, 0.40],
   },
   ironSkin: {
     id: 'ironSkin',
@@ -33,14 +35,13 @@ const TANK = {
   regeneration: {
     id: 'regeneration',
     name: 'Regeneration',
-    description: 'Heal {value} HP/sec',
+    description: 'Heal {value}% of max HP/sec',
     tree: 'tank',
     tier: 3,
     requires: 'ironSkin',
     maxRank: MAX_RANK,
-    perRank: 0.3,
-    hardCap: 1.5,
-    healCeiling: 0.80,
+    perRank: [0.0012, 0.0024, 0.0036, 0.0048, 0.006],
+    healCeiling: 1.0,
   },
   lifesteal: {
     id: 'lifesteal',
@@ -50,8 +51,8 @@ const TANK = {
     tier: 4,
     requires: 'regeneration',
     maxRank: MAX_RANK,
-    perRank: [0.05, 0.10, 0.15, 0.20, 0.25],
-    healCeiling: 0.80,
+    perRank: [0.06, 0.12, 0.18, 0.25, 0.33],
+    healCeiling: 1.0,
   },
   vitalityStrike: {
     id: 'vitalityStrike',
@@ -85,43 +86,43 @@ const FIREPOWER = {
     tier: 2,
     requires: 'heavyHitter',
     maxRank: MAX_RANK,
-    perRank: [0.06, 0.12, 0.18, 0.24, 0.30],
+    perRank: [0.04, 0.06, 0.08, 0.10, 0.14],
     minCooldownMs: 80,
   },
   criticalStrike: {
     id: 'criticalStrike',
     name: 'Critical Strike',
-    description: '{value}% crit chance (2/2.2/2.6/2.8/3x dmg)',
+    description: '{value}% crit chance (2x dmg)',
     tree: 'firepower',
     tier: 3,
     requires: 'rapidFire',
     maxRank: MAX_RANK,
     perRank: 0.07,
     hardCap: 0.35,
-    critMultiplier: [2.0, 2.2, 2.6, 2.8, 3.0],
+    critMultiplier: 2,
   },
   multiShot: {
     id: 'multiShot',
     name: 'Multi Shot',
-    description: '{value}% chance to fire 2 bullets (75% dmg)',
+    description: '{value}% chance to fire 2 bullets (50% dmg)',
     tree: 'firepower',
     tier: 4,
     requires: 'criticalStrike',
     maxRank: MAX_RANK,
-    perRank: 0.12,
-    hardCap: 0.60,
-    secondBulletDamage: 0.75,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+    hardCap: 0.50,
+    secondBulletDamage: 0.50,
   },
   dualCannon: {
     id: 'dualCannon',
     name: 'Homing Cannon',
-    description: 'Every 9/7/5th shot: homing bullet toward your target',
+    description: 'Every 9/7/5th shot: homing bullet toward your target (333% dmg)',
     tree: 'firepower',
     tier: 5,
     requires: 'multiShot',
     maxRank: MAX_RANK_CAPSTONE,
     fireFrequency: [9, 7, 5],
-    homingDamageMultiplier: 2.0,
+    homingDamageMultiplier: 3.33,
     homingStrength: 0.15,
   },
 };
@@ -147,30 +148,33 @@ const BRAWLER = {
     tier: 2,
     requires: 'dash',
     maxRank: MAX_RANK,
-    perRank: [0.015, 0.025, 0.035, 0.045, 0.055],
+    perRank: [0.01, 0.02, 0.03, 0.04, 0.05],
   },
   relentless: {
     id: 'relentless',
-    name: 'Relentless',
-    description: 'Body Slam hit reduces Dash cooldown by {value}s',
+    name: 'Retaliate',
+    description: '{value}% chance when hit: dash toward attacker. +20/30/40/50/60% Body Slam dmg',
     tree: 'brawler',
     tier: 3,
     requires: 'bodySlam',
     maxRank: MAX_RANK,
-    cdReduction: [500, 1000, 1500, 2000, 2500],
+    procChance: [0.10, 0.20, 0.30, 0.40, 0.50],
+    dashStrength: 6,
+    dmgBonus: [0.10, 0.20, 0.30, 0.40, 0.50],
+    cooldownMs: 2000,
   },
   orbit: {
     id: 'orbit',
     name: 'Orbit',
-    description: '2 orbs circle you, dealing {value}% max HP on contact (0.5s cd)',
+    description: '2 orbs circle you, dealing {value}% max HP on contact (100ms cd)',
     tree: 'brawler',
     tier: 4,
     requires: 'relentless',
     maxRank: MAX_RANK,
-    perRank: [0.005, 0.0075, 0.01, 0.0125, 0.015],
+    perRank: [0.005, 0.008, 0.011, 0.017, 0.025],
     orbCount: 2,
     orbRadius: 40,
-    orbHitCooldown: 375,
+    orbHitCooldown: 100,
     orbRotationSpeed: 4 * Math.PI,
     orbSize: 6,
   },
@@ -182,7 +186,7 @@ const BRAWLER = {
     tier: 5,
     requires: 'orbit',
     maxRank: MAX_RANK_CAPSTONE,
-    perRank: [0.04, 0.06, 0.08],
+    perRank: [0.03, 0.05, 0.07],
     radius: [100, 150, 200],
   },
 };
@@ -197,7 +201,7 @@ const MASS_DAMAGE = {
     tier: 1,
     requires: null,
     maxRank: MAX_RANK,
-    perRank: [0.11, 0.19, 0.26, 0.34, 0.49],
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
     bounceDamage: 1.0,
   },
   counterAttack: {
@@ -210,32 +214,45 @@ const MASS_DAMAGE = {
     maxRank: MAX_RANK,
     perRank: 0.08,
     hardCap: 0.40,
+    _retired: true,
   },
   focusFire: {
     id: 'focusFire',
     name: 'Focus Fire',
     description: '+{value}% damage per consecutive hit on same target (max 3 stacks)',
     tree: 'massDamage',
-    tier: 3,
-    requires: 'counterAttack',
+    tier: 2,
+    requires: 'ricochet',
     maxRank: MAX_RANK,
     perRank: [0.03, 0.06, 0.09, 0.12, 0.15],
     maxStacks: 3,
   },
-  nova: {
-    id: 'nova',
-    name: 'Nova',
-    description: 'Emit {value} projectiles every 2s',
+  orbitalLaser: {
+    id: 'orbitalLaser',
+    name: 'Infernal Lance',
+    description: 'Every {value}s, fire a piercing beam through all enemies in a line',
     tree: 'massDamage',
-    tier: 4,
+    tier: 3,
     requires: 'focusFire',
     maxRank: MAX_RANK,
-    projectiles: [5, 8, 11, 14, 18],
-    intervalMs: 1000,
-    novaDamageMultiplier: 1.5,
-    novaSpeed: 6,
-    novaRange: 500,
-    spiralSpread: 0.5,
+    intervalMs: [3500, 3200, 3000, 2800, 2500],
+    damageMultiplier: [1.0, 1.5, 2.0, 2.5, 3.0],
+    beamWidth: [12, 14, 16, 18, 22],
+    beamRange: 600,
+    beamDurationMs: 300,
+  },
+  rocket: {
+    id: 'rocket',
+    name: 'Rocket',
+    description: 'Every {value}th shot fires a homing rocket that explodes on impact',
+    tree: 'massDamage',
+    tier: 4,
+    requires: 'orbitalLaser',
+    maxRank: MAX_RANK,
+    fireFrequency: [18, 16, 14, 12, 10],
+    blastRadius: 300,
+    blastDamageMultiplier: [1.0, 1.0, 1.0, 1.0, 1.0],
+    rocketSpeed: 4,
   },
   chainLightning: {
     id: 'chainLightning',
@@ -243,9 +260,9 @@ const MASS_DAMAGE = {
     description: 'Every hit arcs lightning to {value} nearby enemies (400% dmg, -50% per jump)',
     tree: 'massDamage',
     tier: 5,
-    requires: 'nova',
+    requires: 'rocket',
     maxRank: MAX_RANK_CAPSTONE,
-    procChance: [0.04, 0.08, 0.12],
+    procChance: [0.10, 0.15, 0.20],
     arcTargets: [2, 3, 4],
     arcDamage: 4.0,
     arcDecay: 0.50,
@@ -273,7 +290,7 @@ const BLOOD_THIRST = {
     tier: 2,
     requires: 'experience',
     maxRank: MAX_RANK,
-    perRank: [0.08, 0.16, 0.24, 0.32, 0.48],
+    perRank: [0.07, 0.13, 0.20, 0.27, 0.33],
     hpThreshold: 0.50,
   },
   killRush: {
@@ -303,14 +320,14 @@ const BLOOD_THIRST = {
   reaperArc: {
     id: 'reaperArc',
     name: "Reaper's Arc",
-    description: 'Every 15th hit: 360° sweep. Deals 1/2/3/4/5% max HP, costs 0.5/1/1.5/2/2.5% HP',
+    description: 'Every 12th hit: 360° sweep. Deals 1/2/3/4/5% max HP, costs same % HP',
     tree: 'bloodThirst',
     tier: 4,
     requires: 'killRush',
     maxRank: MAX_RANK,
-    hitInterval: [15, 15, 15, 15, 15],
+    hitInterval: [12, 12, 12, 12, 12],
     sweepDamagePct: [0.01, 0.02, 0.03, 0.04, 0.05],
-    hpCost: [0.005, 0.01, 0.015, 0.02, 0.025],
+    hpCost: [0.01, 0.02, 0.03, 0.04, 0.05],
     sweepRange: 200,
     sweepAngle: Math.PI * 2,
     sweepDurationMs: 300,
@@ -323,9 +340,152 @@ const BLOOD_THIRST = {
     tier: 5,
     requires: 'reaperArc',
     maxRank: MAX_RANK_CAPSTONE,
-    atkSpeedBonus: [0.10, 0.20, 0.30],
-    dmgBonus: [0.10, 0.20, 0.30],
+    atkSpeedBonus: [0.12, 0.24, 0.36],
+    dmgBonus: [0.12, 0.24, 0.36],
     hpThreshold: 0.33,
+  },
+};
+
+// ─── SAPPER ──────────────────────────────────────────────────────────────
+const SAPPER = {
+  deathMirage: {
+    id: 'deathMirage',
+    name: 'Death Mirage',
+    description: 'On death, leave a decoy behind + -{value}% respawn time',
+    tree: 'sapper',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    respawnReduction: [0.10, 0.17, 0.25, 0.33, 0.40],
+    mirageHpPct: [0.40, 0.50, 0.60, 0.70, 0.80],
+    mirageDurationMs: 6000,
+  },
+  decoy: {
+    id: 'decoy',
+    name: 'Decoy',
+    description: 'Spawn a decoy clone every {value}s that shoots for 5s (50% dmg)',
+    tree: 'sapper',
+    tier: 2,
+    requires: 'deathMirage',
+    maxRank: MAX_RANK,
+    cooldownMs: [20000, 18000, 16000, 14000, 10000],
+    cloneHpPct: [0.30, 0.40, 0.50, 0.60, 0.70],
+    cloneDamagePct: [0.50, 0.50, 0.50, 0.50, 0.50],
+    cloneDurationMs: 5000,
+  },
+  decoyBarrage: {
+    id: 'decoyBarrage',
+    name: 'Decoy Barrage',
+    description: 'Every {value}s, launch a decoy at the nearest enemy (50% dmg)',
+    tree: 'sapper',
+    tier: 3,
+    requires: 'decoy',
+    maxRank: MAX_RANK,
+    cooldownMs: [14000, 12000, 10000, 8000, 6000],
+    barrageDurationMs: 4000,
+    barrageHpPct: [0.25, 0.30, 0.35, 0.45, 0.55],
+    barrageDmgPct: [0.50, 0.50, 0.50, 0.50, 0.50],
+    launchSpeed: 5,
+  },
+  volatileDecoy: {
+    id: 'volatileDecoy',
+    name: 'Volatile Decoy',
+    description: 'Decoys explode on death for {value}% of your max HP as AoE',
+    tree: 'sapper',
+    tier: 4,
+    requires: 'decoyBarrage',
+    maxRank: MAX_RANK,
+    explosionDmgPct: [0.015, 0.03, 0.045, 0.06, 0.075],
+    explosionRadius: [60, 70, 80, 100, 120],
+  },
+  singularity: {
+    id: 'singularity',
+    name: 'Singularity',
+    description: '50% chance decoy explosion becomes a black hole: {value}s pull, 2.25% HP/s DoT, +3/6/9% detonation',
+    tree: 'sapper',
+    tier: 5,
+    requires: 'volatileDecoy',
+    maxRank: MAX_RANK_CAPSTONE,
+    procChance: 0.50,
+    pullDurationMs: [1000, 2000, 3000],
+    pullRadius: [120, 160, 200],
+    dotPerSecondPct: 0.0225,
+    detonationBonus: [0.03, 0.06, 0.09],
+    maxPulled: [1, 2, 3],
+    pullStrength: 0.03,
+  },
+  // Legacy mine config — kept for future use, not in talent tree
+  landmine: {
+    id: 'landmine',
+    name: 'Landmine',
+    _retired: true,
+    tree: 'sapper',
+    tier: 0,
+    requires: null,
+    maxRank: MAX_RANK,
+    cooldownMs: [18000, 16000, 14000, 12000, 10000],
+    mineDamagePct: [0.05, 0.055, 0.06, 0.065, 0.07],
+    mineDurationMs: 20000,
+    maxActiveMines: [3, 4, 5, 6, 8],
+    mineRadius: 18,
+    mineDetectionRadius: 22,
+  },
+};
+
+// ─── SWIFT ───────────────────────────────────────────────────────────────
+const SWIFT = {
+  quickfire: {
+    id: 'quickfire',
+    name: 'Quickfire',
+    description: '+{value}% fire rate',
+    tree: 'swift',
+    tier: 1,
+    requires: null,
+    maxRank: MAX_RANK,
+    perRank: [0.04, 0.08, 0.12, 0.16, 0.24],
+  },
+  velocityRounds: {
+    id: 'velocityRounds',
+    name: 'Velocity Rounds',
+    description: 'Bullets travel {value}% faster',
+    tree: 'swift',
+    tier: 2,
+    requires: 'quickfire',
+    maxRank: MAX_RANK,
+    perRank: [0.09, 0.18, 0.27, 0.36, 0.45],
+  },
+  longShot: {
+    id: 'longShot',
+    name: 'Long Shot',
+    description: 'Bullets deal up to +{value}% bonus damage based on distance traveled (max at 800px)',
+    tree: 'swift',
+    tier: 3,
+    requires: 'velocityRounds',
+    maxRank: MAX_RANK,
+    perRank: [0.10, 0.20, 0.30, 0.40, 0.50],
+    maxDistancePx: 800,
+  },
+  overdrive: {
+    id: 'overdrive',
+    name: 'Overdrive',
+    description: 'Every {value}s, double your fire rate for 2s',
+    tree: 'swift',
+    tier: 4,
+    requires: 'longShot',
+    maxRank: MAX_RANK,
+    cooldownMs: [10000, 9000, 8000, 7000, 6000],
+    durationMs: 2000,
+    fireRateMultiplier: 2,
+  },
+  bulletStorm: {
+    id: 'bulletStorm',
+    name: 'Bullet Storm',
+    description: 'Every {value} shot, fire an extra bullet at the same target',
+    tree: 'swift',
+    tier: 5,
+    requires: 'overdrive',
+    maxRank: MAX_RANK_CAPSTONE,
+    extraShotFrequency: [9, 6, 3],
   },
 };
 
@@ -336,6 +496,8 @@ const ALL_TALENTS = {
   ...BRAWLER,
   ...MASS_DAMAGE,
   ...BLOOD_THIRST,
+  ...SAPPER,
+  ...SWIFT,
 };
 
 // UI order per tree
@@ -343,39 +505,44 @@ const TREE_ORDER = {
   tank:        ['armor', 'ironSkin', 'regeneration', 'lifesteal', 'vitalityStrike'],
   firepower:   ['heavyHitter', 'rapidFire', 'criticalStrike', 'multiShot', 'dualCannon'],
   brawler:     ['dash', 'bodySlam', 'relentless', 'orbit', 'shockwave'],
-  massDamage:  ['ricochet', 'counterAttack', 'focusFire', 'nova', 'chainLightning'],
+  massDamage:  ['ricochet', 'focusFire', 'orbitalLaser', 'rocket', 'chainLightning'],
   bloodThirst: ['experience', 'execute', 'killRush', 'reaperArc', 'berserker'],
+  sapper:      ['deathMirage', 'decoy', 'decoyBarrage', 'volatileDecoy', 'singularity'],
+  swift:       ['quickfire', 'velocityRounds', 'longShot', 'overdrive', 'bulletStorm'],
 };
 
 // Auto-allocate order: tier-by-tier across all trees
 const AUTO_ALLOCATE_ORDER = [
-  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience',
-  'ironSkin', 'rapidFire', 'bodySlam', 'counterAttack', 'execute',
-  'regeneration', 'criticalStrike', 'relentless', 'focusFire', 'killRush',
-  'lifesteal', 'multiShot', 'orbit', 'nova', 'reaperArc',
-  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker',
+  'armor', 'heavyHitter', 'dash', 'ricochet', 'experience', 'deathMirage', 'quickfire',
+  'ironSkin', 'rapidFire', 'bodySlam', 'focusFire', 'execute', 'decoy', 'velocityRounds',
+  'regeneration', 'criticalStrike', 'relentless', 'orbitalLaser', 'killRush', 'decoyBarrage', 'longShot',
+  'lifesteal', 'multiShot', 'orbit', 'rocket', 'reaperArc', 'volatileDecoy', 'overdrive',
+  'vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity', 'bulletStorm',
 ];
 
-// ─── Chain-ID mapping (reuses 25 on-chain u8 slots 0-24) ─────────────────
+// ─── Chain-ID mapping (on-chain u8 slots 0-29) ───────────────────────────
 const TALENT_NAME_TO_CHAIN_ID = {
   armor: 0, ironSkin: 1, regeneration: 2, lifesteal: 3, vitalityStrike: 4,
   heavyHitter: 5, rapidFire: 6, criticalStrike: 7, multiShot: 8, dualCannon: 9,
   dash: 10, bodySlam: 11, relentless: 12, orbit: 13, shockwave: 14,
-  ricochet: 15, counterAttack: 16, chainLightning: 17, nova: 18, focusFire: 19,
+  ricochet: 15, counterAttack: 16, chainLightning: 17, orbitalLaser: 18, focusFire: 19, rocket: 30,
   experience: 20, execute: 21, killRush: 22, reaperArc: 23, berserker: 24,
+  decoy: 25, deathMirage: 26, decoyBarrage: 27, volatileDecoy: 28, singularity: 29,
+  quickfire: 31, velocityRounds: 32, longShot: 33, overdrive: 34, bulletStorm: 35,
 };
 
 const CHAIN_ID_TO_TALENT_NAME = Object.fromEntries(
   Object.entries(TALENT_NAME_TO_CHAIN_ID).map(([k, v]) => [v, k])
 );
 
-// On-chain account field names in the order they map to chain slot 0-24
+// On-chain account field names in the order they map to chain slot 0-29
 const CHAIN_SLOT_FIELDS = [
   'talentIronSkin', 'talentHeavyHitter', 'talentRegeneration', 'talentLifesteal', 'talentArmor',
   'talentSwift', 'talentRapidFire', 'talentEvasion', 'talentQuickRespawn', 'talentMomentum',
   'talentWeakspot', 'talentCriticalStrike', 'talentFocusFire', 'talentMultiShot', 'talentDualCannon',
   'talentDeflect', 'talentAbsorb', 'talentLastStand', 'talentCloak', 'talentDash',
   'talentRampage', 'talentHoming', 'talentRicochet', 'talentDeathbomb', 'talentFrenzy',
+  'talentLandmine', 'talentEvasionSapper', 'talentDeadDrop', 'talentDecoy', 'talentSingularity',
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -424,9 +591,14 @@ function pointsInTree(talents, treeName) {
   return total;
 }
 
+const CAPSTONE_TALENTS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity', 'bulletStorm'];
+const MAX_CAPSTONES = 2;
+
 module.exports = {
   MAX_LEVEL,
+  LEVEL_SCALE_EARLY,
   LEVEL_SCALE,
+  LEVEL_SCALE_50PLUS,
   MAX_RANK,
   MAX_RANK_CAPSTONE,
   TANK,
@@ -434,9 +606,13 @@ module.exports = {
   BRAWLER,
   MASS_DAMAGE,
   BLOOD_THIRST,
+  SAPPER,
+  SWIFT,
   ALL_TALENTS,
   TREE_ORDER,
   AUTO_ALLOCATE_ORDER,
+  CAPSTONE_TALENTS,
+  MAX_CAPSTONES,
   TALENT_NAME_TO_CHAIN_ID,
   CHAIN_ID_TO_TALENT_NAME,
   CHAIN_SLOT_FIELDS,

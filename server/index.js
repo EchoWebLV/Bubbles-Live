@@ -112,6 +112,11 @@ app.prepare().then(async () => {
       }
       try {
         const result = await gameState.seasonReset();
+        io.emit('seasonReset', {
+          seasonId: gameState.seasonId,
+          seasonNumber: gameState.seasonNumber,
+          seasonEndsAt: gameState.seasonEndsAt,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (err) {
@@ -136,6 +141,35 @@ app.prepare().then(async () => {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: err.message }));
       }
+      return;
+    }
+
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/admin/force-season-reset') {
+      const authHeader = req.headers['authorization'] || '';
+      if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', async () => {
+        try {
+          let seasonNum;
+          try { seasonNum = body ? JSON.parse(body).season : undefined; } catch (_) {}
+          const result = await gameState.forceSeasonReset(seasonNum);
+          io.emit('seasonReset', {
+            seasonId: gameState.seasonId,
+            seasonNumber: gameState.seasonNumber,
+            seasonEndsAt: gameState.seasonEndsAt,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
       return;
     }
 
@@ -221,6 +255,11 @@ app.prepare().then(async () => {
       zlibDeflateOptions: { level: 6 },
     },
   });
+
+  // Wire up auto-season-end callback so gameState can notify clients
+  gameState.onSeasonEnd = (payload) => {
+    io.emit('seasonReset', payload);
+  };
 
   let connectedClients = 0;
   const rateLimit = createRateLimiter();
@@ -324,6 +363,19 @@ app.prepare().then(async () => {
       socket.emit('talentResult', result);
     });
 
+    socket.on('selectClass', (data) => {
+      if (!rateLimit(socket.id, 'allocateTalent')) {
+        socket.emit('classResult', { success: false, error: 'Rate limited' });
+        return;
+      }
+      if (!data || typeof data.walletAddress !== 'string' || typeof data.classId !== 'number') {
+        socket.emit('classResult', { success: false, error: 'Invalid request' });
+        return;
+      }
+      const result = gameState.selectClass(data.walletAddress, data.classId);
+      socket.emit('classResult', result);
+    });
+
     socket.on('resetTalents', (data) => {
       if (!rateLimit(socket.id, 'allocateTalent')) {
         socket.emit('talentResult', { success: false, error: 'Rate limited' });
@@ -418,10 +470,18 @@ app.prepare().then(async () => {
     });
   });
 
-  // Broadcast game state to all clients at 10fps (perMessageDeflate compresses the JSON)
+  // Lightweight position updates at 10fps; full state every 2s
+  let lastFullBroadcast = 0;
+  const FULL_STATE_INTERVAL = 2000;
   const broadcastInterval = setInterval(() => {
     if (connectedClients > 0) {
-      io.emit('gameState', gameState.getState());
+      const now = Date.now();
+      if (now - lastFullBroadcast >= FULL_STATE_INTERVAL) {
+        lastFullBroadcast = now;
+        io.emit('gameState', gameState.getState());
+      } else {
+        io.emit('gameStateUpdate', gameState.getPositionUpdate());
+      }
     }
   }, 100);
 

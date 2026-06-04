@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, Users, TrendingUp, TrendingDown, Wifi, WifiOff, Swo
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { WelcomeModal } from "@/components/WelcomeModal";
+import { ChangelogModal, shouldShowChangelog } from "@/components/ChangelogModal";
 import { BubbleCanvas } from "./BubbleCanvas";
 import { HolderModal } from "./HolderModal";
 import { useGameSocket, GameState, GameHolder, GameBattleBubble, OnchainPlayerStats, OnchainEvent, TalentRanks } from "@/hooks/useGameSocket";
@@ -21,12 +22,19 @@ import {
   createSmallBulletPop,
   createLightningArc,
   createLightningArcData,
+  createMineExplosion,
+  createSingularityExplosion,
   type LightningArc,
   type ReaperArcVfx,
+  type OrbitalLaserVfx,
 } from "./effects";
 import { Button } from "@/components/ui/button";
 import { AirdropBanner } from "@/components/AirdropBanner";
 import { useAirdropChecker, checkBatchEligibility } from "@/hooks/useAirdropChecker";
+import { useSeasonCountdown } from "@/hooks/useSeasonCountdown";
+import { useSeasonPlacement } from "@/hooks/useSeasonPlacement";
+import { SeasonPlacementPopup } from "@/components/SeasonPlacementPopup";
+import { getXpThresholds } from "@/lib/utils";
 
 // Kill streak announcement
 interface KillAnnouncement {
@@ -55,10 +63,10 @@ const TALENT_TREES = {
     color: 'green',
     icon: '🛡️',
     talents: [
-      { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
+      { id: 'armor', name: 'Armor', desc: '-8/16/24/32/40% incoming dmg', maxRank: 5 },
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.12/0.24/0.36/0.48/0.6% max HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 6/12/18/25/33% of dmg dealt', maxRank: 5 },
       { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
   },
@@ -68,10 +76,10 @@ const TALENT_TREES = {
     icon: '🎯',
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
-      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
+      { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (333% dmg)', maxRank: 3 },
     ],
   },
   brawler: {
@@ -80,10 +88,10 @@ const TALENT_TREES = {
     icon: '💨',
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
-      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
-      { id: 'relentless', name: 'Pinball', desc: 'Body Slam dashes you 50/100/150/200/250px toward nearest enemy', maxRank: 5 },
-      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1/2/3/4/5% max HP dmg (1.5s cd)', maxRank: 5 },
+      { id: 'relentless', name: 'Retaliate', desc: '10/20/30/40/50% chance when hit: dash toward attacker. +10/20/30/40/50% Body Slam dmg', maxRank: 5 },
+      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, 0.5/0.8/1.1/1.7/2.5% max HP on contact (100ms cd)', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -91,11 +99,11 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '💥',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
-      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '10/20/30/40/50% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
-      { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
+      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (100/150/200/250/300% dmg)', maxRank: 5 },
+      { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
+      { id: 'chainLightning', name: 'Chain Lightning', desc: '10/15/20% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
   bloodThirst: {
@@ -104,10 +112,34 @@ const TALENT_TREES = {
     icon: '🩸',
     talents: [
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
-      { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs ≤50% HP', maxRank: 5 },
+      { id: 'execute', name: 'Execute', desc: '+7/13/20/27/33% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs same % HP', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
+    ],
+  },
+  sapper: {
+    name: 'Echo',
+    color: 'teal',
+    icon: '👻',
+    talents: [
+      { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s (50% dmg)', maxRank: 5 },
+      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s (50% dmg)', maxRank: 5 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death/kill/black hole for 1.5/3/4.5/6/7.5% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion also spawns black hole: 1/2/3s pull, 2.25% HP/s, +3/6/9% detonation', maxRank: 3 },
+    ],
+  },
+  swift: {
+    name: 'Swift',
+    color: 'orange',
+    icon: '⚡',
+    talents: [
+      { id: 'quickfire', name: 'Quickfire', desc: '+4/8/12/16/24% fire rate', maxRank: 5 },
+      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 9/18/27/36/45% faster', maxRank: 5 },
+      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +10/20/30/40/50% bonus dmg based on distance (max at 800px)', maxRank: 5 },
+      { id: 'overdrive', name: 'Overdrive', desc: 'Every 10/9/8/7/6s, double your fire rate for 2s', maxRank: 5 },
+      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 9/6/3 shot, fire an extra bullet at the same target', maxRank: 3 },
     ],
   },
 } as const;
@@ -118,7 +150,7 @@ function totalPointsSpentClient(talents: Record<string, number>): number {
   return total;
 }
 
-const CAPSTONE_IDS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker'];
+const CAPSTONE_IDS = ['vitalityStrike', 'dualCannon', 'shockwave', 'chainLightning', 'berserker', 'singularity', 'bulletStorm'];
 const MAX_CAPSTONES = 2;
 
 function capstonesChosen(talents: Record<string, number>): number {
@@ -156,7 +188,7 @@ export function BubbleMapClient() {
   const [selectedHolder, setSelectedHolder] = useState<Holder | null>(null);
   const [hoveredHolder, setHoveredHolder] = useState<Holder | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const [effectsState, setEffectsState] = useState<EffectsState>(createInitialEffectsState());
+  const effectsRef = useRef<EffectsState>(createInitialEffectsState());
   const [camera, setCamera] = useState<Camera>({ x: 0, y: 0, zoom: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
@@ -166,8 +198,16 @@ export function BubbleMapClient() {
   const [photoUploading, setPhotoUploading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const trackIndexRef = useRef(0);
+  const playNextRef = useRef<() => void>(() => {});
   const keysPressed = useRef<Set<string>>(new Set());
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const MUSIC_TRACKS = useMemo(() => [
+    "/where-it-leads.mp3",
+    "/NASTY! (Sped Up).mp3",
+    "/VXLLAIN, iGRES, ENXK - Crystal Skies (Sped Up).mp3",
+  ], []);
 
   // Wallet connection
   const { publicKey, connected: walletConnected, disconnect: disconnectWallet } = useWallet();
@@ -195,42 +235,72 @@ export function BubbleMapClient() {
   const airdropInfo = useAirdropChecker();
   const [leaderboardAirdropAddrs, setLeaderboardAirdropAddrs] = useState<Set<string>>(new Set());
 
-  // Initialize audio element and autoplay
-  useEffect(() => {
-    const audio = new Audio("/where-it-leads.mp3");
-    audio.loop = true;
-    audio.volume = 0.4;
-    audioRef.current = audio;
-
-    // Attempt autoplay — browsers may block until user interacts
+  // Play next track in playlist (lazy load: only load when we advance)
+  const playNextTrack = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || MUSIC_TRACKS.length === 0) return;
+    trackIndexRef.current = (trackIndexRef.current + 1) % MUSIC_TRACKS.length;
+    const path = MUSIC_TRACKS[trackIndexRef.current];
+    const full = path.startsWith("/") ? path : "/" + path;
+    audio.src = encodeURI(full);
     audio.play().then(() => {
       setIsMusicPlaying(true);
       setMusicStarted(true);
-    }).catch(() => {
-      // Autoplay blocked — start on first user click anywhere
-      const startOnClick = () => {
-        audio.play().then(() => {
-          setIsMusicPlaying(true);
-          setMusicStarted(true);
-        }).catch(() => {});
-        document.removeEventListener("click", startOnClick);
-        document.removeEventListener("keydown", startOnClick);
-      };
-      document.addEventListener("click", startOnClick, { once: true });
-      document.addEventListener("keydown", startOnClick, { once: true });
-    });
+    }).catch(() => {});
+  }, [MUSIC_TRACKS]);
 
-    return () => {
-      audio.pause();
-      audio.src = "";
+  playNextRef.current = playNextTrack;
+
+  // Start or resume playback — lazy load: only load current track; start at random track
+  const startPlayback = useCallback(() => {
+    if (MUSIC_TRACKS.length === 0) return;
+    let audio = audioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.volume = 0.4;
+      audioRef.current = audio;
+      const onEnded = () => playNextRef.current();
+      (audio as HTMLAudioElement & { _endedHandler?: () => void })._endedHandler = onEnded;
+      audio.addEventListener("ended", onEnded);
+      trackIndexRef.current = Math.floor(Math.random() * MUSIC_TRACKS.length);
+    }
+    const path = MUSIC_TRACKS[trackIndexRef.current];
+    const full = path.startsWith("/") ? path : "/" + path;
+    audio.src = encodeURI(full);
+    audio.play().then(() => {
+      setIsMusicPlaying(true);
+      setMusicStarted(true);
+    }).catch(() => {});
+  }, [MUSIC_TRACKS]);
+
+  // Initialize: attempt autoplay first track (lazy — only first track loads)
+  useEffect(() => {
+    startPlayback();
+    const startOnClick = () => {
+      startPlayback();
+      document.removeEventListener("click", startOnClick);
+      document.removeEventListener("keydown", startOnClick);
     };
-  }, []);
+    document.addEventListener("click", startOnClick, { once: true });
+    document.addEventListener("keydown", startOnClick, { once: true });
+    return () => {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = "";
+        const handler = (audio as HTMLAudioElement & { _endedHandler?: () => void })._endedHandler;
+        if (handler) audio.removeEventListener("ended", handler);
+      }
+    };
+  }, [startPlayback]);
 
   // Toggle music
   const toggleMusic = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-
+    if (!audio) {
+      startPlayback();
+      return;
+    }
     if (isMusicPlaying) {
       audio.pause();
       setIsMusicPlaying(false);
@@ -239,14 +309,13 @@ export function BubbleMapClient() {
         setIsMusicPlaying(true);
         setMusicStarted(true);
       }).catch(() => {
-        // Browser blocked autoplay — user needs to click again
-        console.log("Audio play blocked by browser");
+        startPlayback();
       });
     }
-  }, [isMusicPlaying]);
+  }, [isMusicPlaying, startPlayback]);
 
-  // Connect to game server
-  const { connected, gameState, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
+  // Connect to game server (gameStateRef has latest interpolated state every frame for canvas)
+  const { connected, gameState, gameStateRef, playerPhotos, guestAddress, setDimensions: sendDimensions, sendTransaction, upgradeStat, selectClass, allocateTalent, resetTalents, getOnchainStats, uploadPhoto, removePhoto, joinAsGuest, leaveGuest } = useGameSocket();
   const effectiveAddress = guestAddress || connectedWalletAddress;
   const isGuest = !!guestAddress;
 
@@ -293,9 +362,29 @@ export function BubbleMapClient() {
   const [upgrading, setUpgrading] = useState<number | null>(null);
   const [onchainStats, setOnchainStats] = useState<OnchainPlayerStats | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
-  const [showOnchainPanel, setShowOnchainPanel] = useState(true);
+  const [showOnchainPanel, setShowOnchainPanel] = useState(false);
   const [showTalentTree, setShowTalentTree] = useState(false);
   const [allocatingTalent, setAllocatingTalent] = useState<string | null>(null);
+  const [selectedTalentTree, setSelectedTalentTree] = useState<string>('tank');
+  const [changelogDismissedSeason, setChangelogDismissedSeason] = useState<number | null>(null);
+  const [changelogReady, setChangelogReady] = useState(false);
+
+  const seasonId = gameState?.seasonId ?? 0;
+
+  useEffect(() => {
+    setChangelogReady(true);
+  }, []);
+
+  // When we dismissed as "init" (before seasonId arrived) and now have real seasonId, persist it so season reset works
+  useEffect(() => {
+    if (gameState?.seasonId && gameState.seasonId > 0) {
+      try {
+        const dismissed = localStorage.getItem("hodlwarz-changelog-dismissed-season");
+        if (dismissed === "init") localStorage.setItem("hodlwarz-changelog-dismissed-season", String(gameState.seasonId));
+      } catch {}
+    }
+  }, [gameState?.seasonId]);
+  const showChangelog = changelogReady && shouldShowChangelog(gameState?.seasonId) && changelogDismissedSeason !== (gameState?.seasonId ?? 0);
 
   const handleAllocateTalent = useCallback(async (talentId: string) => {
     if (!effectiveAddress || allocatingTalent) return;
@@ -316,6 +405,16 @@ export function BubbleMapClient() {
       setAllocatingTalent(null);
     }
   }, [effectiveAddress, allocatingTalent, resetTalents]);
+
+  const handleSelectClass = useCallback(async (classId: number) => {
+    if (!effectiveAddress || allocatingTalent) return;
+    setAllocatingTalent('class');
+    try {
+      await selectClass(effectiveAddress, classId);
+    } finally {
+      setAllocatingTalent(null);
+    }
+  }, [effectiveAddress, allocatingTalent, selectClass]);
 
   // Kill streak announcements
   const [announcements, setAnnouncements] = useState<KillAnnouncement[]>([]);
@@ -613,7 +712,7 @@ export function BubbleMapClient() {
     let animationId: number;
     
     const animate = () => {
-      setEffectsState(prev => updateEffects(prev));
+      effectsRef.current = updateEffects(effectsRef.current);
       
       // Handle continuous key presses for smooth camera movement
       const keys = keysPressed.current;
@@ -704,6 +803,9 @@ export function BubbleMapClient() {
         talents: b.talents ?? ({} as TalentRanks),
         talentPoints: b.talentPoints ?? 0,
         manualBuild: b.manualBuild ?? false,
+        classId: b.classId ?? 0,
+        talentResetsUsed: b.talentResetsUsed ?? 0,
+        allowedTrees: b.allowedTrees ?? undefined,
       }]) || []
     ),
     bullets: gameState?.bullets.map(b => ({
@@ -720,12 +822,16 @@ export function BubbleMapClient() {
       progress: b.progress,
       curveDirection: b.curveDirection,
       curveStrength: b.curveStrength,
-      vx: 0,
-      vy: 0,
+      vx: b.vx || 0,
+      vy: b.vy || 0,
       damage: 0.1,
       createdAt: 0,
+      isBloodBolt: b.isBloodBolt,
+      isRocket: b.isRocket,
     })) || [],
     damageNumbers: gameState?.damageNumbers || [],
+    mines: gameState?.mines || [],
+    decoyClones: gameState?.decoyClones || [],
     lastUpdateTime: Date.now(),
   };
 
@@ -736,6 +842,8 @@ export function BubbleMapClient() {
   const eventLog = useMemo(() => rawEventLog, [eventLogKey]);
   const topKillers = gameState?.topKillers || [];
   const killFeed = gameState?.killFeed || [];
+  const seasonCountdown = useSeasonCountdown(gameState?.seasonEndsAt);
+  const seasonPlacement = useSeasonPlacement(gameState?.seasonNumber);
 
   const topKillerAddrsKey = topKillers.map((k: { address: string }) => k.address).join(',');
   useEffect(() => {
@@ -749,12 +857,14 @@ export function BubbleMapClient() {
   const processedVfxRef = useRef<Set<string>>(new Set());
   const [lightningArcs, setLightningArcs] = useState<LightningArc[]>([]);
   const [reaperArcs, setReaperArcs] = useState<ReaperArcVfx[]>([]);
+  const [laserBeams, setLaserBeams] = useState<OrbitalLaserVfx[]>([]);
   const vfxList = gameState?.vfx || [];
   useEffect(() => {
     if (vfxList.length === 0) return;
     const newEffects: ReturnType<typeof createDeathbombExplosion>[] = [];
     const newArcs: LightningArc[] = [];
     const newReaperArcs: ReaperArcVfx[] = [];
+    const newLasers: OrbitalLaserVfx[] = [];
     for (const v of vfxList) {
       const key = `${v.type}-${v.x}-${v.y}-${v.createdAt}`;
       if (processedVfxRef.current.has(key)) continue;
@@ -763,18 +873,28 @@ export function BubbleMapClient() {
         newEffects.push(createDeathbombExplosion(v.x, v.y, v.radius || 200, v.color));
       } else if (v.type === 'bulletPop') {
         newEffects.push(v.small ? createSmallBulletPop(v.x, v.y, v.color) : createBulletPopFirework(v.x, v.y, v.color));
+      } else if (v.type === 'rocketExplode') {
+        newEffects.push(createMineExplosion(v.x, v.y, v.radius || 120, '#ff6600'));
+      } else if (v.type === 'orbitalLaser' && v.targetX !== undefined && v.targetY !== undefined) {
+        newLasers.push({ x: v.x, y: v.y, targetX: v.targetX, targetY: v.targetY, beamWidth: v.beamWidth ?? 16, color: v.color, createdAt: Date.now(), duration: 350 });
       } else if (v.type === 'lightning' && v.targetX !== undefined && v.targetY !== undefined) {
         newEffects.push(createLightningArc(v.x, v.y, v.targetX, v.targetY, v.color));
         newArcs.push(createLightningArcData(v.x, v.y, v.targetX, v.targetY, v.color));
       } else if (v.type === 'reaperArc') {
         newReaperArcs.push({ x: v.x, y: v.y, angle: v.angle ?? 0, range: v.range ?? 200, color: v.color, createdAt: Date.now(), duration: 800 });
+      } else if (v.type === 'mineExplode') {
+        newEffects.push(createMineExplosion(v.x, v.y, v.radius || 50, v.color));
+      } else if (v.type === 'singularityExplode') {
+        newEffects.push(createSingularityExplosion(v.x, v.y, v.radius || 200, v.color));
+      } else if (v.type === 'megaMine') {
+        newEffects.push(createMineExplosion(v.x, v.y, 80, v.color));
       }
     }
     if (newEffects.length > 0) {
-      setEffectsState(prev => ({
-        ...prev,
-        explosions: [...prev.explosions, ...newEffects],
-      }));
+      effectsRef.current = {
+        ...effectsRef.current,
+        explosions: [...effectsRef.current.explosions, ...newEffects],
+      };
     }
     if (newArcs.length > 0) {
       setLightningArcs(prev => [...prev, ...newArcs].filter(a => Date.now() - a.createdAt < a.duration));
@@ -782,17 +902,31 @@ export function BubbleMapClient() {
     if (newReaperArcs.length > 0) {
       setReaperArcs(prev => [...prev, ...newReaperArcs].filter(a => Date.now() - a.createdAt < a.duration));
     }
+    if (newLasers.length > 0) {
+      setLaserBeams(prev => [...prev, ...newLasers].filter(a => Date.now() - a.createdAt < a.duration));
+    }
     if (processedVfxRef.current.size > 500) {
       const entries = Array.from(processedVfxRef.current);
       processedVfxRef.current = new Set(entries.slice(-200));
     }
   }, [vfxList]);
 
-  // Clean up expired lightning arcs and reaper arcs
+  // Clean up expired VFX arcs (only setState when something actually expired)
   useEffect(() => {
     const interval = setInterval(() => {
-      setLightningArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
-      setReaperArcs(prev => prev.filter(a => Date.now() - a.createdAt < a.duration));
+      const now = Date.now();
+      setLightningArcs(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
+      setReaperArcs(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
+      setLaserBeams(prev => {
+        const next = prev.filter(a => now - a.createdAt < a.duration);
+        return next.length === prev.length ? prev : next;
+      });
     }, 100);
     return () => clearInterval(interval);
   }, []);
@@ -908,13 +1042,13 @@ export function BubbleMapClient() {
             )}
           </div>
 
-          {/* Helius WebSocket — hidden on mobile */}
-          {txWsConnected && (
+          {/* Helius WebSocket — commented out for now */}
+          {/* {txWsConnected && (
             <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 border border-blue-500/30 items-center gap-1.5 hidden sm:flex">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
               <span className="text-xs text-blue-400">TXs: {transactionCount}</span>
             </div>
-          )}
+          )} */}
 
           {/* On-chain records toggle */}
           {gameState?.magicBlock?.ready && (
@@ -1017,6 +1151,17 @@ export function BubbleMapClient() {
           className="absolute top-14 sm:top-20 left-2 sm:left-4 z-10 w-40 sm:w-48"
         >
           <div className="bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl border border-yellow-500/30 overflow-hidden">
+            {/* Season countdown */}
+            <div className="px-2 sm:px-3 py-1 border-b border-yellow-500/10 flex items-center justify-between">
+              <span className="text-[9px] sm:text-[10px] text-slate-400">
+                {gameState?.seasonNumber ? `S${gameState.seasonNumber}` : "Season"}
+              </span>
+              <span className={`text-[9px] sm:text-[10px] font-mono font-bold tabular-nums ${
+                seasonCountdown.isEnding ? "text-red-400 animate-pulse" : "text-emerald-400"
+              }`}>
+                {seasonCountdown.display}
+              </span>
+            </div>
             <div className="px-2 sm:px-3 py-1.5 border-b border-yellow-500/15 flex items-center justify-between">
               <span className="text-[10px] sm:text-xs text-yellow-400 font-medium">Top Killers</span>
               {followingAddress && (
@@ -1059,6 +1204,13 @@ export function BubbleMapClient() {
                 </button>
               ))}
             </div>
+            {seasonPlacement.myEntry && !seasonPlacement.dismissed && (
+              <div className="px-2 sm:px-3 py-1.5 border-t border-amber-500/20 bg-amber-500/5">
+                <div className="text-[10px] sm:text-xs text-amber-400 font-medium text-center animate-pulse">
+                  🏆 You placed #{seasonPlacement.myEntry.place}!
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -1271,6 +1423,10 @@ export function BubbleMapClient() {
               const kills = myBubble.kills;
               const deaths = myBubble.deaths;
               const tp = myBubble.talentPoints ?? 0;
+              const { xpForCurrent, xpForNext } = getXpThresholds(level);
+              const xpIntoLevel = xp - xpForCurrent;
+              const xpNeeded = xpForNext - xpForCurrent;
+              const xpPct = level >= 100 ? 100 : xpNeeded > 0 ? Math.min(100, Math.max(0, (xpIntoLevel / xpNeeded) * 100)) : 0;
 
               return (
                 <div className="space-y-2">
@@ -1279,8 +1435,24 @@ export function BubbleMapClient() {
                       <Star className="w-3 h-3 text-yellow-400" />
                       <span className="text-sm font-bold text-white">Lv. {level}</span>
                       {isGuest && <span className="text-[9px] text-orange-400 bg-orange-500/20 px-1 rounded">GUEST</span>}
+                      {(myBubble.classId ?? 0) === 1 && <span className="text-[9px] text-emerald-400 bg-emerald-500/20 px-1 rounded">FORTIFY</span>}
+                      {(myBubble.classId ?? 0) === 2 && <span className="text-[9px] text-sky-400 bg-sky-500/20 px-1 rounded">VELOCITY</span>}
+                      {(myBubble.classId ?? 0) === 3 && <span className="text-[9px] text-rose-400 bg-rose-500/20 px-1 rounded">IMPACT</span>}
                     </div>
-                    <span className="text-xs text-amber-400 font-mono">{xp} XP</span>
+                    <span className="text-xs text-amber-400 font-mono">{xp.toLocaleString()} XP</span>
+                  </div>
+                  {/* XP progress bar */}
+                  <div>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-amber-500/20">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-amber-600 to-yellow-400 transition-all duration-500"
+                        style={{ width: `${xpPct}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[9px] text-slate-500">{level >= 100 ? 'MAX' : `${xpIntoLevel.toLocaleString()} / ${xpNeeded.toLocaleString()}`}</span>
+                      <span className="text-[9px] text-amber-500/70">{level >= 100 ? '' : `${xpPct.toFixed(0)}%`}</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-xs">
                     <span className="text-green-400">☠️ {kills}</span>
@@ -1359,6 +1531,16 @@ export function BubbleMapClient() {
           if (!myBubble) return null;
           const talents = myBubble.talents || {} as TalentRanks;
           const tp = myBubble.talentPoints ?? 0;
+          const currentClassId = myBubble.classId ?? 0;
+          const resetsUsed = myBubble.talentResetsUsed ?? 0;
+          const allowedTrees = myBubble.allowedTrees ?? Object.keys(TALENT_TREES);
+          const isTreeAllowed = (treeKey: string) => allowedTrees.includes(treeKey);
+
+          const CLASS_OPTIONS = [
+            { id: 1, name: 'Fortify',  icon: '🛡️', desc: '+0.5% max HP per level', color: 'emerald' },
+            { id: 2, name: 'Velocity', icon: '⚡', desc: '+0.5% fire rate per level', color: 'sky' },
+            { id: 3, name: 'Impact',   icon: '🗡️', desc: '+0.5% bullet damage per level', color: 'rose' },
+          ];
 
           const treeColorMap: Record<string, { bg: string; border: string; text: string; rankBg: string; rankFill: string }> = {
             green:  { bg: 'bg-green-900/20',  border: 'border-green-500/30',  text: 'text-green-400',  rankBg: 'bg-green-900/30',  rankFill: 'bg-green-500' },
@@ -1366,6 +1548,8 @@ export function BubbleMapClient() {
             red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
             yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
             purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
+            teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
+            orange: { bg: 'bg-orange-900/20', border: 'border-orange-500/30', text: 'text-orange-400', rankBg: 'bg-orange-900/30', rankFill: 'bg-orange-500' },
           };
 
           return (
@@ -1376,24 +1560,32 @@ export function BubbleMapClient() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-none"
             >
-              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-6 max-w-6xl w-full max-h-[85vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-bold text-white">Talent Tree</h2>
-                    <span className="text-sm font-mono text-amber-400">
-                      {tp > 0 ? `${tp} points available` : 'No points available'}
+              <div className="pointer-events-auto bg-slate-950/95 backdrop-blur-xl rounded-2xl border border-purple-500/30 p-4 sm:p-5 max-w-2xl w-full">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-bold text-white">Talents</h2>
+                    <span className="text-xs sm:text-sm font-mono text-amber-400">
+                      {tp > 0 ? `${tp} pts` : '0 pts'}
                     </span>
-                    <span className="text-xs font-mono text-purple-400/80">
-                      Ultimates: {capstonesChosen(talents)}/{MAX_CAPSTONES}
+                    <span className="text-[10px] font-mono text-purple-400/80">
+                      Ults: {capstonesChosen(talents)}/{MAX_CAPSTONES}
+                    </span>
+                    <span className="text-[9px] text-slate-500">
+                      Trees: {allowedTrees.map(t => (TALENT_TREES as Record<string, { icon: string }>)[t]?.icon || '?').join(' ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleResetTalents}
-                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0}
-                      className="text-[10px] text-red-400/70 hover:text-red-300 disabled:opacity-30 transition-colors px-2 py-1 rounded border border-red-500/20 hover:border-red-500/40"
+                      disabled={allocatingTalent !== null || totalPointsSpentClient(talents) === 0 || resetsUsed >= 1}
+                      className={`text-[11px] font-semibold transition-colors px-2.5 py-1 rounded border ${
+                        resetsUsed === 0 && totalPointsSpentClient(talents) > 0
+                          ? 'text-white bg-red-600/30 border-red-400/70 glow-pulse-red'
+                          : 'text-red-400/70 hover:text-red-300 border-red-500/20 hover:border-red-500/40'
+                      } disabled:opacity-30`}
+                      title={resetsUsed >= 1 ? 'Reset already used this season' : 'Reset all talents (1 per season)'}
                     >
-                      Reset All
+                      {resetsUsed >= 1 ? 'Reset Used' : 'Reset Talents (1x)'}
                     </button>
                     <button
                       onClick={() => setShowTalentTree(false)}
@@ -1404,43 +1596,110 @@ export function BubbleMapClient() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {/* Class Selection Row */}
+                <div className="grid grid-cols-3 gap-2.5 sm:gap-3 mb-3">
+                  {CLASS_OPTIONS.map(cls => {
+                    const isSelected = currentClassId === cls.id;
+                    const isLocked = currentClassId > 0 && !isSelected;
+                    const noneChosen = currentClassId === 0;
+                    const glowMap: Record<string, string> = {
+                      emerald: 'glow-pulse-emerald border-emerald-400/70 bg-emerald-900/30',
+                      sky:     'glow-pulse-sky border-sky-400/70 bg-sky-900/30',
+                      rose:    'glow-pulse-rose border-rose-400/70 bg-rose-900/30',
+                    };
+                    const glowTextMap: Record<string, string> = {
+                      emerald: 'text-emerald-300',
+                      sky:     'text-sky-300',
+                      rose:    'text-rose-300',
+                    };
+                    const colorMap: Record<string, { active: string; idle: string; text: string }> = {
+                      emerald: { active: 'bg-emerald-900/40 border-emerald-500/60', idle: 'bg-emerald-900/20 border-emerald-500/30 hover:border-emerald-400/50', text: 'text-emerald-400' },
+                      sky:     { active: 'bg-sky-900/40 border-sky-500/60',         idle: 'bg-sky-900/20 border-sky-500/30 hover:border-sky-400/50',             text: 'text-sky-400' },
+                      rose:    { active: 'bg-rose-900/40 border-rose-500/60',       idle: 'bg-rose-900/20 border-rose-500/30 hover:border-rose-400/50',           text: 'text-rose-400' },
+                    };
+                    const c = colorMap[cls.color];
+                    return (
+                      <button
+                        key={cls.id}
+                        onClick={() => !isLocked && !isSelected && handleSelectClass(cls.id)}
+                        disabled={isLocked || isSelected || allocatingTalent !== null}
+                        className={`w-full rounded-lg border px-1.5 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-[11px] font-medium transition-all flex items-center justify-center gap-1 sm:gap-2 ${
+                          isSelected ? c.active : isLocked ? 'bg-slate-800/20 border-slate-700/20 opacity-25' : `${c.idle} cursor-pointer`
+                        } ${noneChosen ? glowMap[cls.color] : ''}`}
+                      >
+                        <span className="text-xs sm:text-sm">{cls.icon}</span>
+                        <span className={isSelected ? c.text : isLocked ? 'text-slate-500' : noneChosen ? glowTextMap[cls.color] : 'text-white'}>{cls.name}</span>
+                        <span className={`text-[8px] sm:text-[9px] hidden sm:inline ${noneChosen ? glowTextMap[cls.color] + '/70' : 'text-slate-500'}`}>{cls.desc}</span>
+                        {isSelected && <span className={`text-[8px] sm:text-[9px] font-bold ${c.text}`}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Tree Tabs */}
+                <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-3">
                   {Object.entries(TALENT_TREES).map(([treeKey, tree]) => {
                     const colors = treeColorMap[tree.color];
+                    const treePoints = tree.talents.reduce((s, t) => s + ((talents as Record<string, number>)[t.id] || 0), 0);
+                    const isActive = selectedTalentTree === treeKey;
+                    const allowed = isTreeAllowed(treeKey);
                     return (
-                      <div key={treeKey} className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
-                        <div className={`text-sm font-bold ${colors.text} mb-3 flex items-center gap-2`}>
-                          <span>{tree.icon}</span>
-                          {tree.name}
-                        </div>
-                        <div className="space-y-2">
-                          {tree.talents.map((talent, talentIdx) => {
-                            const rank = talents[talent.id] ?? 0;
-                            const isMaxed = rank >= talent.maxRank;
-                            const prereqMet = talentIdx === 0 || (talents[tree.talents[talentIdx - 1].id] ?? 0) >= 1;
-                            const isCapstone = CAPSTONE_IDS.includes(talent.id);
-                            const capstoneLocked = isCapstone && rank === 0 && capstonesChosen(talents) >= MAX_CAPSTONES;
-                            const canUpgrade = tp > 0 && !isMaxed && prereqMet && !capstoneLocked;
-                            const isLocked = (!prereqMet && rank === 0) || capstoneLocked;
-                            return (
-                              <button
-                                key={talent.id}
-                                onClick={() => canUpgrade && handleAllocateTalent(talent.id)}
-                                disabled={!canUpgrade || allocatingTalent !== null}
-                                className={`w-full text-left rounded-lg px-3 py-2 transition-all border ${
-                                  isLocked
-                                    ? 'bg-slate-800/20 border-slate-700/20 opacity-30'
-                                    : canUpgrade
-                                      ? `${colors.bg} hover:brightness-125 ${colors.border} cursor-pointer`
-                                      : isMaxed
-                                        ? `${colors.bg} ${colors.border} opacity-70`
-                                        : 'bg-slate-800/30 border-slate-700/30 opacity-50'
-                                } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
-                                    {capstoneLocked ? '🚫 ' : isLocked ? '🔒 ' : ''}{talent.name}
-                                  </span>
+                      <button
+                        key={treeKey}
+                        onClick={() => allowed && setSelectedTalentTree(treeKey)}
+                        disabled={!allowed}
+                        className={`rounded-lg border px-1 sm:px-2 py-1.5 sm:py-2 text-center transition-all ${
+                          !allowed
+                            ? 'bg-slate-800/10 border-slate-700/10 opacity-25 cursor-not-allowed'
+                            : isActive
+                              ? `${colors.bg} ${colors.border}`
+                              : 'bg-slate-800/30 border-slate-700/30 hover:border-slate-600/50'
+                        }`}
+                      >
+                        <div className="text-sm sm:text-base leading-none mb-0.5">{allowed ? tree.icon : '🔒'}</div>
+                        <div className={`text-[8px] sm:text-[10px] font-medium truncate ${!allowed ? 'text-slate-600' : isActive ? colors.text : 'text-slate-400'}`}>{tree.name}</div>
+                        {allowed && treePoints > 0 && (
+                          <div className={`text-[7px] sm:text-[8px] mt-0.5 ${isActive ? colors.text : 'text-slate-500'} opacity-70`}>{treePoints}pt</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Active Tree Talents */}
+                {(() => {
+                  const effectiveTree = isTreeAllowed(selectedTalentTree) ? selectedTalentTree : allowedTrees[0];
+                  const activeTreeEntry = Object.entries(TALENT_TREES).find(([k]) => k === effectiveTree);
+                  if (!activeTreeEntry) return null;
+                  const [, activeTree] = activeTreeEntry;
+                  const colors = treeColorMap[activeTree.color];
+                  return (
+                    <div className={`rounded-xl border ${colors.border} ${colors.bg} p-3`}>
+                      <div className="space-y-1.5">
+                        {activeTree.talents.map((talent, talentIdx) => {
+                          const rank = (talents as Record<string, number>)[talent.id] ?? 0;
+                          const isMaxed = rank >= talent.maxRank;
+                          const prereqMet = talentIdx === 0 || ((talents as Record<string, number>)[activeTree.talents[talentIdx - 1].id] ?? 0) >= 1;
+                          const isCapstone = CAPSTONE_IDS.includes(talent.id);
+                          const capstoneLocked = isCapstone && rank === 0 && capstonesChosen(talents) >= MAX_CAPSTONES;
+                          const canUpgrade = tp > 0 && !isMaxed && prereqMet && !capstoneLocked;
+                          const isLocked = (!prereqMet && rank === 0) || capstoneLocked;
+                          return (
+                            <div
+                              key={talent.id}
+                              className={`rounded-lg px-3 py-2 transition-all border ${
+                                isLocked
+                                  ? 'bg-slate-800/20 border-slate-700/20 opacity-30'
+                                  : isMaxed
+                                    ? `${colors.bg} ${colors.border} opacity-70`
+                                    : `${colors.bg} ${colors.border}`
+                              } ${allocatingTalent === talent.id ? 'animate-pulse' : ''}`}
+                            >
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className={`text-xs font-medium ${isLocked ? 'text-slate-500' : 'text-white'}`}>
+                                  {capstoneLocked ? '🚫 ' : isLocked ? '🔒 ' : ''}{talent.name}
+                                </span>
+                                <div className="flex items-center gap-2">
                                   <div className="flex gap-0.5">
                                     {Array.from({ length: talent.maxRank }).map((_, i) => (
                                       <div
@@ -1449,18 +1708,30 @@ export function BubbleMapClient() {
                                       />
                                     ))}
                                   </div>
+                                  {canUpgrade && (
+                                    <button
+                                      onClick={() => handleAllocateTalent(talent.id)}
+                                      disabled={allocatingTalent !== null}
+                                      className={`text-[10px] font-semibold px-2.5 py-1 rounded-md ${colors.rankFill} text-white hover:brightness-110 active:brightness-90 transition-all`}
+                                    >
+                                      {allocatingTalent === talent.id ? '...' : '+'}
+                                    </button>
+                                  )}
+                                  {isMaxed && (
+                                    <span className={`text-[9px] font-medium ${colors.text} opacity-60`}>MAX</span>
+                                  )}
                                 </div>
-                                <div className="text-[10px] text-slate-400">
-                                  {capstoneLocked ? 'Max 2 ultimates chosen' : talent.desc}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {capstoneLocked ? 'Max 2 ultimates chosen' : talent.desc}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
             </motion.div>
           );
@@ -1532,19 +1803,22 @@ export function BubbleMapClient() {
       {/* Bubble Canvas */}
       {dimensions.width > 0 && dimensions.height > 0 && holders.length > 0 && (
         <BubbleCanvas
+          gameStateRef={gameStateRef}
+          playerPhotos={playerPhotos}
           holders={holders}
           width={dimensions.width}
           height={dimensions.height}
           worldWidth={gameState?.dimensions?.width || 3840}
           worldHeight={gameState?.dimensions?.height || 2160}
           hoveredHolder={hoveredHolder}
-          effectsState={effectsState}
+          effectsStateRef={effectsRef}
           battleState={battleState}
           popEffects={popEffects}
           camera={camera}
           connectedWallet={effectiveAddress}
           lightningArcs={lightningArcs}
           reaperArcs={reaperArcs}
+          laserBeams={laserBeams}
           onHolderClick={setSelectedHolder}
           onHolderHover={setHoveredHolder}
         />
@@ -1700,23 +1974,7 @@ export function BubbleMapClient() {
         onClose={() => setSelectedHolder(null)}
       />
 
-      {/* Live Feed */}
-      {eventLog.length > 0 && (
-        <div className="absolute bottom-12 sm:bottom-4 right-2 sm:right-4 bg-slate-900/80 backdrop-blur-md rounded-lg sm:rounded-xl p-2 sm:p-3 border border-slate-700/50 z-10 w-48 sm:w-64">
-          <div className="text-xs text-slate-400 mb-2 font-medium">📊 Live Feed</div>
-          <div className="space-y-1">
-            {eventLog.slice(0, 8).map((event, i) => (
-              <div
-                key={`ev-${i}`}
-                className="text-xs text-slate-300 font-mono truncate"
-                style={{ opacity: Math.max(0.3, 1 - i * 0.1) }}
-              >
-                {event}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Live Feed — removed */}
 
       {/* Info button — bottom left */}
       <button
@@ -1731,6 +1989,8 @@ export function BubbleMapClient() {
       >
         <Info className="w-4 h-4 text-purple-300" />
       </button>
+
+      <SeasonPlacementPopup placement={seasonPlacement} />
 
       {/* Airdrop claim notification */}
       <AirdropBanner airdropInfo={airdropInfo} />
@@ -1797,6 +2057,13 @@ export function BubbleMapClient() {
 
       {/* Welcome modal — shows once per device */}
       <WelcomeModal />
+
+      {/* Changelog modal — shows on season reset, stays hidden until next season */}
+      <ChangelogModal
+        seasonId={seasonId}
+        isOpen={showChangelog}
+        onClose={() => setChangelogDismissedSeason(gameState?.seasonId ?? 0)}
+      />
 
       {/* Rules modal — opened via info button */}
       {showRules && (

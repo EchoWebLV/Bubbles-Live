@@ -64,7 +64,7 @@ export function GovernanceDashboard() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
             <a
-              href="/"
+              href="/arena"
               className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-purple-400 transition-colors mb-3"
             >
               <ArrowLeft className="w-3 h-3" />

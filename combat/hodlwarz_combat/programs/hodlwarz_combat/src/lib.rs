@@ -3,18 +3,23 @@ use ephemeral_rollups_sdk::anchor::{commit, delegate, ephemeral};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
 use ephemeral_rollups_sdk::ephem::{commit_accounts, commit_and_undelegate_accounts};
 
-declare_id!("8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie");
+declare_id!("AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw");
 
 const ARENA_SEED: &[u8] = b"arena";
 const PLAYER_SEED: &[u8] = b"player_v2";
+const SEASON_SEED: &[u8] = b"season";
+const LEADERBOARD_SEED: &[u8] = b"leaderboard";
+
+const MAX_LEADERBOARD_ENTRIES: usize = 10;
+const SEASON_DURATION_DEFAULT: i64 = 86400; // 24 hours
 
 const BASE_HEALTH: u16 = 100;
 const BASE_ATTACK: u16 = 10; // 0.1 * DAMAGE_SCALE(100)
-const LEVEL_SCALE: u64 = 10;
+const LEVEL_SCALE_EARLY: u64 = 10;   // levels 1-25: easier to reach
+const LEVEL_SCALE: u64 = 22;        // levels 26-50
+const LEVEL_SCALE_50PLUS: u64 = 25; // levels 51-100: scales to ~450k at 100
 const MAX_LEVEL: u8 = 100;
-const GHOST_BASE_SECS: i64 = 20;
-const GHOST_PER_LEVEL_SECS: i64 = 1;
-const GHOST_PER_LEVEL_SECS_50PLUS: i64 = 3;
+const GHOST_BASE_SECS: i64 = 8;
 const DAMAGE_CAP: u32 = 500; // 5.0 * 100
 
 const XP_PER_KILL_BASE: u64 = 10;
@@ -98,9 +103,16 @@ fn calc_level(xp: u64) -> u8 {
     let mut total_xp: u64 = 0;
     let mut penalty_bp: u64 = 10000; // basis points (10000 = 1.0x)
     for lvl in 1..(MAX_LEVEL as u64) {
-        let base_cost = (2 * lvl - 1) * LEVEL_SCALE;
+        let scale = if lvl <= 25 {
+            LEVEL_SCALE_EARLY
+        } else if lvl <= 50 {
+            LEVEL_SCALE
+        } else {
+            LEVEL_SCALE_50PLUS
+        };
+        let base_cost = (2 * lvl - 1) * scale;
         if lvl > 50 {
-            penalty_bp = penalty_bp * 106 / 100; // compound 6% per level
+            penalty_bp = penalty_bp * 10350 / 10000; // compound 3.5% — ~630k at 100
         }
         let cost = base_cost * penalty_bp / 10000;
         total_xp += cost;
@@ -112,11 +124,12 @@ fn calc_level(xp: u64) -> u8 {
 }
 
 fn calc_ghost_secs(level: u8) -> i64 {
+    // Balance: 8s base, +0.4s/lvl (1-50), +0.8s/lvl (51-100) — integer math
     let lvl = level as i64;
     if lvl <= 50 {
-        GHOST_BASE_SECS + (lvl - 1) * GHOST_PER_LEVEL_SECS
+        GHOST_BASE_SECS + (lvl - 1) * 2 / 5
     } else {
-        GHOST_BASE_SECS + 49 * GHOST_PER_LEVEL_SECS + (lvl - 50) * GHOST_PER_LEVEL_SECS_50PLUS
+        GHOST_BASE_SECS + 49 * 2 / 5 + (lvl - 50) * 4 / 5
     }
 }
 
@@ -314,10 +327,11 @@ pub mod hodlwarz_combat {
             let victim_level = calc_level(victim.xp.saturating_sub(XP_PER_DEATH)) as u64;
             let mut kill_xp = XP_PER_KILL_BASE + victim_level.saturating_sub(1) * XP_PER_KILL_PER_LEVEL;
 
-            // Bounty: 2x XP for killing level 50+ players
-            if victim_level >= 50 {
-                kill_xp *= 2;
-            }
+            // Bounty: +5% XP per level diff (cap 4x) — underdogs catch up by hunting higher levels
+            let killer_level = calc_level(attacker.xp) as u64;
+            let level_diff = victim_level.saturating_sub(killer_level);
+            let bounty_bp = 10000u64.saturating_add((level_diff * 500).min(30000));
+            kill_xp = kill_xp * bounty_bp / 10000;
 
             // Experience talent (slot 20 = talent_rampage): +X% XP
             let exp_bonus = lookup_bps(attacker.talent_rampage, &EXPERIENCE_BPS);
@@ -610,6 +624,75 @@ pub mod hodlwarz_combat {
         msg!("Session ended, {} accounts undelegated", count);
         Ok(())
     }
+
+    // ─── Season Management ────────────────────────────────────────────
+
+    pub fn init_season(ctx: Context<InitSeason>, duration_secs: i64) -> Result<()> {
+        let season = &mut ctx.accounts.season;
+        season.authority = ctx.accounts.authority.key();
+        season.season_number = 1;
+        season.started_at = Clock::get()?.unix_timestamp;
+        season.duration_secs = if duration_secs > 0 { duration_secs } else { SEASON_DURATION_DEFAULT };
+        season.is_finalized = false;
+        msg!("Season 1 initialized ({}s duration)", season.duration_secs);
+        Ok(())
+    }
+
+    /// Authority snapshots the top 10 leaderboard on-chain at season end.
+    /// Entries are passed in pre-sorted order by the server (which reads kills from ER state).
+    pub fn finalize_season(ctx: Context<FinalizeSeason>, entries: Vec<LeaderboardInput>) -> Result<()> {
+        let season = &mut ctx.accounts.season;
+        require!(!season.is_finalized, CombatError::SeasonAlreadyFinalized);
+        require!(entries.len() <= MAX_LEADERBOARD_ENTRIES, CombatError::TooManyEntries);
+
+        let now = Clock::get()?.unix_timestamp;
+
+        let leaderboard = &mut ctx.accounts.leaderboard;
+        leaderboard.season_number = season.season_number;
+        leaderboard.finalized_at = now;
+        leaderboard.entry_count = entries.len() as u8;
+
+        for (i, e) in entries.iter().enumerate() {
+            leaderboard.entries[i] = LeaderboardEntry {
+                wallet: e.wallet,
+                kills: e.kills,
+                level: e.level,
+                place: (i + 1) as u8,
+            };
+        }
+
+        season.is_finalized = true;
+        msg!("Season {} finalized with {} entries", season.season_number, entries.len());
+        Ok(())
+    }
+
+    pub fn start_next_season(ctx: Context<StartNextSeason>, duration_secs: i64) -> Result<()> {
+        let season = &mut ctx.accounts.season;
+        require!(season.is_finalized, CombatError::SeasonNotFinalized);
+
+        season.season_number += 1;
+        season.started_at = Clock::get()?.unix_timestamp;
+        season.duration_secs = if duration_secs > 0 { duration_secs } else { season.duration_secs };
+        season.is_finalized = false;
+        msg!("Season {} started ({}s duration)", season.season_number, season.duration_secs);
+        Ok(())
+    }
+
+    // ─── Admin overrides (authority only) ─────────────────────────────
+
+    pub fn admin_set_season(ctx: Context<AdminSetSeason>, season_number: u32) -> Result<()> {
+        let season = &mut ctx.accounts.season;
+        season.season_number = season_number;
+        season.started_at = Clock::get()?.unix_timestamp;
+        season.is_finalized = false;
+        msg!("Admin: season number set to {}", season_number);
+        Ok(())
+    }
+
+    pub fn admin_close_leaderboard(ctx: Context<AdminCloseLeaderboard>, _season_number: u32) -> Result<()> {
+        msg!("Admin: leaderboard for season {} closed", ctx.accounts.leaderboard.season_number);
+        Ok(())
+    }
 }
 
 // ─── Talent prerequisite chain ───────────────────────────────────────────────
@@ -652,7 +735,43 @@ fn talent_prerequisite(talent_id: u8) -> Option<u8> {
     }
 }
 
+// ─── Season / Leaderboard Structs ────────────────────────────────────────────
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct LeaderboardInput {
+    pub wallet: Pubkey,
+    pub kills: u64,
+    pub level: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct LeaderboardEntry {
+    pub wallet: Pubkey,
+    pub kills: u64,
+    pub level: u8,
+    pub place: u8,
+}
+
 // ─── Account Structs ─────────────────────────────────────────────────────────
+
+#[account]
+pub struct SeasonState {
+    pub authority: Pubkey,     // 32
+    pub season_number: u32,    // 4
+    pub started_at: i64,       // 8
+    pub duration_secs: i64,    // 8
+    pub is_finalized: bool,    // 1
+}
+// space: 8 (discriminator) + 32 + 4 + 8 + 8 + 1 = 61
+
+#[account]
+pub struct SeasonLeaderboard {
+    pub season_number: u32,                              // 4
+    pub finalized_at: i64,                               // 8
+    pub entry_count: u8,                                 // 1
+    pub entries: [LeaderboardEntry; 10],                 // 10 * (32 + 8 + 1 + 1) = 420
+}
+// space: 8 + 4 + 8 + 1 + 420 = 441
 
 #[account]
 pub struct Arena {
@@ -925,6 +1044,93 @@ pub struct EndSession<'info> {
     pub arena: Account<'info, Arena>,
 }
 
+// ─── Season Instruction Contexts ─────────────────────────────────────────────
+
+#[derive(Accounts)]
+pub struct InitSeason<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + 32 + 4 + 8 + 8 + 1,
+        seeds = [SEASON_SEED],
+        bump,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct FinalizeSeason<'info> {
+    #[account(
+        mut,
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + 4 + 8 + 1 + (10 * (32 + 8 + 1 + 1)),
+        seeds = [LEADERBOARD_SEED, &season.season_number.to_le_bytes()],
+        bump,
+    )]
+    pub leaderboard: Account<'info, SeasonLeaderboard>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct StartNextSeason<'info> {
+    #[account(
+        mut,
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+// ─── Admin Instruction Contexts ──────────────────────────────────────────────
+
+#[derive(Accounts)]
+pub struct AdminSetSeason<'info> {
+    #[account(
+        mut,
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(season_number: u32)]
+pub struct AdminCloseLeaderboard<'info> {
+    #[account(
+        seeds = [SEASON_SEED],
+        bump,
+        has_one = authority,
+    )]
+    pub season: Account<'info, SeasonState>,
+    #[account(
+        mut,
+        close = authority,
+        seeds = [LEADERBOARD_SEED, &season_number.to_le_bytes()],
+        bump,
+    )]
+    pub leaderboard: Account<'info, SeasonLeaderboard>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
 // ─── Errors ──────────────────────────────────────────────────────────────────
 
 #[error_code]
@@ -961,4 +1167,12 @@ pub enum CombatError {
     InvalidHitCount,
     #[msg("Invalid migration: account is not a valid old-format PlayerState")]
     InvalidMigration,
+    #[msg("Season already finalized")]
+    SeasonAlreadyFinalized,
+    #[msg("Season has not ended yet")]
+    SeasonNotEnded,
+    #[msg("Season not finalized yet")]
+    SeasonNotFinalized,
+    #[msg("Too many leaderboard entries (max 10)")]
+    TooManyEntries,
 }

@@ -57,6 +57,13 @@ async function migrate() {
       );
     `);
 
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS game_config (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+
     console.log('✅ Database migrated successfully');
     return true;
   } catch (err) {

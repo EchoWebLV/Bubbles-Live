@@ -22,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950 antialiased overflow-hidden touch-manipulation">
+        <body className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/50 to-slate-950 antialiased touch-manipulation">
         <WalletProvider>
           {children}
           <Toaster

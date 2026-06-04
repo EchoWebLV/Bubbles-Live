@@ -1,5 +1,5 @@
 {
-  "address": "8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie",
+  "address": "AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw",
   "metadata": {
     "name": "hodlwarz_combat",
     "version": "0.1.0",
@@ -162,38 +162,38 @@
             "program": {
               "kind": "const",
               "value": [
-                116,
-                172,
-                114,
-                2,
-                205,
-                215,
-                149,
-                172,
-                201,
-                172,
-                192,
-                5,
-                97,
-                165,
-                118,
-                116,
-                168,
-                71,
-                75,
-                244,
-                120,
-                223,
-                36,
-                214,
-                93,
+                148,
+                43,
+                220,
+                127,
+                29,
+                213,
+                104,
+                147,
+                226,
+                130,
+                84,
                 50,
-                209,
-                74,
-                189,
-                89,
-                12,
-                235
+                198,
+                220,
+                60,
+                157,
+                43,
+                22,
+                67,
+                76,
+                227,
+                214,
+                188,
+                145,
+                90,
+                200,
+                37,
+                24,
+                66,
+                216,
+                1,
+                234
               ]
             }
           }
@@ -289,7 +289,7 @@
         },
         {
           "name": "owner_program",
-          "address": "8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie"
+          "address": "AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw"
         },
         {
           "name": "delegation_program",
@@ -343,38 +343,38 @@
             "program": {
               "kind": "const",
               "value": [
-                116,
-                172,
-                114,
-                2,
-                205,
-                215,
-                149,
-                172,
-                201,
-                172,
-                192,
-                5,
-                97,
-                165,
-                118,
-                116,
-                168,
-                71,
-                75,
-                244,
-                120,
-                223,
-                36,
-                214,
-                93,
+                148,
+                43,
+                220,
+                127,
+                29,
+                213,
+                104,
+                147,
+                226,
+                130,
+                84,
                 50,
-                209,
-                74,
-                189,
-                89,
-                12,
-                235
+                198,
+                220,
+                60,
+                157,
+                43,
+                22,
+                67,
+                76,
+                227,
+                214,
+                188,
+                145,
+                90,
+                200,
+                37,
+                24,
+                66,
+                216,
+                1,
+                234
               ]
             }
           }
@@ -478,7 +478,7 @@
         },
         {
           "name": "owner_program",
-          "address": "8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie"
+          "address": "AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw"
         },
         {
           "name": "delegation_program",
@@ -545,6 +545,97 @@
       "args": []
     },
     {
+      "name": "finalize_season",
+      "docs": [
+        "Authority snapshots the top 10 leaderboard on-chain at season end.",
+        "Entries are passed in pre-sorted order by the server (which reads kills from ER state)."
+      ],
+      "discriminator": [
+        183,
+        221,
+        183,
+        7,
+        73,
+        215,
+        158,
+        50
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "leaderboard",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  97,
+                  100,
+                  101,
+                  114,
+                  98,
+                  111,
+                  97,
+                  114,
+                  100
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "season.season_number",
+                "account": "SeasonState"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "season"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "entries",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "LeaderboardInput"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "init_arena",
       "discriminator": [
         24,
@@ -586,6 +677,55 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "init_season",
+      "discriminator": [
+        179,
+        47,
+        101,
+        197,
+        114,
+        97,
+        174,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "duration_secs",
+          "type": "i64"
+        }
+      ]
     },
     {
       "name": "migrate_player",
@@ -822,6 +962,54 @@
       "args": []
     },
     {
+      "name": "start_next_season",
+      "discriminator": [
+        218,
+        108,
+        116,
+        118,
+        107,
+        23,
+        86,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "season",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  97,
+                  115,
+                  111,
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "season"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "duration_secs",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "upgrade_stat",
       "discriminator": [
         2,
@@ -872,6 +1060,32 @@
         16,
         244,
         195
+      ]
+    },
+    {
+      "name": "SeasonLeaderboard",
+      "discriminator": [
+        214,
+        216,
+        51,
+        158,
+        232,
+        204,
+        158,
+        86
+      ]
+    },
+    {
+      "name": "SeasonState",
+      "discriminator": [
+        95,
+        85,
+        74,
+        250,
+        108,
+        189,
+        152,
+        52
       ]
     }
   ],
@@ -955,6 +1169,26 @@
       "code": 6015,
       "name": "InvalidMigration",
       "msg": "Invalid migration: account is not a valid old-format PlayerState"
+    },
+    {
+      "code": 6016,
+      "name": "SeasonAlreadyFinalized",
+      "msg": "Season already finalized"
+    },
+    {
+      "code": 6017,
+      "name": "SeasonNotEnded",
+      "msg": "Season has not ended yet"
+    },
+    {
+      "code": 6018,
+      "name": "SeasonNotFinalized",
+      "msg": "Season not finalized yet"
+    },
+    {
+      "code": 6019,
+      "name": "TooManyEntries",
+      "msg": "Too many leaderboard entries (max 10)"
     }
   ],
   "types": [
@@ -978,6 +1212,50 @@
           {
             "name": "is_active",
             "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LeaderboardEntry",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "kills",
+            "type": "u64"
+          },
+          {
+            "name": "level",
+            "type": "u8"
+          },
+          {
+            "name": "place",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LeaderboardInput",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "type": "pubkey"
+          },
+          {
+            "name": "kills",
+            "type": "u64"
+          },
+          {
+            "name": "level",
+            "type": "u8"
           }
         ]
       }
@@ -1137,6 +1415,67 @@
           },
           {
             "name": "manual_build",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonLeaderboard",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "season_number",
+            "type": "u32"
+          },
+          {
+            "name": "finalized_at",
+            "type": "i64"
+          },
+          {
+            "name": "entry_count",
+            "type": "u8"
+          },
+          {
+            "name": "entries",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "LeaderboardEntry"
+                  }
+                },
+                10
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "SeasonState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "season_number",
+            "type": "u32"
+          },
+          {
+            "name": "started_at",
+            "type": "i64"
+          },
+          {
+            "name": "duration_secs",
+            "type": "i64"
+          },
+          {
+            "name": "is_finalized",
             "type": "bool"
           }
         ]

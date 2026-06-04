@@ -8,10 +8,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Program IDs — configurable via env for dev/production split
-// Dev:  8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie
-// Prod: AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw
 const COMBAT_PROGRAM_ID = new PublicKey(
-  process.env.COMBAT_PROGRAM_ID || '8rSofJ1enam27SS3btJQAefNQGhUWue8vMMZeUiXscie'
+  process.env.COMBAT_PROGRAM_ID || 'AyQ8ZnxYyFxYiHmxjFXs3ptgPvrSKi4WWfxhfLqccFsw'
 );
 const DELEGATION_PROGRAM_ID = new PublicKey(
   process.env.DELEGATION_PROGRAM_ID || 'DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh'
@@ -777,15 +775,25 @@ class MagicBlockService {
         ricochet: account.talentDeflect || 0,
         counterAttack: account.talentAbsorb || 0,
         chainLightning: account.talentLastStand || 0,
-        nova: account.talentCloak || 0,
+        orbitalLaser: account.talentCloak || 0,
         focusFire: account.talentDash || 0,
         experience: account.talentRampage || 0,
         execute: account.talentHoming || 0,
         killRush: account.talentRicochet || 0,
         reaperArc: account.talentDeathbomb || 0,
         berserker: account.talentFrenzy || 0,
+        decoy: account.talentLandmine || 0,
+        deathMirage: account.talentEvasionSapper || 0,
+        decoyBarrage: account.talentDeadDrop || 0,
+        volatileDecoy: account.talentDecoy || 0,
+        singularity: account.talentSingularity || 0,
+        quickfire: account.talentQuickfire || 0,
+        velocityRounds: account.talentVelocityRounds || 0,
+        longShot: account.talentLongShot || 0,
+        overdrive: account.talentOverdrive || 0,
+        bulletStorm: account.talentBulletStorm || 0,
       },
-      manualBuild: account.manualBuild || false,
+      manualBuild: false,
     };
   }
 
@@ -999,6 +1007,146 @@ class MagicBlockService {
     }
   }
 
+  // ─── Season Management (Base Layer) ─────────────────────────────
+
+  async initSeason(durationSecs = 86400) {
+    if (!this.ready) return null;
+
+    try {
+      const [seasonPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('season')],
+        COMBAT_PROGRAM_ID
+      );
+
+      const existing = await this.baseConnection.getAccountInfo(seasonPda);
+      if (existing) {
+        console.log('MagicBlock: Season PDA already exists, reading state...');
+        const seasonState = this.baseProgram.coder.accounts.decode('seasonState', existing.data);
+        this.seasonPda = seasonPda;
+        this.currentSeasonNumber = seasonState.seasonNumber;
+        this.seasonStartedAt = typeof seasonState.startedAt === 'object'
+          ? seasonState.startedAt.toNumber() : seasonState.startedAt;
+        this.seasonDurationSecs = typeof seasonState.durationSecs === 'object'
+          ? seasonState.durationSecs.toNumber() : seasonState.durationSecs;
+        this.seasonFinalized = seasonState.isFinalized;
+        console.log(`MagicBlock: Season ${this.currentSeasonNumber} active (started ${this.seasonStartedAt})`);
+        return seasonPda;
+      }
+
+      const tx = await this.baseProgram.methods
+        .initSeason(new anchor.BN(durationSecs))
+        .accounts({
+          season: seasonPda,
+          authority: this.serverKeypair.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      this.seasonPda = seasonPda;
+      this.currentSeasonNumber = 1;
+      this.seasonStartedAt = Math.floor(Date.now() / 1000);
+      this.seasonDurationSecs = durationSecs;
+      this.seasonFinalized = false;
+
+      console.log(`MagicBlock: Season 1 initialized (${durationSecs}s), tx:`, tx);
+      this._logEvent('season', `Season 1 initialized (${durationSecs}s)`, tx);
+      return seasonPda;
+    } catch (err) {
+      console.error('MagicBlock: initSeason failed:', err.message);
+      return null;
+    }
+  }
+
+  async finalizeSeason(topEntries) {
+    if (!this.ready || !this.seasonPda) return null;
+
+    try {
+      const entries = topEntries.slice(0, 10).map(e => ({
+        wallet: new PublicKey(e.wallet || e.address),
+        kills: new anchor.BN(e.kills),
+        level: e.level,
+      }));
+
+      const seasonNumber = this.currentSeasonNumber;
+      const [leaderboardPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('leaderboard'), Buffer.from(new Uint32Array([seasonNumber]).buffer)],
+        COMBAT_PROGRAM_ID
+      );
+
+      const tx = await this.baseProgram.methods
+        .finalizeSeason(entries)
+        .accounts({
+          season: this.seasonPda,
+          leaderboard: leaderboardPda,
+          authority: this.serverKeypair.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      this.seasonFinalized = true;
+      console.log(`MagicBlock: Season ${seasonNumber} finalized with ${entries.length} entries, tx:`, tx);
+      this._logEvent('season', `Season ${seasonNumber} finalized — ${entries.length} winners recorded on-chain`, tx);
+      return tx;
+    } catch (err) {
+      console.error('MagicBlock: finalizeSeason failed:', err.message);
+      if (err.logs) console.error('Logs:', err.logs);
+      return null;
+    }
+  }
+
+  async startNextSeason(durationSecs = 0) {
+    if (!this.ready || !this.seasonPda) return null;
+
+    try {
+      const tx = await this.baseProgram.methods
+        .startNextSeason(new anchor.BN(durationSecs))
+        .accounts({
+          season: this.seasonPda,
+          authority: this.serverKeypair.publicKey,
+        })
+        .rpc();
+
+      this.currentSeasonNumber += 1;
+      this.seasonStartedAt = Math.floor(Date.now() / 1000);
+      if (durationSecs > 0) this.seasonDurationSecs = durationSecs;
+      this.seasonFinalized = false;
+
+      console.log(`MagicBlock: Season ${this.currentSeasonNumber} started, tx:`, tx);
+      this._logEvent('season', `Season ${this.currentSeasonNumber} started`, tx);
+      return tx;
+    } catch (err) {
+      console.error('MagicBlock: startNextSeason failed:', err.message);
+      return null;
+    }
+  }
+
+  getSeasonInfo() {
+    return {
+      seasonNumber: this.currentSeasonNumber || 0,
+      startedAt: this.seasonStartedAt || 0,
+      durationSecs: this.seasonDurationSecs || 86400,
+      isFinalized: this.seasonFinalized || false,
+      endsAt: (this.seasonStartedAt || 0) + (this.seasonDurationSecs || 86400),
+    };
+  }
+
+  async refreshSeasonFromChain() {
+    if (!this.seasonPda) return null;
+    try {
+      const acct = await this.baseConnection.getAccountInfo(this.seasonPda);
+      if (!acct) return null;
+      const data = acct.data;
+      this.currentSeasonNumber = data.readUInt32LE(40);
+      this.seasonStartedAt = Number(data.readBigInt64LE(44));
+      this.seasonDurationSecs = Number(data.readBigInt64LE(52));
+      this.seasonFinalized = data[60] === 1;
+      return this.getSeasonInfo();
+    } catch (err) {
+      console.error('MagicBlock: refreshSeasonFromChain failed:', err.message);
+      return null;
+    }
+  }
+
   // ─── Status ──────────────────────────────────────────────────────
 
   getStatus() {
@@ -1016,6 +1164,7 @@ class MagicBlockService {
       },
       programId: COMBAT_PROGRAM_ID.toBase58(),
       erValidator: ER_VALIDATOR.toBase58(),
+      season: this.getSeasonInfo(),
     };
   }
 }

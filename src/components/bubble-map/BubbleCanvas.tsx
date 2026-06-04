@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import type { Holder, PopEffect } from "./types";
 import type { EffectsState } from "./effects";
 import type { BattleState, BattleBubble, Bullet, DamageNumber } from "./battle";
-import type { LightningArc, ReaperArcVfx } from "./effects";
+import type { LightningArc, ReaperArcVfx, OrbitalLaserVfx } from "./effects";
 import { drawEffects, getBubbleEffectModifiers } from "./effects";
-import { BATTLE_CONFIG, getGhostRemainingTime, getCurvedBulletPosition } from "./battle";
+import { BATTLE_CONFIG, getGhostRemainingTime } from "./battle";
+import type { GameState } from "@/hooks/useGameSocket";
 
 interface Camera {
   x: number;
@@ -16,20 +17,94 @@ interface Camera {
 
 const DEFAULT_CAMERA: Camera = { x: 0, y: 0, zoom: 1 };
 
+function buildDisplayFromGameState(
+  gameState: GameState,
+  playerPhotos: Record<string, string>
+): { holders: Holder[]; battleState: BattleState } {
+  const holders: Holder[] = gameState.holders.map(h => ({
+    address: h.address,
+    balance: h.balance,
+    percentage: h.percentage,
+    color: h.color,
+    radius: h.radius,
+    x: h.x,
+    y: h.y,
+    isNew: h.isNew,
+    spawnTime: h.spawnTime,
+    photo: playerPhotos[h.address] || null,
+  }));
+  const battleState: BattleState = {
+    bubbles: new Map(
+      gameState.battleBubbles.map(b => [b.address, {
+        address: b.address,
+        health: b.health,
+        maxHealth: b.maxHealth,
+        isGhost: b.isGhost,
+        ghostUntil: b.ghostUntil,
+        lastShotTime: 0,
+        kills: b.kills,
+        deaths: b.deaths,
+        level: b.level ?? 1,
+        xp: b.xp ?? 0,
+        healthLevel: b.healthLevel ?? 1,
+        attackLevel: b.attackLevel ?? 1,
+        attackPower: b.attackPower ?? 10,
+        isAlive: b.isAlive !== false,
+        talents: (b.talents ?? {}) as Record<string, number>,
+        talentPoints: b.talentPoints ?? 0,
+        manualBuild: b.manualBuild ?? false,
+        classId: b.classId ?? 0,
+        talentResetsUsed: b.talentResetsUsed ?? 0,
+        allowedTrees: b.allowedTrees ?? undefined,
+      }])
+    ),
+    bullets: gameState.bullets.map(b => ({
+      id: b.id,
+      shooterAddress: b.shooterAddress,
+      targetAddress: "",
+      shooterColor: b.shooterColor,
+      x: b.x,
+      y: b.y,
+      startX: b.startX,
+      startY: b.startY,
+      targetX: b.targetX,
+      targetY: b.targetY,
+      progress: b.progress,
+      curveDirection: b.curveDirection,
+      curveStrength: b.curveStrength,
+      vx: b.vx ?? 0,
+      vy: b.vy ?? 0,
+      damage: 0.1,
+      createdAt: 0,
+      isBloodBolt: b.isBloodBolt,
+      isRocket: b.isRocket,
+    })),
+    damageNumbers: gameState.damageNumbers,
+    mines: gameState.mines,
+    decoyClones: gameState.decoyClones,
+    lastUpdateTime: Date.now(),
+  };
+  return { holders, battleState };
+}
+
 interface BubbleCanvasProps {
+  gameStateRef?: React.RefObject<GameState | null> | React.MutableRefObject<GameState | null>;
+  playerPhotos?: Record<string, string>;
   holders: Holder[];
   width: number;
   height: number;
   worldWidth?: number;
   worldHeight?: number;
   hoveredHolder: Holder | null;
-  effectsState: EffectsState;
+  effectsState?: EffectsState;
+  effectsStateRef?: React.RefObject<EffectsState>;
   battleState: BattleState;
   popEffects: PopEffect[];
   camera?: Camera;
   connectedWallet?: string | null;
   lightningArcs?: LightningArc[];
   reaperArcs?: ReaperArcVfx[];
+  laserBeams?: OrbitalLaserVfx[];
   onHolderClick: (holder: Holder) => void;
   onHolderHover: (holder: Holder | null) => void;
 }
@@ -46,6 +121,8 @@ interface Spark {
 }
 
 export function BubbleCanvas({
+  gameStateRef: gameStateRefProp,
+  playerPhotos = {},
   holders,
   width,
   height,
@@ -53,12 +130,14 @@ export function BubbleCanvas({
   worldHeight = 2160,
   hoveredHolder,
   effectsState,
+  effectsStateRef: effectsStateRefProp,
   battleState,
   popEffects,
   camera = DEFAULT_CAMERA,
   connectedWallet,
   lightningArcs = [],
   reaperArcs = [],
+  laserBeams = [],
   onHolderClick,
   onHolderHover,
 }: BubbleCanvasProps) {
@@ -68,17 +147,46 @@ export function BubbleCanvas({
   const prevDamageCountRef = useRef(0);
   const imageCache = useRef<Map<string, HTMLImageElement | null>>(new Map());
   const imageSrcCache = useRef<Map<string, string>>(new Map());
+  const rafRef = useRef<number>(0);
 
-  // Keep holdersRef updated for click detection
-  useEffect(() => {
-    holdersRef.current = holders;
-  }, [holders]);
+  // Refs for all draw inputs so rAF can read latest without effect deps
+  const widthRef = useRef(width);
+  const heightRef = useRef(height);
+  const worldWidthRef = useRef(worldWidth);
+  const worldHeightRef = useRef(worldHeight);
+  const hoveredHolderRef = useRef(hoveredHolder);
+  const _internalEffectsRef = useRef(effectsState ?? ({} as EffectsState));
+  const effectsStateRef = effectsStateRefProp ?? _internalEffectsRef;
+  const battleStateRef = useRef(battleState);
+  const popEffectsRef = useRef(popEffects);
+  const cameraRef = useRef(camera);
+  const connectedWalletRef = useRef(connectedWallet);
+  const lightningArcsRef = useRef(lightningArcs);
+  const reaperArcsRef = useRef(reaperArcs);
+  const laserBeamsRef = useRef(laserBeams);
+  const playerPhotosRef = useRef(playerPhotos);
+  widthRef.current = width;
+  heightRef.current = height;
+  worldWidthRef.current = worldWidth;
+  worldHeightRef.current = worldHeight;
+  hoveredHolderRef.current = hoveredHolder;
+  if (!effectsStateRefProp && effectsState) _internalEffectsRef.current = effectsState;
+  battleStateRef.current = battleState;
+  popEffectsRef.current = popEffects;
+  cameraRef.current = camera;
+  connectedWalletRef.current = connectedWallet;
+  lightningArcsRef.current = lightningArcs;
+  reaperArcsRef.current = reaperArcs;
+  laserBeamsRef.current = laserBeams;
+  playerPhotosRef.current = playerPhotos;
+
+  // Keep holdersRef updated when not using gameStateRef (for click detection fallback)
+  if (!gameStateRefProp) holdersRef.current = holders;
 
   // Set up canvas size
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !width || !height) return;
-    
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
@@ -86,40 +194,58 @@ export function BubbleCanvas({
     canvas.style.height = `${height}px`;
   }, [width, height]);
 
-  // Draw whenever holders, effects, or battle state change
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !width || !height || !holders.length) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Single draw frame: read from refs (or use passed-in data when no gameStateRef)
+  const drawFrame = useCallback((ctx: CanvasRenderingContext2D) => {
+    const w = widthRef.current;
+    const h = heightRef.current;
+    if (!w || !h) return;
+    let drawHolders = holdersRef.current;
+    let drawBattleState = battleStateRef.current;
+    if (gameStateRefProp?.current) {
+      const { holders: derivedHolders, battleState: derivedBattleState } = buildDisplayFromGameState(
+        gameStateRefProp.current,
+        playerPhotosRef.current
+      );
+      drawHolders = derivedHolders;
+      drawBattleState = derivedBattleState;
+      holdersRef.current = derivedHolders;
+    }
+    if (drawHolders.length === 0) return;
 
     const dpr = window.devicePixelRatio || 1;
     const now = Date.now();
+    const worldW = worldWidthRef.current;
+    const worldH = worldHeightRef.current;
+    const cam = cameraRef.current;
+    const effects = effectsStateRef.current;
+    const popEffs = popEffectsRef.current;
+    const connWallet = connectedWalletRef.current;
+    const lightning = lightningArcsRef.current;
+    const reaper = reaperArcsRef.current;
+    const lasers = laserBeamsRef.current;
+    const hovered = hoveredHolderRef.current;
     
-    // Reset transform and clear
+    const canvas = ctx.canvas;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(dpr, dpr);
-    
-    // Apply camera transform (pan and zoom)
-    const centerX = width / 2;
-    const centerY = height / 2;
-    ctx.translate(centerX, centerY);
-    ctx.scale(camera.zoom, camera.zoom);
-    ctx.translate(-centerX + camera.x, -centerY + camera.y);
 
-    // Synthwave grid background (zooms with camera)
+    const centerX = w / 2;
+    const centerY = h / 2;
+    ctx.translate(centerX, centerY);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-centerX + cam.x, -centerY + cam.y);
+
     const gridSize = 60;
-    const viewLeft = -centerX / camera.zoom + centerX - camera.x;
-    const viewTop = -centerY / camera.zoom + centerY - camera.y;
-    const viewRight = viewLeft + width / camera.zoom;
-    const viewBottom = viewTop + height / camera.zoom;
+    const viewLeft = -centerX / cam.zoom + centerX - cam.x;
+    const viewTop = -centerY / cam.zoom + centerY - cam.y;
+    const viewRight = viewLeft + w / cam.zoom;
+    const viewBottom = viewTop + h / cam.zoom;
     const startX = Math.floor(viewLeft / gridSize) * gridSize;
     const startY = Math.floor(viewTop / gridSize) * gridSize;
 
     ctx.strokeStyle = 'rgba(147, 51, 234, 0.08)';
-    ctx.lineWidth = 1 / camera.zoom;
+    ctx.lineWidth = 1 / cam.zoom;
     ctx.beginPath();
     for (let x = startX; x <= viewRight; x += gridSize) {
       ctx.moveTo(x, viewTop);
@@ -131,43 +257,41 @@ export function BubbleCanvas({
     }
     ctx.stroke();
 
-    // Draw world boundary walls (double line)
-    const wallLineWidth = 2 / camera.zoom;
-    const wallGap = 6 / camera.zoom;
+    const wallLineWidth = 2 / cam.zoom;
+    const wallGap = 6 / cam.zoom;
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
     ctx.lineWidth = wallLineWidth;
-    ctx.strokeRect(0, 0, worldWidth, worldHeight);
+    ctx.strokeRect(0, 0, worldW, worldH);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.strokeRect(-wallGap, -wallGap, worldWidth + wallGap * 2, worldHeight + wallGap * 2);
+    ctx.strokeRect(-wallGap, -wallGap, worldW + wallGap * 2, worldH + wallGap * 2);
 
-    // Draw effects background (ripples, global effects)
-    drawEffects(ctx, effectsState, width, height);
+    drawEffects(ctx, effects, w, h);
 
-    // Build a map of holder positions for targeting lines
     const holderPositions = new Map<string, { x: number; y: number; color: string }>();
-    holders.forEach(h => {
+    const margin = 80;
+    const inView = (x: number, y: number) =>
+      x >= viewLeft - margin && x <= viewRight + margin && y >= viewTop - margin && y <= viewBottom + margin;
+
+    drawHolders.forEach(h => {
       if (h.x !== undefined && h.y !== undefined) {
         holderPositions.set(h.address, { x: h.x, y: h.y, color: h.color });
       }
     });
 
-    // Draw targeting lines (behind everything)
-    drawTargetingLines(ctx, holders, battleState, holderPositions);
+    drawTargetingLines(ctx, drawHolders, drawBattleState, holderPositions);
+    drawBullets(ctx, drawBattleState.bullets, holderPositions);
 
-    // Draw curved bullet trails and bullets
-    drawBullets(ctx, battleState.bullets, holderPositions);
-
-    // Draw each bubble
-    holders.forEach((holder) => {
+    drawHolders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) return;
+      if (!inView(holder.x, holder.y)) return;
 
-      const battleBubble = battleState.bubbles.get(holder.address);
+      const battleBubble = drawBattleState.bubbles.get(holder.address);
       const isGhost = battleBubble?.isGhost || false;
       const health = battleBubble?.health ?? BATTLE_CONFIG.maxHealth;
       const maxHealth = battleBubble?.maxHealth ?? BATTLE_CONFIG.maxHealth;
 
-      const isHovered = hoveredHolder?.address === holder.address;
-      const isConnectedWallet = connectedWallet === holder.address;
+      const isHovered = hovered?.address === holder.address;
+      const isConnectedWallet = connWallet === holder.address;
       const x = holder.x;
       const y = holder.y;
       
@@ -178,10 +302,9 @@ export function BubbleCanvas({
         spawnProgress = Math.min(1, (now - holder.spawnTime) / 500); // 500ms spawn animation
       }
       
-      // Get effect modifiers
       const { scale, glowColor, glowIntensity } = getBubbleEffectModifiers(
         holder.address,
-        effectsState
+        effects
       );
       
       // Apply spawn animation scale (bounce effect)
@@ -432,10 +555,10 @@ export function BubbleCanvas({
       }
     });
 
-    // Draw orbit orbs for bubbles with orbit talent
-    holders.forEach((holder) => {
+    drawHolders.forEach((holder) => {
       if (holder.x === undefined || holder.y === undefined) return;
-      const bb = battleState.bubbles.get(holder.address);
+      if (!inView(holder.x, holder.y)) return;
+      const bb = drawBattleState.bubbles.get(holder.address);
       if (!bb || bb.isGhost) return;
       const orbitRank = bb.talents?.orbit || 0;
       if (orbitRank <= 0) return;
@@ -444,7 +567,6 @@ export function BubbleCanvas({
       const orbitR = holder.radius + 40;
       const orbSize = 6;
       const rotSpeed = 4 * Math.PI;
-
       for (let i = 0; i < orbCount; i++) {
         const angle = (now / 1000) * rotSpeed + (i * 2 * Math.PI / orbCount);
         const ox = holder.x + Math.cos(angle) * orbitR;
@@ -467,17 +589,215 @@ export function BubbleCanvas({
       }
     });
 
-    // Draw lightning arcs
+    if (drawBattleState.mines) {
+      const mineNow = Date.now();
+      for (const mine of drawBattleState.mines) {
+        const mx = mine.x;
+        const my = mine.y;
+        const ownerColor = holderPositions.get(mine.ownerAddress)?.color || '#ffaa00';
+
+        const fadeMs = 2000;
+        const age = mineNow - mine.createdAt;
+        const remaining = mine.durationMs - age;
+        const fadeAlpha = mine.isDetonating ? 1 : Math.max(0, Math.min(1, remaining / fadeMs));
+        ctx.save();
+        ctx.globalAlpha = fadeAlpha;
+
+        if (mine.isDetonating && mine.singularityState) {
+          // ── Singularity black hole ──
+          const elapsed = mineNow - mine.singularityState.startTime;
+          const pullR = mine.singularityState.pullRadius;
+          const pulse = 1 + 0.08 * Math.sin(elapsed / 80);
+          const spin = elapsed / 400;
+
+          // Outer distortion field
+          const vortexGrad = ctx.createRadialGradient(mx, my, 0, mx, my, pullR * pulse);
+          vortexGrad.addColorStop(0, 'rgba(20, 0, 40, 0.9)');
+          vortexGrad.addColorStop(0.2, 'rgba(80, 0, 160, 0.5)');
+          vortexGrad.addColorStop(0.5, `${ownerColor}22`);
+          vortexGrad.addColorStop(0.8, 'rgba(60, 0, 120, 0.08)');
+          vortexGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.beginPath();
+          ctx.arc(mx, my, pullR * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = vortexGrad;
+          ctx.fill();
+
+          // Spinning accretion rings
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(spin);
+          for (let ring = 0; ring < 3; ring++) {
+            const ringR = pullR * (0.3 + ring * 0.2) * pulse;
+            const arcLen = Math.PI * 0.6;
+            const startAngle = ring * Math.PI * 0.7;
+            ctx.beginPath();
+            ctx.arc(0, 0, ringR, startAngle, startAngle + arcLen);
+            ctx.strokeStyle = `${ownerColor}${Math.round(60 - ring * 15).toString(16).padStart(2, '0')}`;
+            ctx.lineWidth = 2.5 - ring * 0.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Dark core
+          const coreGrad = ctx.createRadialGradient(mx, my, 0, mx, my, 12);
+          coreGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+          coreGrad.addColorStop(0.6, 'rgba(40, 0, 80, 0.9)');
+          coreGrad.addColorStop(1, `${ownerColor}44`);
+          ctx.beginPath();
+          ctx.arc(mx, my, 12, 0, Math.PI * 2);
+          ctx.fillStyle = coreGrad;
+          ctx.fill();
+
+        } else {
+          // ── Regular mine / mega-mine ──
+          const r = mine.radius;
+          const isMega = mine.isMegaMine;
+          const baseR = isMega ? r * 0.7 : r * 0.55;
+          const pulseSpeed = isMega ? 200 : 400;
+          const pulse = 1 + 0.12 * Math.sin(mineNow / pulseSpeed);
+          const rotation = mineNow / 2000;
+
+          // Pulsing outer glow in owner's color
+          const glowR = baseR * 2.5 * pulse;
+          const glowGrad = ctx.createRadialGradient(mx, my, baseR * 0.3, mx, my, glowR);
+          glowGrad.addColorStop(0, `${ownerColor}30`);
+          glowGrad.addColorStop(0.5, `${ownerColor}12`);
+          glowGrad.addColorStop(1, `${ownerColor}00`);
+          ctx.beginPath();
+          ctx.arc(mx, my, glowR, 0, Math.PI * 2);
+          ctx.fillStyle = glowGrad;
+          ctx.fill();
+
+          // Outer ring with rotating dashes
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(rotation);
+          const segments = isMega ? 8 : 6;
+          const gapAngle = Math.PI * 2 / segments;
+          const arcAngle = gapAngle * 0.6;
+          for (let i = 0; i < segments; i++) {
+            const startA = i * gapAngle;
+            ctx.beginPath();
+            ctx.arc(0, 0, baseR * 1.2 * pulse, startA, startA + arcAngle);
+            ctx.strokeStyle = `${ownerColor}88`;
+            ctx.lineWidth = isMega ? 2 : 1.5;
+            ctx.stroke();
+          }
+          ctx.restore();
+
+          // Inner filled circle
+          const innerGrad = ctx.createRadialGradient(mx, my - baseR * 0.2, 0, mx, my, baseR);
+          innerGrad.addColorStop(0, `${ownerColor}dd`);
+          innerGrad.addColorStop(0.7, `${ownerColor}99`);
+          innerGrad.addColorStop(1, `${ownerColor}44`);
+          ctx.beginPath();
+          ctx.arc(mx, my, baseR * pulse, 0, Math.PI * 2);
+          ctx.fillStyle = innerGrad;
+          ctx.fill();
+
+          // Crisp border
+          ctx.beginPath();
+          ctx.arc(mx, my, baseR * pulse, 0, Math.PI * 2);
+          ctx.strokeStyle = isMega ? '#ffffff88' : `${ownerColor}aa`;
+          ctx.lineWidth = isMega ? 2 : 1;
+          ctx.stroke();
+
+          // Center hazard symbol — crosshair pattern
+          ctx.save();
+          ctx.translate(mx, my);
+          ctx.rotate(-rotation * 0.5);
+          const crossR = baseR * 0.4;
+          ctx.strokeStyle = isMega ? '#ffffffcc' : '#ffffffaa';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(-crossR, 0); ctx.lineTo(crossR, 0);
+          ctx.moveTo(0, -crossR); ctx.lineTo(0, crossR);
+          ctx.stroke();
+          // Small inner circle
+          ctx.beginPath();
+          ctx.arc(0, 0, crossR * 0.4, 0, Math.PI * 2);
+          ctx.strokeStyle = '#ffffffbb';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+
+          // Blinking red dot
+          const blink = Math.sin(mineNow / (isMega ? 150 : 300)) > 0;
+          if (blink) {
+            ctx.beginPath();
+            ctx.arc(mx, my, isMega ? 3 : 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff2200';
+            ctx.fill();
+          }
+
+          // Singularity-capable mine: purple energy ring
+          if (mine.singularityRank > 0) {
+            const sRingR = baseR * 1.4 * pulse;
+            ctx.beginPath();
+            ctx.arc(mx, my, sRingR, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(160, 60, 255, ${0.3 + 0.2 * Math.sin(mineNow / 200)})`;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      }
+    }
+
+    if (drawBattleState.decoyClones) {
+      for (const clone of drawBattleState.decoyClones) {
+        const cx = clone.x;
+        const cy = clone.y;
+        const cr = clone.radius;
+
+        // Semi-transparent clone bubble
+        ctx.globalAlpha = 0.6;
+        const cloneGrad = ctx.createRadialGradient(cx, cy, cr * 0.1, cx, cy, cr);
+        cloneGrad.addColorStop(0, clone.color || '#88aaff');
+        cloneGrad.addColorStop(1, 'rgba(100, 150, 255, 0.2)');
+        ctx.beginPath();
+        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+        ctx.fillStyle = cloneGrad;
+        ctx.fill();
+
+        // Dashed border to distinguish from real bubble
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(150, 200, 255, 0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // HP bar
+        const hpPct = clone.health / clone.maxHealth;
+        const barW = cr * 1.4;
+        const barH = 3;
+        const barX = cx - barW / 2;
+        const barY = cy + cr + 4;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = hpPct > 0.5 ? '#44ff88' : hpPct > 0.25 ? '#ffaa00' : '#ff4444';
+        ctx.fillRect(barX, barY, barW * hpPct, barH);
+
+        ctx.globalAlpha = 1;
+      }
+    }
+
     const nowMs = Date.now();
-    for (const arc of lightningArcs) {
+    for (const arc of lightning) {
       const age = nowMs - arc.createdAt;
       if (age > arc.duration) continue;
       const alpha = 1 - age / arc.duration;
       drawLightningBolt(ctx, arc, alpha);
     }
 
-    // Draw Reaper's Arc VFX — rotating sword with trailing sweep
-    for (const arc of reaperArcs) {
+    for (const beam of lasers) {
+      const age = nowMs - beam.createdAt;
+      if (age > beam.duration) continue;
+      drawOrbitalLaser(ctx, beam, age);
+    }
+
+    for (const arc of reaper) {
       const age = nowMs - arc.createdAt;
       if (age > arc.duration) continue;
       const progress = age / arc.duration;
@@ -635,13 +955,11 @@ export function BubbleCanvas({
       ctx.restore();
     }
 
-    // Draw damage numbers on top
-    drawDamageNumbers(ctx, battleState.damageNumbers);
+    drawDamageNumbers(ctx, drawBattleState.damageNumbers);
 
-    // Spawn sparks for new damage numbers (impact particles)
-    const currentDmgCount = battleState.damageNumbers.length;
+    const currentDmgCount = drawBattleState.damageNumbers.length;
     if (currentDmgCount > prevDamageCountRef.current) {
-      const newHits = battleState.damageNumbers.slice(0, currentDmgCount - prevDamageCountRef.current);
+      const newHits = drawBattleState.damageNumbers.slice(0, currentDmgCount - prevDamageCountRef.current);
       for (const dn of newHits) {
         const sparkCount = 4 + Math.floor(Math.random() * 4);
         for (let i = 0; i < sparkCount; i++) {
@@ -688,28 +1006,9 @@ export function BubbleCanvas({
     }
     ctx.globalAlpha = 1;
 
-    // Draw explosion particles on top
-    effectsState.explosions.forEach(explosion => {
-      explosion.particles.forEach(particle => {
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-        
-        const gradient = ctx.createRadialGradient(
-          particle.x, particle.y, 0,
-          particle.x, particle.y, particle.radius
-        );
-        gradient.addColorStop(0, particle.color);
-        gradient.addColorStop(1, `${particle.color}00`);
-        
-        ctx.fillStyle = gradient;
-        ctx.globalAlpha = particle.alpha;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      });
-    });
+    // Explosions are already drawn in drawEffects() above; skip duplicate pass
 
-    // Draw pop effects (when holders sell everything)
-    popEffects.forEach(pop => {
+    popEffs.forEach(pop => {
       const progress = pop.progress;
       if (progress >= 1) return;
       
@@ -764,14 +1063,22 @@ export function BubbleCanvas({
         ctx.globalAlpha = 1;
       }
     });
-    
-  }, [holders, width, height, worldWidth, worldHeight, hoveredHolder, effectsState, battleState, popEffects, camera, connectedWallet, lightningArcs, reaperArcs]);
+  }, [gameStateRefProp]);
 
-  // Store camera ref for click detection
-  const cameraRef = useRef(camera);
-  useEffect(() => {
-    cameraRef.current = camera;
-  }, [camera]);
+  // Drive canvas from rAF for 60fps; read from refs so we don't depend on React re-renders
+  useLayoutEffect(() => {
+    let rafId = 0;
+    const loop = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (ctx) drawFrame(ctx);
+      rafRef.current = rafId = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [drawFrame]);
 
   // Handle mouse interactions
   const findHolderAtPosition = useCallback(
@@ -870,11 +1177,11 @@ function drawHealthBar(
   ctx.fillRect(barX, y, width, height);
   
   // Health fill - color based on health level
-  let healthColor = "#22c55e"; // Green
+  let healthColor = "#22c55e";
   if (healthPercent < 0.3) {
-    healthColor = "#ef4444"; // Red
+    healthColor = "#ef4444";
   } else if (healthPercent < 0.6) {
-    healthColor = "#f59e0b"; // Yellow
+    healthColor = "#f59e0b";
   }
   
   ctx.fillStyle = healthColor;
@@ -1039,6 +1346,60 @@ function drawBullets(
       }
     }
 
+    // Rocket: distinct larger projectile with smoke trail
+    if (bullet.isRocket) {
+      const angle = Math.atan2(bullet.vy || 0, bullet.vx || 0);
+
+      // Smoke trail
+      const smokeLen = 14;
+      for (let i = 1; i <= smokeLen; i++) {
+        const t = i / smokeLen;
+        const sx = bullet.x - Math.cos(angle) * i * 7;
+        const sy = bullet.y - Math.sin(angle) * i * 7;
+        const fade = 1 - t;
+        const size = 4 + t * 10;
+        ctx.beginPath();
+        ctx.arc(sx, sy, size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(120, 120, 120, ${fade * 0.35})`;
+        ctx.fill();
+      }
+
+      // Outer glow
+      const rocketGlow = ctx.createRadialGradient(bullet.x, bullet.y, 0, bullet.x, bullet.y, 36);
+      rocketGlow.addColorStop(0, `${shooterColor}99`);
+      rocketGlow.addColorStop(0.5, `${shooterColor}40`);
+      rocketGlow.addColorStop(1, `${shooterColor}00`);
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, 36, 0, Math.PI * 2);
+      ctx.fillStyle = rocketGlow;
+      ctx.fill();
+
+      // Rocket body (pointed oval) — 2x size
+      ctx.save();
+      ctx.translate(bullet.x, bullet.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(-10, -8);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-10, 8);
+      ctx.closePath();
+      ctx.fillStyle = shooterColor;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff88';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // White hot tip
+      ctx.beginPath();
+      ctx.arc(14, 0, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.restore();
+
+      return;
+    }
+
     // Bullet glow + core + ring
     const glowGradient = ctx.createRadialGradient(
       bullet.x, bullet.y, 0,
@@ -1095,17 +1456,28 @@ function drawDamageNumbers(ctx: CanvasRenderingContext2D, damageNumbers: DamageN
   });
 }
 
-// Draw a jagged lightning bolt
+// Draw a jagged lightning bolt (no shadowBlur — too expensive; use wider stroke for glow)
 function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alpha: number) {
   if (arc.points.length < 2) return;
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  // Outer glow
+  // Outer glow: wide semi-transparent stroke instead of expensive shadowBlur
+  ctx.globalAlpha = alpha * 0.35;
+  ctx.strokeStyle = arc.color;
+  ctx.lineWidth = 10;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(arc.points[0].x, arc.points[0].y);
+  for (let i = 1; i < arc.points.length; i++) {
+    ctx.lineTo(arc.points[i].x, arc.points[i].y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = alpha;
+
   ctx.strokeStyle = arc.color;
   ctx.lineWidth = 4;
-  ctx.shadowColor = arc.color;
-  ctx.shadowBlur = 12;
   ctx.beginPath();
   ctx.moveTo(arc.points[0].x, arc.points[0].y);
   for (let i = 1; i < arc.points.length; i++) {
@@ -1113,11 +1485,8 @@ function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alp
   }
   ctx.stroke();
 
-  // Bright core
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2;
-  ctx.shadowBlur = 6;
-  ctx.shadowColor = "#ffffff";
   ctx.beginPath();
   ctx.moveTo(arc.points[0].x, arc.points[0].y);
   for (let i = 1; i < arc.points.length; i++) {
@@ -1125,10 +1494,8 @@ function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alp
   }
   ctx.stroke();
 
-  // Branches
   ctx.strokeStyle = arc.color;
   ctx.lineWidth = 1.5;
-  ctx.shadowBlur = 6;
   for (const branch of arc.branches) {
     if (branch.length < 2) continue;
     ctx.beginPath();
@@ -1138,6 +1505,82 @@ function drawLightningBolt(ctx: CanvasRenderingContext2D, arc: LightningArc, alp
     }
     ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+function drawOrbitalLaser(ctx: CanvasRenderingContext2D, beam: OrbitalLaserVfx, age: number) {
+  const progress = age / beam.duration;
+  const alpha = progress < 0.15 ? progress / 0.15 : 1 - (progress - 0.15) / 0.85;
+  if (alpha <= 0) return;
+
+  const col = beam.color || '#00ffcc';
+  const r = parseInt(col.slice(1, 3), 16) || 0;
+  const g = parseInt(col.slice(3, 5), 16) || 255;
+  const b = parseInt(col.slice(5, 7), 16) || 200;
+  const w = beam.beamWidth;
+
+  const dx = beam.targetX - beam.x;
+  const dy = beam.targetY - beam.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const angle = Math.atan2(dy, dx);
+
+  ctx.save();
+  ctx.translate(beam.x, beam.y);
+  ctx.rotate(angle);
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 1.5, dist, w * 3);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.08})`;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 0.8, dist, w * 1.6);
+  ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.25})`;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.rect(0, -w * 0.35, dist, w * 0.7);
+  ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.9})`;
+  ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 1)`;
+  ctx.shadowBlur = 20;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha * 0.6})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, -w * 0.5);
+  ctx.lineTo(dist, -w * 0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, w * 0.5);
+  ctx.lineTo(dist, w * 0.5);
+  ctx.stroke();
+
+  if (progress < 0.6) {
+    const sparkCount = Math.floor(dist / 50);
+    for (let i = 0; i < sparkCount; i++) {
+      const sx = Math.random() * dist;
+      const sy = (Math.random() - 0.5) * w * 1.5;
+      const sr = 1 + Math.random() * 3;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha * (0.3 + Math.random() * 0.5)})`;
+      ctx.fill();
+    }
+  }
+
+  // Endpoint flare
+  const flareRadius = w * 2;
+  const flareGrad = ctx.createRadialGradient(dist, 0, 0, dist, 0, flareRadius);
+  flareGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.8})`);
+  flareGrad.addColorStop(0.3, `rgba(${r}, ${g}, ${b}, ${alpha * 0.5})`);
+  flareGrad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+  ctx.beginPath();
+  ctx.arc(dist, 0, flareRadius, 0, Math.PI * 2);
+  ctx.fillStyle = flareGrad;
+  ctx.fill();
 
   ctx.restore();
 }

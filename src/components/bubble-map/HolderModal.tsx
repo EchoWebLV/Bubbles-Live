@@ -21,10 +21,10 @@ const TALENT_TREES = {
     color: 'green',
     icon: '\u{1F6E1}\u{FE0F}',
     talents: [
-      { id: 'armor', name: 'Armor', desc: '-4/8/12/16/24% incoming dmg', maxRank: 5 },
+      { id: 'armor', name: 'Armor', desc: '-8/16/24/32/40% incoming dmg', maxRank: 5 },
       { id: 'ironSkin', name: 'Iron Skin', desc: '+10/15/20/25/30% max HP', maxRank: 5 },
-      { id: 'regeneration', name: 'Regeneration', desc: '+0.3/0.6/0.9/1.2/1.5 HP/sec', maxRank: 5 },
-      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 5/10/15/20/25% of dmg dealt', maxRank: 5 },
+      { id: 'regeneration', name: 'Regeneration', desc: '+0.4/0.8/1.2/1.6/2% max HP/sec', maxRank: 5 },
+      { id: 'lifesteal', name: 'Lifesteal', desc: 'Heal 6/12/18/25/33% of dmg dealt', maxRank: 5 },
       { id: 'vitalityStrike', name: 'Vitality Strike', desc: '+0.15/0.3/0.4% max HP as bullet dmg', maxRank: 3 },
     ],
   },
@@ -34,9 +34,9 @@ const TALENT_TREES = {
     icon: '\u{1F3AF}',
     talents: [
       { id: 'heavyHitter', name: 'Heavy Hitter', desc: '+4/8/12/16/24% bullet dmg', maxRank: 5 },
-      { id: 'rapidFire', name: 'Rapid Fire', desc: '-6/12/18/24/30% fire cooldown', maxRank: 5 },
-      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2/2.2/2.6/2.8/3x dmg)', maxRank: 5 },
-      { id: 'multiShot', name: 'Multi Shot', desc: '12/24/36/48/60% chance 2nd bullet (75% dmg)', maxRank: 5 },
+      { id: 'rapidFire', name: 'Rapid Fire', desc: '-4/6/8/10/14% fire cooldown', maxRank: 5 },
+      { id: 'criticalStrike', name: 'Critical Strike', desc: '7/14/21/28/35% crit (2x dmg)', maxRank: 5 },
+      { id: 'multiShot', name: 'Multi Shot', desc: '10/20/30/40/50% chance 2nd bullet (50% dmg)', maxRank: 5 },
       { id: 'dualCannon', name: 'Homing Cannon', desc: 'Every 9/7/5th shot: homing bullet toward your target (200% dmg)', maxRank: 3 },
     ],
   },
@@ -46,10 +46,10 @@ const TALENT_TREES = {
     icon: '\u{1F4A8}',
     talents: [
       { id: 'dash', name: 'Dash', desc: 'Burst dash every 12/10/8/6/4s', maxRank: 5 },
-      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1.5/2.5/3.5/4.5/5.5% max HP dmg (1.5s cd)', maxRank: 5 },
-      { id: 'relentless', name: 'Pinball', desc: 'Body Slam dashes you 50/100/150/200/250px toward nearest enemy', maxRank: 5 },
-      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, dealing 0.5/0.75/1/1.25/1.5% max HP on contact', maxRank: 5 },
-      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 4/6/8% max HP', maxRank: 3 },
+      { id: 'bodySlam', name: 'Body Slam', desc: 'Contact deals 1/2/3/4/5% max HP dmg (1.5s cd)', maxRank: 5 },
+      { id: 'relentless', name: 'Retaliate', desc: '10/20/30/40/50% chance when hit: dash toward attacker. +10/20/30/40/50% Body Slam dmg', maxRank: 5 },
+      { id: 'orbit', name: 'Orbit', desc: '2 orbs circle you, 0.5/0.8/1.1/1.7/2.5% max HP on contact (100ms cd)', maxRank: 5 },
+      { id: 'shockwave', name: 'Shockwave', desc: 'Body hit AoE 3/5/7% max HP', maxRank: 3 },
     ],
   },
   massDamage: {
@@ -57,10 +57,10 @@ const TALENT_TREES = {
     color: 'yellow',
     icon: '\u{1F4A5}',
     talents: [
-      { id: 'ricochet', name: 'Ricochet', desc: '11/19/26/34/49% chance to bounce', maxRank: 5 },
-      { id: 'counterAttack', name: 'Counter Attack', desc: '8/16/24/32/40% chance to fire back', maxRank: 5 },
+      { id: 'ricochet', name: 'Ricochet', desc: '11/18/25/33/40% chance homing bounce', maxRank: 5 },
       { id: 'focusFire', name: 'Focus Fire', desc: '+3/6/9/12/15% dmg per hit on same target, max 3 stacks', maxRank: 5 },
-      { id: 'nova', name: 'Nova', desc: 'Spiral 5/8/11/14/18 bullets every 1s (150% dmg)', maxRank: 5 },
+      { id: 'orbitalLaser', name: 'Infernal Lance', desc: 'Piercing beam every 3.5/3.2/3/2.8/2.5s (100/150/200/250/300% dmg)', maxRank: 5 },
+      { id: 'rocket', name: 'Rocket', desc: 'Every 18/16/14/12/10th shot fires a homing rocket (AoE on impact)', maxRank: 5 },
       { id: 'chainLightning', name: 'Chain Lightning', desc: '4/8/12% chance: lightning to 2/3/4 enemies (400% dmg, -50% per jump)', maxRank: 3 },
     ],
   },
@@ -70,10 +70,34 @@ const TALENT_TREES = {
     icon: '\u{1FA78}',
     talents: [
       { id: 'experience', name: 'Experience', desc: '+10/17/24/32/40% XP gained', maxRank: 5 },
-      { id: 'execute', name: 'Execute', desc: '+8/16/24/32/48% dmg vs \u226450% HP', maxRank: 5 },
+      { id: 'execute', name: 'Execute', desc: '+7/13/20/27/33% dmg vs ≤50% HP', maxRank: 5 },
       { id: 'killRush', name: 'Kill Rush', desc: 'On kill: +20/40/60/80/100% fire rate for 4s', maxRank: 5 },
-      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 15th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs 0.5/1/1.5/2/2.5% HP', maxRank: 5 },
-      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +10/20/30% atk speed & dmg', maxRank: 3 },
+      { id: 'reaperArc', name: "Reaper's Arc", desc: 'Every 12th hit: 360° sweep. 1/2/3/4/5% max HP dmg, costs same % HP', maxRank: 5 },
+      { id: 'berserker', name: 'Berserker', desc: 'Below 33% HP: +12/24/36% atk speed & dmg', maxRank: 3 },
+    ],
+  },
+  sapper: {
+    name: 'Echo',
+    color: 'teal',
+    icon: '\u{1F47B}',
+    talents: [
+      { id: 'deathMirage', name: 'Death Mirage', desc: 'Leave a decoy on death + -10/17/25/33/40% respawn time', maxRank: 5 },
+      { id: 'decoy', name: 'Decoy', desc: 'Spawn a decoy clone every 20/18/16/14/10s that shoots for 5s', maxRank: 5 },
+      { id: 'decoyBarrage', name: 'Decoy Barrage', desc: 'Launch a decoy at nearest enemy every 14/12/10/8/6s', maxRank: 5 },
+      { id: 'volatileDecoy', name: 'Volatile Decoy', desc: 'Decoys explode on death for 1.5/3/4.5/6/7.5% max HP AoE', maxRank: 5 },
+      { id: 'singularity', name: 'Singularity', desc: '50% chance decoy explosion becomes a black hole: 1/2/3s pull, 2.25% HP/s, +3/6/9% detonation', maxRank: 3 },
+    ],
+  },
+  swift: {
+    name: 'Swift',
+    color: 'orange',
+    icon: '\u{26A1}',
+    talents: [
+      { id: 'quickfire', name: 'Quickfire', desc: '+4/8/12/16/24% fire rate', maxRank: 5 },
+      { id: 'velocityRounds', name: 'Velocity Rounds', desc: 'Bullets travel 9/18/27/36/45% faster', maxRank: 5 },
+      { id: 'longShot', name: 'Long Shot', desc: 'Bullets deal up to +10/20/30/40/50% bonus dmg based on distance (max at 800px)', maxRank: 5 },
+      { id: 'overdrive', name: 'Overdrive', desc: 'Every 10/9/8/7/6s, double your fire rate for 2s', maxRank: 5 },
+      { id: 'bulletStorm', name: 'Bullet Storm', desc: 'Every 9/6/3 shot, fire an extra bullet at the same target', maxRank: 3 },
     ],
   },
 } as const;
@@ -109,6 +133,8 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
     red:    { bg: 'bg-red-900/20',    border: 'border-red-500/30',    text: 'text-red-400',    rankBg: 'bg-red-900/30',    rankFill: 'bg-red-500' },
     yellow: { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400', rankBg: 'bg-yellow-900/30', rankFill: 'bg-yellow-500' },
     purple: { bg: 'bg-purple-900/20', border: 'border-purple-500/30', text: 'text-purple-400', rankBg: 'bg-purple-900/30', rankFill: 'bg-purple-500' },
+    teal:   { bg: 'bg-teal-900/20',   border: 'border-teal-500/30',   text: 'text-teal-400',   rankBg: 'bg-teal-900/30',   rankFill: 'bg-teal-500' },
+    orange: { bg: 'bg-orange-900/20', border: 'border-orange-500/30', text: 'text-orange-400', rankBg: 'bg-orange-900/30', rankFill: 'bg-orange-500' },
   };
 
   return (
@@ -126,11 +152,14 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
             </motion.div>
             <div>
               <div className="font-mono text-lg">{shortenAddress(holder.address, 6)}</div>
-              <DialogDescription className="text-sm">
-                {token ? `${token.symbol} Holder` : "Token Holder"}
+              <DialogDescription className="text-sm flex items-center gap-1.5 flex-wrap">
+                <span>{token ? `${token.symbol} Holder` : "Token Holder"}</span>
                 {battleBubble && (
-                  <span className="ml-2 text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
+                  <span className="text-purple-400 font-bold">Lv.{battleBubble.level ?? 1}</span>
                 )}
+                {battleBubble && (battleBubble.classId ?? 0) === 1 && <span className="text-[10px] text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded font-bold">FORTIFY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 2 && <span className="text-[10px] text-sky-400 bg-sky-500/20 px-1.5 py-0.5 rounded font-bold">VELOCITY</span>}
+                {battleBubble && (battleBubble.classId ?? 0) === 3 && <span className="text-[10px] text-rose-400 bg-rose-500/20 px-1.5 py-0.5 rounded font-bold">IMPACT</span>}
               </DialogDescription>
             </div>
           </DialogTitle>
@@ -209,6 +238,16 @@ export function HolderModal({ holder, token, battleBubble, onClose }: HolderModa
                     {battleBubble.deaths > 0 ? (battleBubble.kills / battleBubble.deaths).toFixed(1) : battleBubble.kills.toFixed(0)}
                   </div>
                 </motion.div>
+              </div>
+            )}
+
+            {/* Class Badge */}
+            {battleBubble && (battleBubble.classId ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-500">Class:</span>
+                {(battleBubble.classId ?? 0) === 1 && <span className="text-xs text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded-lg font-bold">🛡️ Fortify <span className="text-[9px] text-slate-400 font-normal">+1% HP/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 2 && <span className="text-xs text-sky-400 bg-sky-500/20 border border-sky-500/30 px-2 py-0.5 rounded-lg font-bold">⚡ Velocity <span className="text-[9px] text-slate-400 font-normal">+1% fire rate/lvl</span></span>}
+                {(battleBubble.classId ?? 0) === 3 && <span className="text-xs text-rose-400 bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded-lg font-bold">🗡️ Impact <span className="text-[9px] text-slate-400 font-normal">+1% dmg/lvl</span></span>}
               </div>
             )}
 

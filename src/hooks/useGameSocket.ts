@@ -40,14 +40,27 @@ export interface TalentRanks {
   ricochet: number;
   counterAttack: number;
   chainLightning: number;
-  nova: number;
+  orbitalLaser: number;
   focusFire: number;
+  rocket: number;
   // Blood Thirst
   experience: number;
   execute: number;
   killRush: number;
   reaperArc: number;
   berserker: number;
+  // Echo
+  decoy: number;
+  deathMirage: number;
+  decoyBarrage: number;
+  volatileDecoy: number;
+  singularity: number;
+  // Swift
+  quickfire: number;
+  velocityRounds: number;
+  longShot: number;
+  overdrive: number;
+  bulletStorm: number;
   [key: string]: number;
 }
 
@@ -68,6 +81,9 @@ export interface GameBattleBubble {
   talents: TalentRanks;
   talentPoints: number;
   manualBuild: boolean;
+  classId: number;
+  talentResetsUsed: number;
+  allowedTrees?: string[];
 }
 
 export interface GameBullet {
@@ -83,6 +99,10 @@ export interface GameBullet {
   progress: number;
   curveDirection: number;
   curveStrength: number;
+  isBloodBolt?: boolean;
+  isRocket?: boolean;
+  vx?: number;
+  vy?: number;
 }
 
 export interface GameDamageNumber {
@@ -111,7 +131,7 @@ export interface GamePopEffect {
 }
 
 export interface GameVfx {
-  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc';
+  type: 'bloodbath' | 'shockwave' | 'bulletPop' | 'lightning' | 'reaperArc' | 'mineExplode' | 'megaMine' | 'singularityStart' | 'singularityExplode' | 'decoySpawn' | 'decoyDeath' | 'rocketExplode' | 'orbitalLaser';
   x: number;
   y: number;
   targetX?: number;
@@ -119,9 +139,39 @@ export interface GameVfx {
   radius?: number;
   angle?: number;
   range?: number;
+  beamWidth?: number;
   color: string;
   createdAt: number;
   small?: boolean;
+}
+
+export interface GameMine {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  isMegaMine: boolean;
+  isDetonating: boolean;
+  singularityRank: number;
+  createdAt: number;
+  durationMs: number;
+  singularityState: {
+    rank: number;
+    startTime: number;
+    pullRadius: number;
+  } | null;
+}
+
+export interface GameDecoyClone {
+  id: string;
+  ownerAddress: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  health: number;
+  maxHealth: number;
 }
 
 export interface GameState {
@@ -130,6 +180,8 @@ export interface GameState {
   bullets: GameBullet[];
   damageNumbers: GameDamageNumber[];
   vfx: GameVfx[];
+  mines: GameMine[];
+  decoyClones: GameDecoyClone[];
   killFeed: GameKillFeed[];
   eventLog: string[];
   topKillers: { address: string; kills: number; level: number }[];
@@ -152,6 +204,9 @@ export interface GameState {
   } | null;
   dimensions: { width: number; height: number };
   timestamp: number;
+  seasonId?: number;
+  seasonNumber?: number;
+  seasonEndsAt?: number;
   magicBlock?: {
     ready: boolean;
     arenaPda: string | null;
@@ -215,22 +270,29 @@ interface UseGameSocketOptions {
 }
 
 const SERVER_TICK_MS = 100; // 10fps server broadcast
+const STATE_UPDATE_THROTTLE_MS = 50; // Throttle React setState to reduce re-renders; canvas uses ref for smooth 60fps
+
+const _prevHolderMap = new Map<string, GameHolder>();
+const _prevBulletMap = new Map<string, GameState['bullets'][number]>();
 
 function lerpPositions(prev: GameState | null, next: GameState, t: number): GameState {
   if (!prev || t >= 1) return next;
 
-  const prevHolderMap = new Map(prev.holders.map(h => [h.address, h]));
-  const prevBulletMap = new Map(prev.bullets.map(b => [b.id, b]));
+  _prevHolderMap.clear();
+  for (const h of prev.holders) _prevHolderMap.set(h.address, h);
+
+  _prevBulletMap.clear();
+  for (const b of prev.bullets) _prevBulletMap.set(b.id, b);
 
   return {
     ...next,
     holders: next.holders.map(h => {
-      const p = prevHolderMap.get(h.address);
+      const p = _prevHolderMap.get(h.address);
       if (!p || p.x === undefined || h.x === undefined) return h;
       return { ...h, x: p.x + (h.x - p.x) * t, y: p.y! + (h.y! - p.y!) * t };
     }),
     bullets: next.bullets.map(b => {
-      const p = prevBulletMap.get(b.id);
+      const p = _prevBulletMap.get(b.id);
       if (!p) return b;
       return {
         ...b,
@@ -255,6 +317,9 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   const lastServerTime = useRef(0);
   const rafRef = useRef<number>(0);
   const lastRafUpdate = useRef(0);
+  const lastSetStateTime = useRef(0);
+  /** Latest interpolated state, updated every frame. Use this in canvas rAF for 60fps without triggering React. */
+  const gameStateRef = useRef<GameState | null>(null);
 
   // Send dimensions to server
   const setDimensions = useCallback((width: number, height: number) => {
@@ -348,6 +413,21 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
     });
   }, []);
 
+  // Select class (Fortify/Velocity/Impact)
+  const selectClass = useCallback((walletAddress: string, classId: number): Promise<{ success: boolean; classId?: number; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!socketRef.current?.connected) {
+        resolve({ success: false, error: "Not connected" });
+        return;
+      }
+      socketRef.current.emit("selectClass", { walletAddress, classId });
+      socketRef.current.once("classResult", (result: { success: boolean; classId?: number; error?: string }) => {
+        resolve(result);
+      });
+      setTimeout(() => resolve({ success: false, error: "Timeout" }), 10000);
+    });
+  }, []);
+
   // Reset all talent points
   const resetTalents = useCallback((walletAddress: string): Promise<{ success: boolean; talents?: TalentRanks; talentPoints?: number; error?: string }> => {
     return new Promise((resolve) => {
@@ -421,9 +501,44 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       prevStateRef.current = nextStateRef.current;
       nextStateRef.current = state;
       lastServerTime.current = performance.now();
+      gameStateRef.current = state;
       if (!prevStateRef.current) {
         setGameState(state);
       }
+    });
+
+    socket.on("gameStateUpdate", (update: Partial<GameState>) => {
+      if (!nextStateRef.current) return;
+      const base = nextStateRef.current;
+      const merged: GameState = {
+        ...base,
+        bullets: update.bullets ?? base.bullets,
+        damageNumbers: update.damageNumbers ?? base.damageNumbers,
+        vfx: update.vfx ?? base.vfx,
+        killFeed: update.killFeed ?? base.killFeed,
+        popEffects: update.popEffects ?? base.popEffects,
+        mines: update.mines ?? base.mines,
+        decoyClones: update.decoyClones ?? base.decoyClones,
+        timestamp: update.timestamp ?? base.timestamp,
+      };
+      if (update.holders) {
+        const posMap = new Map(update.holders.map(h => [h.address, h]));
+        merged.holders = base.holders.map(h => {
+          const pos = posMap.get(h.address);
+          return pos ? { ...h, x: pos.x, y: pos.y } : h;
+        });
+      }
+      if (update.battleBubbles) {
+        const bbMap = new Map(update.battleBubbles.map(b => [b.address, b]));
+        merged.battleBubbles = base.battleBubbles.map(b => {
+          const u = bbMap.get(b.address);
+          return u ? { ...b, health: u.health, maxHealth: u.maxHealth, isGhost: u.isGhost, isAlive: u.isAlive } : b;
+        });
+      }
+      prevStateRef.current = nextStateRef.current;
+      nextStateRef.current = merged;
+      lastServerTime.current = performance.now();
+      gameStateRef.current = merged;
     });
 
     socket.on("playerPhotos", (photos: Record<string, string>) => {
@@ -440,16 +555,31 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
       setGuestAddress(null);
     });
 
+    socket.on("seasonReset", (payload: { seasonId: number; seasonNumber?: number; seasonEndsAt?: number }) => {
+      const patch: Partial<GameState> = { seasonId: payload.seasonId };
+      if (payload.seasonNumber !== undefined) patch.seasonNumber = payload.seasonNumber;
+      if (payload.seasonEndsAt !== undefined) patch.seasonEndsAt = payload.seasonEndsAt;
+      const updated = { ...(nextStateRef.current || {}), ...patch } as GameState;
+      nextStateRef.current = updated;
+      if (prevStateRef.current) prevStateRef.current = { ...prevStateRef.current, ...patch };
+      setGameState((prev) => (prev ? { ...prev, ...patch } : prev));
+    });
+
     socket.on("connect_error", (error) => {
       console.error("Connection error:", error);
     });
 
     const interpolate = (now: number) => {
-      if (nextStateRef.current && now - lastRafUpdate.current >= 33) {
-        lastRafUpdate.current = now;
+      if (nextStateRef.current) {
         const elapsed = performance.now() - lastServerTime.current;
         const t = Math.min(elapsed / SERVER_TICK_MS, 1);
-        setGameState(lerpPositions(prevStateRef.current, nextStateRef.current, t));
+        const lerped = lerpPositions(prevStateRef.current, nextStateRef.current, t);
+        gameStateRef.current = lerped;
+        // Throttle React setState to reduce re-renders; canvas reads gameStateRef for smooth 60fps
+        if (now - lastSetStateTime.current >= STATE_UPDATE_THROTTLE_MS) {
+          lastSetStateTime.current = now;
+          setGameState(lerped);
+        }
       }
       rafRef.current = requestAnimationFrame(interpolate);
     };
@@ -464,11 +594,13 @@ export function useGameSocket(options: UseGameSocketOptions = {}) {
   return {
     connected,
     gameState,
+    gameStateRef,
     playerPhotos,
     guestAddress,
     setDimensions,
     sendTransaction,
     upgradeStat,
+    selectClass,
     allocateTalent,
     resetTalents,
     getOnchainStats,
